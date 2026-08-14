@@ -23,11 +23,18 @@ type openAI struct {
 }
 
 func newOpenAI() (Client, error) {
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		return nil, fmt.Errorf("%w: OPENAI_API_KEY is not set", ErrNoProvider)
+	key := os.Getenv("OPENAI_API_KEY")
+	endpoint := baseURL("OPENAI_BASE_URL")
+	if key == "" && endpoint == "" {
+		return nil, fmt.Errorf("%w: set OPENAI_API_KEY or a base URL", ErrNoProvider)
+	}
+
+	options := []option.RequestOption{option.WithAPIKey(key)}
+	if endpoint != "" {
+		options = append(options, option.WithBaseURL(endpoint))
 	}
 	return &openAI{
-		client: openai.NewClient(option.WithAPIKey(os.Getenv("OPENAI_API_KEY"))),
+		client: openai.NewClient(options...),
 		model:  env("OPENAI_MODEL", defaultOpenAIModel),
 	}, nil
 }

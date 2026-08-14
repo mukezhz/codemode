@@ -27,14 +27,20 @@ type Client interface {
 // fallback path, such as demos, can check for it with errors.Is.
 var ErrNoProvider = errors.New("no LLM provider configured")
 
-// New builds the client named by LLM_PROVIDER: "claude" (the default) or
-// "openai". It returns ErrNoProvider when neither provider has credentials.
+// New builds the client named by LLM_PROVIDER: "claude" or "openai". Any
+// endpoint speaking either wire protocol works by setting a base URL, so
+// self-hosted and third-party models are reached through the same two
+// providers. It returns ErrNoProvider when nothing is configured.
 //
 // Environment:
 //
-//	LLM_PROVIDER     claude | openai            (default claude)
-//	ANTHROPIC_API_KEY, ANTHROPIC_MODEL          (model default claude-opus-5)
-//	OPENAI_API_KEY, OPENAI_MODEL                (model default gpt-5)
+//	LLM_PROVIDER       claude | openai
+//	LLM_BASE_URL       base URL for whichever provider is selected
+//	ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_BASE_URL
+//	OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL
+//
+// The provider-specific base URL wins over LLM_BASE_URL. A base URL with no API
+// key is allowed, for local endpoints that do not authenticate.
 func New() (Client, error) {
 	provider := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
 	switch provider {
@@ -43,15 +49,21 @@ func New() (Client, error) {
 	case "openai":
 		return newOpenAI()
 	case "":
-		// Unset means "whichever key is present", so the demo runs without
-		// asking the user to set two variables.
-		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		// Unset means "whichever provider is configured", so a single
+		// variable is enough to get started.
+		// Provider-specific variables only: LLM_BASE_URL names no provider, so
+		// letting it match here would always pick the first branch.
+		switch {
+		case os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != "":
 			return newClaude()
-		}
-		if os.Getenv("OPENAI_API_KEY") != "" {
+		case os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("OPENAI_BASE_URL") != "":
+			return newOpenAI()
+		case baseURL("") != "":
+			// LLM_BASE_URL alone: most self-hosted and third-party endpoints
+			// speak the OpenAI protocol, so that is the safer default.
 			return newOpenAI()
 		}
-		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY or OPENAI_API_KEY", ErrNoProvider)
+		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY, OPENAI_API_KEY, or LLM_BASE_URL", ErrNoProvider)
 	default:
 		return nil, fmt.Errorf("LLM_PROVIDER %q is not supported: use claude or openai", provider)
 	}
@@ -63,4 +75,15 @@ func env(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// baseURL returns the provider-specific base URL named by name, falling back to
+// LLM_BASE_URL. An empty name consults only LLM_BASE_URL.
+func baseURL(name string) string {
+	if name != "" {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return strings.TrimSpace(os.Getenv("LLM_BASE_URL"))
 }

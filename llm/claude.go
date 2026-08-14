@@ -21,22 +21,33 @@ const claudeMaxTokens = 16000
 type claude struct {
 	client anthropic.Client
 	model  string
+	// fallbacks is off against a custom endpoint, which may not implement the
+	// server-side fallback beta.
+	fallbacks bool
 }
 
 func newClaude() (Client, error) {
-	if os.Getenv("ANTHROPIC_API_KEY") == "" {
-		return nil, fmt.Errorf("%w: ANTHROPIC_API_KEY is not set", ErrNoProvider)
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	endpoint := baseURL("ANTHROPIC_BASE_URL")
+	if key == "" && endpoint == "" {
+		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY or a base URL", ErrNoProvider)
+	}
+
+	options := []option.RequestOption{option.WithAPIKey(key)}
+	if endpoint != "" {
+		options = append(options, option.WithBaseURL(endpoint))
 	}
 	return &claude{
-		client: anthropic.NewClient(option.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY"))),
-		model:  env("ANTHROPIC_MODEL", defaultClaudeModel),
+		client:    anthropic.NewClient(options...),
+		model:     env("ANTHROPIC_MODEL", defaultClaudeModel),
+		fallbacks: endpoint == "",
 	}, nil
 }
 
 func (claude *claude) Name() string { return "claude/" + claude.model }
 
 func (claude *claude) Complete(ctx context.Context, system, user string) (string, error) {
-	response, err := claude.client.Beta.Messages.New(ctx, anthropic.BetaMessageNewParams{
+	params := anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(claude.model),
 		MaxTokens: claudeMaxTokens,
 		System: []anthropic.BetaTextBlockParam{{
@@ -48,11 +59,15 @@ func (claude *claude) Complete(ctx context.Context, system, user string) (string
 		Messages: []anthropic.BetaMessageParam{
 			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(user)),
 		},
+	}
+	if claude.fallbacks {
 		// A safety classifier may decline; the recommended fallback model
 		// serves the request instead of the call failing.
-		Fallbacks: anthropic.BetaFallbacksParamOfDefault(),
-		Betas:     []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01},
-	})
+		params.Fallbacks = anthropic.BetaFallbacksParamOfDefault()
+		params.Betas = []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01}
+	}
+
+	response, err := claude.client.Beta.Messages.New(ctx, params)
 	if err != nil {
 		return "", fmt.Errorf("claude: %w", err)
 	}
