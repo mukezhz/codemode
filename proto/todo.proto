@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package todo.v1;
+
+import "code_mode.proto";
+
+option go_package = "github.com/mycompany/code-mode/gen/todo/v1;todov1";
+
+service TodoService {
+  option (code_mode.namespace) = "todos";
+
+  rpc Create(CreateTodoRequest) returns (CreateTodoResponse) {
+    option (code_mode.description) = "Creates a todo item with the given title.";
+  }
+
+  rpc List(ListTodosRequest) returns (ListTodosResponse) {
+    option (code_mode.description) = "Lists all todo items and their completion state.";
+  }
+
+  rpc Complete(CompleteTodoRequest) returns (CompleteTodoResponse) {
+    option (code_mode.description) = "Marks a todo item as completed by ID.";
+  }
+}
+
+message CreateTodoRequest {
+  string title = 1;
+}
+
+message CreateTodoResponse {
+  Todo todo = 1;
+}
+
+message ListTodosRequest {}
+
+message ListTodosResponse {
+  repeated Todo todos = 1;
+}
+
+message CompleteTodoRequest {
+  int64 id = 1;
+}
+
+message CompleteTodoResponse {
+  Todo todo = 1;
+}
+
+message Todo {
+  int64 id = 1;
+  string title = 2;
+  bool completed = 3;
+}

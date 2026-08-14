@@ -1,4 +1,7 @@
-.PHONY: generate test test-vector
+.PHONY: demo-todo generate test test-vector
+
+demo-todo: generate
+	go run ./examples/todo
 
 generate:
 	mise exec -- buf build --as-file-descriptor-set -o registry/protoset.pb

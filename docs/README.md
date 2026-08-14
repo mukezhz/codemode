@@ -25,8 +25,124 @@ registry/protoset.pb  -- registry generator -->  registry/registry.json
                                                 invoke capability.rpc
 ```
 
-The repository discovers an RPC; it does not invoke it. A consumer uses the
-returned `Capability.RPC` and input schema to call its own RPC transport.
+The core packages discover an RPC; they do not invoke it. A consumer uses the
+returned `Capability.RPC` and input schema to call its own RPC transport. The
+Todo example below supplies a small in-process transport to make that boundary
+runnable.
+
+## How the complete code-mode workflow fits together
+
+The intended request lifecycle is:
+
+1. A developer defines trusted application operations as protobuf RPCs with an
+   explicit namespace and description.
+2. `make generate` turns those contracts into a registry. The registry is the
+   allowlist and schema catalog presented to code mode.
+3. `capability.Rebuild` embeds the registry. This happens when contracts or the
+   embedding model change, not once per user request.
+4. For a user request, `Index.Search` selects a small set of relevant
+   capabilities. For example, “finish the first task” should retrieve
+   `todos.list` and `todos.complete`.
+5. A model receives only those capability names, descriptions, and input/output
+   schemas, then writes a short program using them.
+6. An isolated sandbox runs that untrusted program. It can compute and compose
+   calls, but it cannot directly access the application database or secrets.
+7. A host-controlled bridge receives a call such as
+   `call("todos.complete", {"id": 1})`, checks that the capability was allowed
+   for this run, validates the input, resolves the registry entry to
+   `todo.v1.TodoService/Complete`, and invokes the trusted RPC transport.
+8. The bridge returns a JSON result to the program. The program can use it in
+   later calls, and its final value becomes the answer to the user.
+
+```text
+user request
+    |
+    v
+capability search --> selected allowlist + schemas --> model-generated code
+                                                        |
+                                                        v
+                                                isolated sandbox
+                                                        |
+                                             call(name, JSON input)
+                                                        |
+                                                        v
+                                       host validation + RPC transport
+                                                        |
+                                                        v
+                                               trusted application
+```
+
+Search and execution are separate on purpose. Search decides what the model may
+know about; the host allowlist decides what generated code may execute.
+
+### What the sandbox must enforce
+
+Generated code is untrusted. A production sandbox must provide real process or
+container isolation and enforce:
+
+- A per-run capability allowlist. A registered capability is not automatically
+  allowed for every user or request.
+- No application credentials inside the sandbox. Credentials stay in the host
+  RPC layer.
+- Denied network and host filesystem access unless a specific workflow needs
+  them.
+- CPU, memory, wall-clock, output-size, and capability-call limits.
+- A fresh session or an explicitly scoped session identifier, followed by
+  cleanup.
+- Host-side input validation, authentication, authorization, rate limits, and
+  audit logs for every capability call.
+
+Do not implement this with `os/exec` alone or call an in-process interpreter a
+sandbox. A container sandbox such as Cloudflare Sandbox SDK can own code
+execution, while a separate host bridge owns capability authorization and RPC
+calls. The precise bridge transport is not implemented in this repository yet.
+
+### What exists today
+
+| Layer | Status |
+| --- | --- |
+| Explicit protobuf capability metadata | Implemented |
+| Registry generation and schema validation | Implemented |
+| SQLite vector indexing and semantic search | Implemented |
+| Todo capability invocation example | Implemented in process for demonstration |
+| Model prompt/code generation | Not implemented |
+| Generated script SDK such as `codemode.todos.create()` | Not implemented |
+| Real gRPC transport | Not implemented |
+| Secure sandbox and host bridge | Not implemented |
+
+## Runnable Todo application
+
+`proto/todo.proto` defines three capabilities:
+
+| Capability | RPC | Effect |
+| --- | --- | --- |
+| `todos.create` | `todo.v1.TodoService/Create` | Creates an item |
+| `todos.list` | `todo.v1.TodoService/List` | Lists current items |
+| `todos.complete` | `todo.v1.TodoService/Complete` | Completes an item by ID |
+
+Run the complete contract-to-invocation example from the repository root:
+
+```sh
+make demo-todo
+```
+
+The target regenerates the registry, loads it, resolves capability names to RPC
+paths, validates JSON inputs, and executes this sequence against an in-memory
+Todo application:
+
+```text
+todos.create
+todos.create
+todos.list
+todos.complete
+todos.list
+```
+
+The final list shows item `1` completed. This demonstrates the same boundary a
+future sandbox bridge will use, but it is intentionally in-process and is not a
+security sandbox. It also starts after capability selection, so sqlite-vector
+is not required to run it; semantic selection remains covered by
+`make test-vector`.
 
 ## 1. Define a capability
 
