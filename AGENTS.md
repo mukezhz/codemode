@@ -2,25 +2,25 @@
 
 ## Project Structure & Module Organization
 
-This repository is currently empty apart from this guide. Keep the root reserved for project-level configuration and documentation. When implementation begins, place application code in `src/`, automated checks in `tests/`, and static files in `assets/`. Mirror source paths in tests where practical; for example, test `src/parser.py` with `tests/test_parser.py`. Group code by feature or domain once a flat directory becomes difficult to navigate.
+Protobuf contracts live in `proto/`. The `registry/` command converts a Buf descriptor set into generated `registry.json`. Shared registry types and SQLite Vector search live in `capability/`; tests sit beside their Go source. Keep generated descriptor and registry files out of commits. Root configuration includes `buf.yaml`, `mise.toml`, and the `Makefile`.
 
 ## Build, Test, and Development Commands
 
-No build system, package manager, or test runner is configured yet. Do not document or depend on placeholder commands. When adding tooling, expose a small, predictable command set through the ecosystem's standard configuration or a `Makefile`, and update this section in the same change. Prefer commands such as:
+Install pinned tools with `mise install`, then use:
 
-- `make test` — run the complete automated test suite.
-- `make lint` — check formatting and static-analysis rules.
-- `make run` — start the project locally.
+- `make generate` — build protobuf descriptors with Buf and regenerate `registry/registry.json`.
+- `make test` — run Buf lint and all Go tests; the native vector test skips without its extension.
+- `SQLITE_VECTOR_EXTENSION=/absolute/path/vector.dylib make test-vector` — exercise real semantic search using sqlite-vector 1.0.0. Use `vector.so` on Linux.
 
 Each command should work from the repository root and fail with a nonzero exit code on errors.
 
 ## Coding Style & Naming Conventions
 
-Use the language's standard formatter and linter rather than hand-maintained style rules. Keep indentation consistent with the formatter. Use descriptive names: `snake_case` for Python files and functions, `camelCase` for JavaScript or TypeScript variables, and `PascalCase` for classes and components. Avoid speculative abstractions; prefer the smallest clear implementation and reuse existing helpers before adding new ones.
+Format Go with `gofmt` and protobuf with Buf. Use tabs as produced by `gofmt`; exported Go names use `PascalCase`, internal names use `camelCase`, and package names remain short and lowercase. Protobuf messages use `PascalCase` and fields use `snake_case`. Reuse shared definitions from `capability/schema.go`.
 
 ## Testing Guidelines
 
-Add a focused test for every non-trivial branch, parser, bug fix, and security-sensitive path. Keep tests deterministic and independent of network services unless explicitly marked as integration tests. Name tests according to the chosen framework and keep fixtures small. Document coverage thresholds only after coverage tooling is configured.
+Use Go's standard `testing` package and name tests `TestBehavior`. Keep unit tests deterministic. Native sqlite-vector tests must read the library path from `SQLITE_VECTOR_EXTENSION`; never search for or load arbitrary extensions. Add one focused regression test for each non-trivial branch or bug fix. No coverage threshold is configured.
 
 ## Commit & Pull Request Guidelines
 

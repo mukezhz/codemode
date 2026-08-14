@@ -3,12 +3,25 @@ package main
 import (
 	"testing"
 
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 func TestGenerateRegistry(t *testing.T) {
+	serviceOptions := &descriptorpb.ServiceOptions{}
+	setStringOption(serviceOptions, 50000, "students")
+	methodOptions := &descriptorpb.MethodOptions{}
+	setStringOption(methodOptions, 50000, "Returns matching students.")
+
 	files := &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{{
+		Name:    proto.String("code_mode.proto"),
+		Package: proto.String("code_mode"),
+		Extension: []*descriptorpb.FieldDescriptorProto{
+			{Name: proto.String("namespace"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+			{Name: proto.String("description"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+		},
+	}, {
 		Package: proto.String("student.v1"),
 		MessageType: []*descriptorpb.DescriptorProto{
 			{Name: proto.String("Request"), Field: []*descriptorpb.FieldDescriptorProto{{
@@ -20,16 +33,14 @@ func TestGenerateRegistry(t *testing.T) {
 			}}},
 		},
 		Service: []*descriptorpb.ServiceDescriptorProto{{
-			Name: proto.String("StudentService"),
+			Name:    proto.String("StudentService"),
+			Options: serviceOptions,
 			Method: []*descriptorpb.MethodDescriptorProto{{
 				Name:       proto.String("InterviewsWithin"),
 				InputType:  proto.String(".student.v1.Request"),
 				OutputType: proto.String(".student.v1.Response"),
+				Options:    methodOptions,
 			}},
-		}},
-		SourceCodeInfo: &descriptorpb.SourceCodeInfo{Location: []*descriptorpb.SourceCodeInfo_Location{
-			{Path: []int32{6, 0}, LeadingComments: proto.String("code-mode:namespace=students")},
-			{Path: []int32{6, 0, 2, 0}, LeadingComments: proto.String("Returns matching students.")},
 		}},
 	}}}
 
@@ -53,4 +64,9 @@ func TestGenerateRegistry(t *testing.T) {
 	if capability.Output.Fields["students"] != "string[]" {
 		t.Errorf("output students = %q", capability.Output.Fields["students"])
 	}
+}
+
+func setStringOption(message proto.Message, number protowire.Number, value string) {
+	unknown := protowire.AppendTag(nil, number, protowire.BytesType)
+	message.ProtoReflect().SetUnknown(protowire.AppendString(unknown, value))
 }

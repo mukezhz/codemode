@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mycompany/code-mode/capability"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
@@ -16,24 +18,11 @@ const (
 	registryPath   = "registry/registry.json"
 )
 
-var namespacePattern = regexp.MustCompile(`(?m)^\s*code-mode:namespace=([a-z][A-Za-z0-9]*)\s*$`)
+var namespacePattern = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
 
-type Registry struct {
-	Capabilities []Capability `json:"capabilities"`
-}
-
-type Capability struct {
-	Name        string     `json:"name"`
-	RPC         string     `json:"rpc"`
-	Description string     `json:"description"`
-	Input       TypeSchema `json:"input"`
-	Output      TypeSchema `json:"output"`
-}
-
-type TypeSchema struct {
-	Type   string            `json:"type"`
-	Fields map[string]string `json:"fields"`
-}
+type Registry = capability.Registry
+type Capability = capability.Capability
+type TypeSchema = capability.TypeSchema
 
 func main() {
 	data, err := os.ReadFile(descriptorPath)
@@ -64,28 +53,42 @@ func main() {
 }
 
 func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
+	namespaceOption, err := customOptionNumber(files, ".code_mode.namespace", ".google.protobuf.ServiceOptions")
+	if err != nil {
+		return Registry{}, err
+	}
+	descriptionOption, err := customOptionNumber(files, ".code_mode.description", ".google.protobuf.MethodOptions")
+	if err != nil {
+		return Registry{}, err
+	}
+
 	messages := indexMessages(files)
 	registry := Registry{Capabilities: []Capability{}}
 	seen := map[string]bool{}
 
 	for _, file := range files.File {
-		comments := sourceComments(file)
-		for serviceIndex, service := range file.Service {
-			servicePath := []int32{6, int32(serviceIndex)}
-			namespace, err := namespaceFromComment(comments[pathKey(servicePath)])
+		for _, service := range file.Service {
+			namespace, err := stringOption(service.GetOptions(), namespaceOption)
 			if err != nil {
 				return Registry{}, fmt.Errorf("%s.%s: %w", file.GetPackage(), service.GetName(), err)
 			}
+			namespace = strings.TrimSpace(namespace)
+			if !namespacePattern.MatchString(namespace) {
+				return Registry{}, fmt.Errorf("%s.%s: service option (code_mode.namespace) must match %s", file.GetPackage(), service.GetName(), namespacePattern)
+			}
 
-			for methodIndex, method := range service.Method {
+			for _, method := range service.Method {
 				if method.GetClientStreaming() || method.GetServerStreaming() {
 					return Registry{}, fmt.Errorf("%s.%s: streaming RPCs are not supported", service.GetName(), method.GetName())
 				}
 
-				methodPath := append(append([]int32{}, servicePath...), 2, int32(methodIndex))
-				description := strings.TrimSpace(comments[pathKey(methodPath)])
+				description, err := stringOption(method.GetOptions(), descriptionOption)
+				if err != nil {
+					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
+				}
+				description = strings.TrimSpace(description)
 				if description == "" {
-					return Registry{}, fmt.Errorf("%s.%s: method description is required", service.GetName(), method.GetName())
+					return Registry{}, fmt.Errorf("%s.%s: method option (code_mode.description) is required", service.GetName(), method.GetName())
 				}
 
 				name := namespace + "." + lowerFirst(method.GetName())
@@ -119,6 +122,55 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	}
 
 	return registry, nil
+}
+
+func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee string) (protowire.Number, error) {
+	for _, file := range files.File {
+		for _, extension := range file.Extension {
+			fullName := "." + strings.Trim(file.GetPackage()+"."+extension.GetName(), ".")
+			if fullName != name {
+				continue
+			}
+			if extension.GetExtendee() != extendee || extension.GetType() != descriptorpb.FieldDescriptorProto_TYPE_STRING || extension.GetNumber() < 1 {
+				return 0, fmt.Errorf("custom option %s has an invalid definition", name)
+			}
+			return protowire.Number(extension.GetNumber()), nil
+		}
+	}
+	return 0, fmt.Errorf("custom option %s is not defined", name)
+}
+
+func stringOption(options proto.Message, number protowire.Number) (string, error) {
+	if options == nil {
+		return "", nil
+	}
+	data := options.ProtoReflect().GetUnknown()
+	value := ""
+	for len(data) > 0 {
+		fieldNumber, wireType, tagLength := protowire.ConsumeTag(data)
+		if tagLength < 0 {
+			return "", protowire.ParseError(tagLength)
+		}
+		data = data[tagLength:]
+		if fieldNumber == number {
+			if wireType != protowire.BytesType {
+				return "", fmt.Errorf("custom option %d is not a string", number)
+			}
+			option, length := protowire.ConsumeString(data)
+			if length < 0 {
+				return "", protowire.ParseError(length)
+			}
+			value = option
+			data = data[length:]
+			continue
+		}
+		length := protowire.ConsumeFieldValue(fieldNumber, wireType, data)
+		if length < 0 {
+			return "", protowire.ParseError(length)
+		}
+		data = data[length:]
+	}
+	return value, nil
 }
 
 func indexMessages(files *descriptorpb.FileDescriptorSet) map[string]*descriptorpb.DescriptorProto {
@@ -209,34 +261,6 @@ func scriptType(field *descriptorpb.FieldDescriptorProto, messages map[string]*d
 		result += "[]"
 	}
 	return result, nil
-}
-
-func sourceComments(file *descriptorpb.FileDescriptorProto) map[string]string {
-	comments := map[string]string{}
-	for _, location := range file.GetSourceCodeInfo().GetLocation() {
-		text := strings.TrimSpace(location.GetLeadingComments())
-		if text == "" {
-			text = strings.TrimSpace(location.GetTrailingComments())
-		}
-		comments[pathKey(location.Path)] = text
-	}
-	return comments
-}
-
-func namespaceFromComment(comment string) (string, error) {
-	match := namespacePattern.FindStringSubmatch(comment)
-	if len(match) != 2 {
-		return "", fmt.Errorf("add a service comment like code-mode:namespace=students")
-	}
-	return match[1], nil
-}
-
-func pathKey(path []int32) string {
-	parts := make([]string, len(path))
-	for index, value := range path {
-		parts[index] = fmt.Sprint(value)
-	}
-	return strings.Join(parts, ".")
 }
 
 func shortTypeName(name string) string {

@@ -2,12 +2,16 @@ syntax = "proto3";
 
 package email.v1;
 
+import "code_mode.proto";
+
 option go_package = "github.com/mycompany/code-mode/gen/email/v1;emailv1";
 
-// code-mode:namespace=email
 service EmailService {
-  // Sends an email to the specified recipient.
-  rpc Send(SendEmailRequest) returns (SendEmailResponse);
+  option (code_mode.namespace) = "email";
+
+  rpc Send(SendEmailRequest) returns (SendEmailResponse) {
+    option (code_mode.description) = "Sends an email to the specified recipient.";
+  }
 }
 
 message SendEmailRequest {

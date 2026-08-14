@@ -2,15 +2,20 @@ syntax = "proto3";
 
 package student.v1;
 
+import "code_mode.proto";
+
 option go_package = "github.com/mycompany/code-mode/gen/student/v1;studentv1";
 
-// code-mode:namespace=students
 service StudentService {
-  // Returns students whose visa interview occurs within the specified number of days.
-  rpc InterviewsWithin(InterviewsWithinRequest) returns (InterviewsWithinResponse);
+  option (code_mode.namespace) = "students";
 
-  // Sends a reminder to a student.
-  rpc SendReminder(SendReminderRequest) returns (SendReminderResponse);
+  rpc InterviewsWithin(InterviewsWithinRequest) returns (InterviewsWithinResponse) {
+    option (code_mode.description) = "Returns students whose visa interview occurs within N days.";
+  }
+
+  rpc SendReminder(SendReminderRequest) returns (SendReminderResponse) {
+    option (code_mode.description) = "Sends a reminder to a student.";
+  }
 }
 
 message InterviewsWithinRequest {
