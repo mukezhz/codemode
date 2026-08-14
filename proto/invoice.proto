@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package invoice.v1;
+
+option go_package = "github.com/mycompany/code-mode/gen/invoice/v1;invoicev1";
+
+// code-mode:namespace=invoices
+service InvoiceService {
+  // Returns all unpaid invoices.
+  rpc ListUnpaid(ListUnpaidRequest) returns (ListUnpaidResponse);
+
+  // Creates an invoice for an order.
+  rpc Create(CreateInvoiceRequest) returns (CreateInvoiceResponse);
+}
+
+message ListUnpaidRequest {}
+
+message ListUnpaidResponse {
+  repeated Invoice invoices = 1;
+}
+
+message CreateInvoiceRequest {
+  string order_id = 1;
+}
+
+message CreateInvoiceResponse {
+  Invoice invoice = 1;
+}
+
+message Invoice {
+  string id = 1;
+  string customer_id = 2;
+  double amount = 3;
+  string status = 4;
+}
