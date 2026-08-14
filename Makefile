@@ -1,9 +1,9 @@
 .PHONY: generate test
 
 generate:
-	protoc -I . --include_imports --include_source_info \
-		--descriptor_set_out=registry/protoset.pb proto/*.proto
+	mise exec -- buf build --as-file-descriptor-set -o registry/protoset.pb
 	go run ./registry
 
 test:
+	mise exec -- buf lint
 	go test ./...
