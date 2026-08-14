@@ -40,17 +40,19 @@ The intended request lifecycle is:
    allowlist and schema catalog presented to code mode.
 3. `capability.Rebuild` embeds the registry. This happens when contracts or the
    embedding model change, not once per user request.
-4. For a user request, `Index.Search` selects a small set of relevant
-   capabilities. For example, “finish the first task” should retrieve
-   `todos.list` and `todos.complete`.
+4. For a user request, `CodeMode.Search` selects a small set of relevant
+   capabilities. Production wiring delegates this to `Index.Search`. For
+   example, “finish the first task” should retrieve `todos.list` and
+   `todos.complete`.
 5. A model receives only those capability names, descriptions, and input/output
    schemas, then writes a short program using them.
 6. An isolated sandbox runs that untrusted program. It can compute and compose
    calls, but it cannot directly access the application database or secrets.
-7. A host-controlled bridge receives a call such as
-   `call("todos.complete", {"id": 1})`, checks that the capability was allowed
-   for this run, validates the input, resolves the registry entry to
-   `todo.v1.TodoService/Complete`, and invokes the trusted RPC transport.
+7. A host-controlled bridge calls `CodeMode.Execute` with
+   `todos.complete` and `{"id": 1}`. The runtime checks that the capability is
+   registered, resolves it to `todo.v1.TodoService/Complete`, and delegates to
+   the trusted RPC transport. Per-user authorization still belongs in that
+   transport or a sandbox bridge in front of it.
 8. The bridge returns a JSON result to the program. The program can use it in
    later calls, and its final value becomes the answer to the user.
 
@@ -74,6 +76,124 @@ capability search --> selected allowlist + schemas --> model-generated code
 
 Search and execution are separate on purpose. Search decides what the model may
 know about; the host allowlist decides what generated code may execute.
+
+### Who implements what
+
+The AI does not implement the protobuf service. It only writes orchestration
+code that calls capabilities already implemented by trusted application code.
+
+| Owner | Responsibility | Todo example |
+| --- | --- | --- |
+| Application developer | Define the contract | `proto/todo.proto` |
+| Registry generator | Convert descriptors into searchable metadata | `registry/main.go` |
+| Search provider | Rank capabilities for a user request | `capability.Index.Search` in production |
+| AI model | Write a short program using the selected contracts | Not implemented yet |
+| Sandbox | Isolate and run the AI-written program | Not implemented yet |
+| `CodeMode` runtime | Resolve a capability name and delegate execution | `codemode/codemode.go` |
+| Trusted application | Validate input and implement business behavior | `examples/todo/app/app.go` |
+
+For example, the AI may eventually produce:
+
+```js
+const current = await codemode.execute("todos.list", {});
+await codemode.execute("todos.complete", { id: current.todos[0].id });
+```
+
+The AI chooses and composes calls. The trusted Todo application still owns what
+“complete” means, persistence, validation, authentication, and authorization.
+
+### Public interface
+
+The `codemode` package is the application-facing entry point:
+
+```go
+type CodeMode interface {
+    Search(ctx context.Context, query string, limit int) ([]capability.Match, error)
+    Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error)
+}
+```
+
+`Search` parameters:
+
+| Parameter | Meaning |
+| --- | --- |
+| `ctx` | Carries cancellation and the request deadline |
+| `query` | Natural-language intent, such as `finish the first todo` |
+| `limit` | Maximum number of ranked capabilities to return |
+
+Each returned `Match` contains the complete capability contract and its
+distance. Results are closest first; lower distance means more relevant.
+
+`Execute` parameters:
+
+| Parameter | Meaning |
+| --- | --- |
+| `ctx` | Carries cancellation and the request deadline |
+| `name` | Registry name such as `todos.complete`, never a raw RPC path |
+| `input` | JSON request matching the capability input schema |
+
+`Execute` checks that `name` exists in the registry, resolves it to a trusted
+path such as `todo.v1.TodoService/Complete`, and passes that path and JSON to
+the configured `ExecuteFunc`. It returns the capability response as JSON.
+
+Create it by supplying the generated registry, a search function, and a trusted
+executor:
+
+```go
+mode, err := codemode.New(registry, index.Search, executeRPC)
+matches, err := mode.Search(ctx, "finish the first todo", 3)
+output, err := mode.Execute(ctx, "todos.complete", json.RawMessage(`{"id":1}`))
+```
+
+`SearchFunc` owns ranking. `capability.Index.Search` is the production vector
+implementation. `ExecuteFunc` receives the resolved protobuf RPC path rather
+than a user-controlled path, then performs transport-specific validation,
+authorization, and invocation.
+
+### Type safety and generics
+
+The public execution boundary intentionally uses JSON because one `CodeMode`
+instance can execute many unrelated contracts and a future JavaScript or Python
+sandbox must exchange language-neutral values.
+
+Making the interface `CodeMode[Request, Response]` would bind the entire runtime
+to one request/response pair, so it could no longer execute `todos.create`,
+`todos.list`, and `todos.complete` together. Go also does not allow an interface
+method to introduce its own type parameters.
+
+Type safety belongs on each side of the JSON boundary:
+
+```text
+generated sandbox SDK types
+          |
+          v
+        JSON  --> CodeMode.Execute --> protobuf RPC path
+                                          |
+                                          v
+                              generated Go protobuf types
+```
+
+Today the Todo application strictly decodes JSON into concrete Go request
+structs and rejects unknown fields. Once Go and sandbox SDK types are generated
+from the protobuf contracts, a generic helper can provide typed calls for
+trusted Go callers while still delegating to the raw interface:
+
+```go
+type Capability[Request, Response any] struct {
+    Name string
+}
+
+func Execute[Request, Response any](
+    ctx context.Context,
+    mode codemode.CodeMode,
+    capability Capability[Request, Response],
+    request Request,
+) (Response, error)
+```
+
+That helper is not implemented yet because the repository does not generate Go
+protobuf request/response types. Adding it before code generation would only
+type-check manually duplicated structs, not the actual contracts.
 
 ### What the sandbox must enforce
 
@@ -104,6 +224,7 @@ calls. The precise bridge transport is not implemented in this repository yet.
 | Explicit protobuf capability metadata | Implemented |
 | Registry generation and schema validation | Implemented |
 | SQLite vector indexing and semantic search | Implemented |
+| `CodeMode.Search` and `CodeMode.Execute` interface | Implemented |
 | Todo capability invocation example | Implemented in process for demonstration |
 | Model prompt/code generation | Not implemented |
 | Generated script SDK such as `codemode.todos.create()` | Not implemented |
@@ -126,9 +247,9 @@ Run the complete contract-to-invocation example from the repository root:
 make demo-todo
 ```
 
-The target regenerates the registry, loads it, resolves capability names to RPC
-paths, validates JSON inputs, and executes this sequence against an in-memory
-Todo application:
+The target regenerates the registry, loads it, calls `CodeMode.Search`, resolves
+capability names to RPC paths through `CodeMode.Execute`, validates JSON inputs,
+and executes this sequence against an in-memory Todo application:
 
 ```text
 todos.create
@@ -138,11 +259,37 @@ todos.complete
 todos.list
 ```
 
-The final list shows item `1` completed. This demonstrates the same boundary a
+The final list shows item `1` completed. This demonstrates the same interface a
 future sandbox bridge will use, but it is intentionally in-process and is not a
-security sandbox. It also starts after capability selection, so sqlite-vector
-is not required to run it; semantic selection remains covered by
+security sandbox. Its search function uses a small keyword ranker so the demo
+has no native dependency. Production semantic search is wired by passing
+`capability.Index.Search` instead; its native integration remains covered by
 `make test-vector`.
+
+The exact current demo path is:
+
+```text
+examples/todo/main.go
+    |
+    | load registry/registry.json
+    v
+codemode.New(registry, demoSearch, todoApp.Execute)
+    |
+    | CodeMode.Search("create list and complete todo items", 3)
+    v
+examples/todo/search --> three ranked Todo contracts
+    |
+    | CodeMode.Execute("todos.complete", {"id":1})
+    v
+codemode runtime --> resolve registered RPC path
+    |
+    v
+examples/todo/app --> strict JSON decode --> state change --> JSON response
+```
+
+There is no AI or sandbox in this demo. The fixed sequence in `main.go` stands
+in for the program an AI would generate, making the implemented boundary easy
+to exercise without pretending untrusted code is isolated.
 
 ## 1. Define a capability
 
@@ -364,6 +511,10 @@ Tests are split by responsibility:
 | `registry/main.go` | Descriptor validation and JSON generation |
 | `capability/schema.go` | Shared registry data model |
 | `capability/index.go` | Embedding, SQLite index lifecycle, and search |
+| `codemode/codemode.go` | Public search/execute interface and capability resolution |
+| `examples/todo/app/` | Trusted in-memory Todo implementation |
+| `examples/todo/search/` | Dependency-free search used only by the demo |
+| `examples/todo/main.go` | Todo component wiring and runnable workflow |
 | `Makefile` | Supported generation and verification entry points |
 | `registry/protoset.pb` | Ignored generated descriptor set |
 | `registry/registry.json` | Ignored generated capability registry |
