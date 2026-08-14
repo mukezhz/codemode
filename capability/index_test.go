@@ -45,10 +45,14 @@ func TestVectorSearch(t *testing.T) {
 	}}
 
 	path := filepath.Join(t.TempDir(), "capabilities.db")
-	if err := Rebuild(context.Background(), path, extension, registry, embedder); err != nil {
+	store, err := OpenSQLite(context.Background(), path, extension)
+	if err != nil {
 		t.Fatal(err)
 	}
-	index, err := Open(context.Background(), path, extension, embedder)
+	if err := Rebuild(context.Background(), store, registry, embedder); err != nil {
+		t.Fatal(err)
+	}
+	index, err := Open(context.Background(), store, embedder)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,13 @@ func run(ctx context.Context, request string) error {
 	if err := json.Unmarshal(data, &registry); err != nil {
 		return fmt.Errorf("decode registry: %w", err)
 	}
-	mode, err := codemode.New(registry, demosearch.New(registry), app.New().Execute)
+	search, closeSearch, err := newSearch(ctx, registry)
+	if err != nil {
+		return err
+	}
+	defer closeSearch()
+
+	mode, err := codemode.New(registry, search, app.New().Execute)
 	if err != nil {
 		return err
 	}
@@ -60,6 +66,41 @@ func run(ctx context.Context, request string) error {
 	}
 	fmt.Printf("answer\n  %s\n", agent.Answer(result.Answer))
 	return nil
+}
+
+// newSearch returns the ranking function and a cleanup. It prefers the semantic
+// index when CAPABILITY_DB_DSN and an embedding endpoint are configured, and
+// falls back to the demo's keyword ranker otherwise.
+func newSearch(ctx context.Context, registry capability.Registry) (codemode.SearchFunc, func(), error) {
+	store, err := capability.OpenStore(ctx)
+	if errors.Is(err, capability.ErrNoStore) {
+		fmt.Println("search\n  keyword ranker (set CAPABILITY_DB_DSN for semantic search)")
+		return demosearch.New(registry), func() {}, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	embedder, err := llm.NewEmbedder()
+	if err != nil {
+		store.Close()
+		return nil, nil, fmt.Errorf("capability store is configured but embeddings are not: %w", err)
+	}
+
+	// ponytail: the demo rebuilds on every run because the registry is tiny.
+	// Production rebuilds when contracts or the embedding model change.
+	if err := capability.Rebuild(ctx, store, registry, capability.Embedder{Model: embedder.Model, Embed: embedder.Embed}); err != nil {
+		store.Close()
+		return nil, nil, err
+	}
+	index, err := capability.Open(ctx, store, capability.Embedder{Model: embedder.Model, Embed: embedder.Embed})
+	if err != nil {
+		store.Close()
+		return nil, nil, err
+	}
+
+	fmt.Printf("search\n  semantic index (%s)\n", embedder.Model)
+	return index.Search, func() { index.Close() }, nil
 }
 
 func report(result agent.Result) {
