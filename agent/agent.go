@@ -1,0 +1,192 @@
+// Package agent runs one code mode request end to end: search for relevant
+// capabilities, ask a model for a program that composes them, and run that
+// program in the sandbox.
+//
+// The model only ever learns the capabilities that search selected. The
+// executable allowlist stays with the code mode runtime, so a program that asks
+// for a capability outside the registry is rejected regardless of the prompt.
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/code-mode/sandbox"
+)
+
+// Options tunes one request.
+type Options struct {
+	// Limit is the maximum number of capabilities described to the model.
+	// Zero applies DefaultLimit.
+	Limit int
+	// Attempts is how many programs may be generated before giving up. Each
+	// attempt after the first is told why the previous one failed. Zero
+	// applies DefaultAttempts.
+	Attempts int
+	// Sandbox bounds each program run. A zero Timeout applies DefaultTimeout.
+	Sandbox sandbox.Options
+}
+
+// Defaults applied when the matching Options field is zero.
+const (
+	DefaultLimit    = 5
+	DefaultAttempts = 3
+	DefaultTimeout  = 30 * time.Second
+)
+
+// checked validates options and applies defaults.
+func (options Options) checked() (Options, error) {
+	if options.Limit < 0 || options.Attempts < 0 {
+		return options, errors.New("limit and attempts must not be negative")
+	}
+	if options.Limit == 0 {
+		options.Limit = DefaultLimit
+	}
+	if options.Attempts == 0 {
+		options.Attempts = DefaultAttempts
+	}
+	if options.Sandbox.Timeout == 0 {
+		options.Sandbox.Timeout = DefaultTimeout
+	}
+	return options, nil
+}
+
+// Result records what one request produced.
+type Result struct {
+	// Answer is the value the program returned, decoded into Go types.
+	Answer any
+	// Source is the program that produced Answer.
+	Source string
+	// Matches are the capabilities that were described to the model.
+	Matches []capability.Match
+	// Attempts is how many programs were generated, including the one that
+	// succeeded.
+	Attempts int
+}
+
+// Run answers request by searching mode for capabilities, asking model for a
+// program, and running it against mode. Ctx carries cancellation.
+func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, options Options) (Result, error) {
+	if mode == nil || model == nil {
+		return Result{}, errors.New("code mode runtime and model are required")
+	}
+	if strings.TrimSpace(request) == "" {
+		return Result{}, errors.New("request is required")
+	}
+	options, err := options.checked()
+	if err != nil {
+		return Result{}, err
+	}
+
+	matches, err := mode.Search(ctx, request, options.Limit)
+	if err != nil {
+		return Result{}, fmt.Errorf("search: %w", err)
+	}
+	if len(matches) == 0 {
+		return Result{}, errors.New("search matched no capabilities")
+	}
+
+	system := SystemPrompt(matches)
+	prompt := request
+	result := Result{Matches: matches}
+
+	// Each failure is fed back so the next program can correct it. Sandbox
+	// errors are the model's to fix; transport errors are not.
+	var lastErr error
+	for attempt := 1; attempt <= options.Attempts; attempt++ {
+		result.Attempts = attempt
+
+		response, err := model.Complete(ctx, system, prompt)
+		if err != nil {
+			return result, err
+		}
+		result.Source = Program(response)
+
+		answer, err := sandbox.Run(ctx, mode, result.Source, options.Sandbox)
+		if err == nil {
+			result.Answer = answer
+			return result, nil
+		}
+		lastErr = err
+		prompt = repairPrompt(request, result.Source, err)
+	}
+	return result, fmt.Errorf("gave up after %d attempts: %w", options.Attempts, lastErr)
+}
+
+// SystemPrompt renders the rules and the selected capabilities. It is stable
+// for a given match set so providers can cache it.
+func SystemPrompt(matches []capability.Match) string {
+	return `You write short JavaScript programs that answer a user's request by calling application capabilities.
+
+Rules:
+- Reply with the body of a function: statements only, no wrapper, no imports, no exports.
+- Call capabilities as codemode.execute(name, input). It is synchronous and returns the decoded response object. Never use async, await, promises, or callbacks.
+- Only the capabilities declared below exist. Any other name is rejected.
+- Do the filtering, looping, and composing yourself rather than asking for one result at a time.
+- If a capability call throws, let it throw; do not swallow errors.
+- End with a return statement whose value answers the request. Prefer a short human-readable string.
+- There is no console, filesystem, network, or module loader. codemode.execute is the only host binding.
+
+Reply with the program only. No prose, no markdown fences.
+
+Declared capabilities:
+
+` + sandbox.Declarations(matches)
+}
+
+// Program extracts a program from a model response, tolerating the markdown
+// fences models add even when told not to.
+func Program(response string) string {
+	source := strings.TrimSpace(response)
+	if !strings.HasPrefix(source, "```") {
+		return source
+	}
+	// Drop the opening fence and its language tag, then everything from the
+	// closing fence onward.
+	if _, rest, found := strings.Cut(source, "\n"); found {
+		source = rest
+	}
+	if fenced, _, found := strings.Cut(source, "```"); found {
+		source = fenced
+	}
+	return strings.TrimSpace(source)
+}
+
+func repairPrompt(request, source string, failure error) string {
+	// The failed program is included so the model corrects it rather than
+	// rewriting from scratch and repeating the mistake.
+	return fmt.Sprintf(`%s
+
+Your previous program failed.
+
+Program:
+%s
+
+Error:
+%s
+
+Reply with a corrected program.`, request, source, failure)
+}
+
+// Answer renders a result value for display. Strings pass through; anything
+// else is rendered as JSON so objects stay readable.
+func Answer(value any) string {
+	if value == nil {
+		return "(no value returned)"
+	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%v", value)
+	}
+	return string(encoded)
+}
