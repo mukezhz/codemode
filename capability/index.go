@@ -43,7 +43,7 @@ func Rebuild(ctx context.Context, path, extensionPath string, registry Registry,
 	vectors := make([][]float32, len(registry.Capabilities))
 	dimension := 0
 	for i, capability := range registry.Capabilities {
-		vector, err := embedder.Embed(ctx, embeddingText(capability))
+		vector, err := embedder.Embed(ctx, capability.EmbeddingText())
 		if err != nil {
 			return fmt.Errorf("embed %s: %w", capability.Name, err)
 		}
@@ -243,18 +243,6 @@ func openVectorDB(ctx context.Context, path, extensionPath string) (*sql.DB, err
 		return nil, fmt.Errorf("load sqlite-vector extension: %w", err)
 	}
 	return db, nil
-}
-
-func embeddingText(capability Capability) string {
-	input, _ := json.Marshal(capability.Input)
-	output, _ := json.Marshal(capability.Output)
-	return strings.Join([]string{
-		capability.Name,
-		capability.Description,
-		capability.RPC,
-		"input " + string(input),
-		"output " + string(output),
-	}, "\n")
 }
 
 func validateEmbedder(embedder Embedder) error {

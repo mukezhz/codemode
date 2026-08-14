@@ -4,7 +4,7 @@ package invoice.v1;
 
 import "code_mode.proto";
 
-option go_package = "github.com/mycompany/code-mode/gen/invoice/v1;invoicev1";
+option go_package = "github.com/mukezhz/code-mode/gen/invoice/v1;invoicev1";
 
 service InvoiceService {
   option (code_mode.namespace) = "invoices";

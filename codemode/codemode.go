@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mycompany/code-mode/capability"
+	"github.com/mukezhz/code-mode/capability"
 )
 
 // CodeMode discovers application capabilities and executes an explicitly named

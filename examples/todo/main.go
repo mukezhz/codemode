@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-
-	"github.com/mycompany/code-mode/capability"
-	"github.com/mycompany/code-mode/codemode"
+	"strings"
+	"github.com/mukezhz/code-mode
+github.com/mukezhz/code-mode
+	"github.com/mukezhz/code-mode/capability"
+	"github.com/github.com/mukezhz/code-mode
 	"github.com/mycompany/code-mode/examples/todo/app"
 	demosearch "github.com/mycompany/code-mode/examples/todo/search"
+	"github.com/mycompany/code-mode/sandbox"
 )
 
 func main() {
@@ -33,7 +36,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	matches, err := mode.Search(ctx, "create list and complete todo items", 3)
+	const request = "add two todos and finish the first one"
+
+	matches, err := mode.Search(ctx, request, 3)
 	if err != nil {
 		return err
 	}
@@ -42,24 +47,36 @@ func run(ctx context.Context) error {
 		fmt.Printf("  %s -> %s\n", match.Capability.Name, match.Capability.RPC)
 	}
 
-	steps := []struct {
-		name  string
-		input json.RawMessage
-	}{
-		{"todos.create", json.RawMessage(`{"title":"Document code mode"}`)},
-		{"todos.create", json.RawMessage(`{"title":"Run the Todo demo"}`)},
-		{"todos.list", json.RawMessage(`{}`)},
-		{"todos.complete", json.RawMessage(`{"id":1}`)},
-		{"todos.list", json.RawMessage(`{}`)},
+	// A production host sends these declarations and the request to a model and
+	// receives a program back. The demo uses a fixed program so the flow runs
+	// without a model, but nothing else about the path changes.
+	fmt.Printf("\nprompt\n%s\n", indent(sandbox.Declarations(matches)))
+
+	value, err := sandbox.Run(ctx, mode, program, sandbox.Options{Timeout: 5 * time.Second})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("answer\n  %v\n", value)
+	return nil
+}
+
+// program stands in for model-authored code. It sees only codemode.execute;
+// the loop and the filtering run inside the sandbox, so the host and the model
+// exchange one request and one answer rather than one round trip per call.
+const program = `
+	codemode.execute("todos.create", { title: "Document code mode" });
+	codemode.execute("todos.create", { title: "Run the Todo demo" });
+
+	const { todos } = codemode.execute("todos.list", {});
+	const pending = todos.filter(todo => !todo.completed);
+	if (pending.length === 0) {
+		return "nothing to finish";
 	}
 
-	fmt.Println("execute")
-	for _, step := range steps {
-		output, err := mode.Execute(ctx, step.name, step.input)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("  %s(%s) -> %s\n", step.name, step.input, output)
-	}
-	return nil
+	const done = codemode.execute("todos.complete", { id: pending[0].id });
+	return "completed " + done.todo.title + ", " + (pending.length - 1) + " left";
+`
+
+func indent(text string) string {
+	return "  " + strings.ReplaceAll(strings.TrimSpace(text), "\n", "\n  ")
 }

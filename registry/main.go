@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mycompany/code-mode/capability"
+	"github.com/mukezhz/code-mode/capability"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"

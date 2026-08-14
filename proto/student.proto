@@ -4,7 +4,7 @@ package student.v1;
 
 import "code_mode.proto";
 
-option go_package = "github.com/mycompany/code-mode/gen/student/v1;studentv1";
+option go_package = "github.com/mukezhz/code-mode/gen/student/v1;studentv1";
 
 service StudentService {
   option (code_mode.namespace) = "students";

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mycompany/code-mode/capability"
+	"github.com/mukezhz/code-mode/capability"
 )
 
 func TestTodoCapabilitiesRankFirst(t *testing.T) {

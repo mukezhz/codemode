@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mycompany/code-mode/capability"
-	"github.com/mycompany/code-mode/codemode"
+	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/code-mode/codemode"
 )
 
 func New(registry capability.Registry) codemode.SearchFunc {
