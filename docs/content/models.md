@@ -13,7 +13,8 @@ type Client interface {
 }
 ```
 
-`llm.New()` builds one from the environment and returns `llm.ErrNoProvider` when
+`llm.New(options)` builds one from an explicit `llm.Options`. `llm.NewFromEnv()`
+reads the environment first, and returns `llm.ErrNoProvider` when
 nothing is configured, so a caller with a fallback path can check for it with
 `errors.Is`.
 
@@ -165,13 +166,33 @@ Only failures the model can actually fix go back into the loop.
 ## Using it
 
 ```go
-model, err := llm.New()
+model, err := claude.New(claude.Options{Options: llm.Options{APIKey: config.Key}})
+if err != nil {
+    return err
+}
+
+runner, err := goja.New(sandbox.Options{})
+if err != nil {
+    return err
+}
+defer runner.Close()
+
+result, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner})
+fmt.Println(agent.Answer(result.Answer))
+```
+
+`agent.Options.Runner` is required. This package builds nothing from the
+environment on your behalf, so the engine an untrusted program runs in is always
+a decision you made — `sandbox.NewFromEnv` is there when you want
+`SANDBOX_ENGINE` to make it.
+
+To read the environment instead of configuring in code:
+
+```go
+model, err := llm.NewFromEnv()
 if errors.Is(err, llm.ErrNoProvider) {
     // fall back, or tell the user what to set
 }
-
-result, err := agent.Run(ctx, mode, model, request, agent.Options{})
-fmt.Println(agent.Answer(result.Answer))
 ```
 
 `agent.Result` carries the answer, the program that produced it, the capabilities

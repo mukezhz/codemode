@@ -27,7 +27,7 @@ nobody can write for you.
 | A registry | one call to `registry.FromFiles` | One line |
 | A search function | `capability.Index.Search`, or a keyword loop | A few lines |
 | An execute function | Dispatch an RPC path to your code | **Yours** |
-| A model and a sandbox | `llm.New()` and `sandbox.New()`, plus a blank import each | Two calls |
+| A model and a sandbox | `claude.New()` and `goja.New()`, or the `FromEnv` pair | Two calls |
 
 `ExecuteFunc` is the one that matters. Everything else has a default; this is
 where your application actually lives.
@@ -256,7 +256,7 @@ entirely. Above that, ranking starts to matter:
 ```go
 import _ "github.com/mukezhz/codemode/capability/pgstore"   // or sqlitestore
 
-store, err := capability.OpenStore(ctx)   // CAPABILITY_DB, CAPABILITY_DB_DSN
+store, err := capability.OpenStoreFromEnv(ctx)   // CAPABILITY_DB, CAPABILITY_DB_DSN
 if err != nil {
 	log.Fatal(err)
 }

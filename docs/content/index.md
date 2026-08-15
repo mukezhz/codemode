@@ -29,6 +29,11 @@ features:
       Search shapes what the model knows about. The generated registry shapes what
       may execute. Two separate lists, so an invented capability name is rejected
       by a map lookup rather than by a prompt.
+  - title: Permissions live in the contract
+    details: >
+      An RPC declares which roles may call it, beside the description a model
+      reads. Narrowing a registry per caller withholds a capability from what
+      runs and from the prompt at once — one decision, not two.
   - title: Generated from your contracts
     details: >
       Annotate a protobuf service with a namespace and a description per method.
@@ -83,6 +88,13 @@ Then give a model the pen:
 ```sh
 export ANTHROPIC_API_KEY=...
 go run ./examples/todo -request "finish anything about docs"
+```
+
+Or run the complete one — a task tracker with a web UI, SQLite storage,
+per-user scoping, and charts rendered from a prompt:
+
+```sh
+go run ./examples/taskreport -serve :8080
 ```
 
 Start with [what code mode is](/overview), go straight to

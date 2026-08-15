@@ -59,7 +59,6 @@ service TaskService {
 
   rpc Search(SearchTasksRequest) returns (TaskListResponse) {
     option (codemode.description) = "Finds tasks whose title contains the given text, case-insensitively.";
-    option (codemode.roles) = "admin";
   }
 
   // The two capabilities that reach across owners. They are kept apart from the

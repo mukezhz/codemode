@@ -107,7 +107,7 @@ Options passed in code win over the environment, so a caller that sets a bound
 explicitly is not overridden by deployment configuration.
 
 ```go
-runner, err := sandbox.New(sandbox.Options{MaxCalls: 10})
+runner, err := sandbox.New(sandbox.Options{Engine: sandbox.EngineGoja, MaxCalls: 10})
 defer runner.Close()
 
 answer, err := runner.Run(ctx, mode, source)
@@ -151,7 +151,7 @@ A production sandbox for genuinely untrusted programs should additionally enforc
 
 ## Adding an engine
 
-Implement `Runner`, then add a case to `sandbox.New`. Concretely:
+Implement `Runner`, then register it from your package's `init`. Concretely:
 
 1. A `dialect` value — its id, how to describe the language to a model, its
    rules, a worked example, a signature renderer, and its comment syntax.

@@ -88,11 +88,15 @@ With a model actually writing the program:
 ```sh
 export ANTHROPIC_API_KEY=...
 go run ./examples/todo -request "finish anything about docs"
+
+# Or the complete one: web UI, SQLite, per-user scoping, charts from a prompt.
+go run ./examples/taskreport -serve :8080
 ```
 
 ## Where to go next
 
 - [Add it to your application](/using-it) — empty `main.go` to a working request.
+- [Permissions](/permissions) — roles in the contract, rows in your code.
 - [The flow, step by step](/flow) — one request from plain English to a real RPC.
 - [Capabilities](/capabilities) — writing contracts and generating the registry.
 - [Configuration](/configuration) — every environment variable in one table.

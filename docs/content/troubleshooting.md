@@ -71,3 +71,22 @@ go run ./examples/todo -request "your request here"
 
 That output is the fastest way to see which engine, provider, and search backend
 are actually in play.
+
+## Permissions
+
+| Message or symptom | Cause |
+| --- | --- |
+| `capability "x" is not registered` | Either the caller's role withholds it, or the name does not exist. The two are indistinguishable on purpose. |
+| A caller sees fewer capabilities than expected | `(codemode.roles)` on that RPC, or a `Require` call in the host. `Registry.Unrestricted()` lists what nobody restricted. |
+| A capability is available to everyone by mistake | Its `(codemode.roles)` was forgotten. Pin `Unrestricted().Names()` in a test — nothing else catches it. |
+| `roles option is blank` | `option (codemode.roles) = "";` — remove the line to place no restriction. |
+| An unknown role gets some capabilities | Correct: unknown roles get the unrestricted set and nothing more. Roles fail closed, never open. |
+
+## Wrong answers
+
+| Symptom | Cause |
+| --- | --- |
+| The answer says someone "has no tasks" when they have several | The model was not told the shape of its own access, so it filtered its own rows by another name. Add per-identity instructions to the prompt. |
+| A program calls one capability dozens of times with varying inputs | It is reconstructing data a capability it lacks would have returned. Forbid it in the instructions and set the call budget near what a real answer needs. |
+| A field reads as `undefined` in the answer | The model guessed a field name. Referenced message shapes travel in `Capability.Types` and render under "Shapes referred to above" — check the prompt with `-log debug`. |
+| An answer looks plausible but is wrong | Read the program. It is logged as a numbered block at every log level, and returned with each chat response. |

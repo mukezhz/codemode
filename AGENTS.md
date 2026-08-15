@@ -6,6 +6,8 @@ Protobuf contracts live in `proto/`, which is also a Go package embedding `codem
 
 Every swappable backend is an interface in a parent package and an implementation in a child that registers itself from `init`: stores in `capability/{sqlitestore,pgstore}`, providers in `llm/{claude,openai}`, engines in `sandbox/{goja,starlark,lua}`. **The parent packages must never import a vendor SDK** — that property is what lets a consumer link only what it blank-imports, and `scripts/check-consumer.sh` fails the build if it breaks. Add a backend by adding a package, never by adding a case to a switch in the parent.
 
+Capability policy lives in the protos, not in Go. An RPC that only some roles may call declares `(codemode.roles)`; a service where everything is privileged declares `(codemode.default_roles)` so a new RPC arrives restricted. Never reintroduce a list of privileged capability names in a host package — it is fail-open, and `Registry.Unrestricted()` plus a test is what catches the annotation somebody forgets.
+
 Written material is split by whether it is published. `docs/` is the VitePress site and is self-contained: its own `package.json`, lockfile, and `node_modules`, with pages under `docs/content/` and the sidebar in `docs/.vitepress/config.ts` — add a page there when you add one. Diagrams are ` ```mermaid ` fences, never hand-authored SVG. `notes/` is internal writing — PRDs, milestones, and decision records — and is never published; see `notes/README.md`. Prose belongs in one of those two, not in package comments duplicated across files.
 
 ## Build, Test, and Development Commands

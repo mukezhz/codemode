@@ -48,7 +48,7 @@ CAPABILITY_DB_DSN=capabilities.db          # or postgres://user:pass@host/db
 SQLITE_VECTOR_EXTENSION=/abs/path/vector.dylib
 ```
 
-`capability.OpenStore(ctx)` reads those and hands back a `Store`. Leave
+`capability.OpenStoreFromEnv(ctx)` reads those and hands back a `Store`. Leave
 `CAPABILITY_DB_DSN` unset and the demo falls back to keyword ranking.
 
 ### SQLite
@@ -107,7 +107,10 @@ EMBEDDING_BASE_URL=...         # falls back to OPENAI_BASE_URL, then LLM_BASE_UR
 ## Build and query
 
 ```go
-store, err := capability.OpenStore(ctx)
+// Explicit: pgstore.Open(ctx, dsn) or sqlitestore.Open(ctx, path, extension).
+// OpenStoreFromEnv is the convenience path, and the only one that reads
+// CAPABILITY_DB.
+store, err := capability.OpenStoreFromEnv(ctx)
 if err != nil {
     return err
 }

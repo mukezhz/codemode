@@ -50,7 +50,9 @@ will read later, so write it for a reader, not a compiler.
 ### B2 — The generator turns them into a registry
 
 `make generate` asks Buf for a descriptor set, then `registry/main.go` walks it
-and writes `registry.json`. Each entry has a friendly `name` like
+and writes `registry.json`. `registry.FromFiles` derives the same thing at
+startup from descriptors already compiled in, if you would rather have no file
+at all. Each entry has a friendly `name` like
 `todos.complete`, the real `rpc` path `todo.v1.TodoService/Complete`, the
 description, and the input and output field types.
 

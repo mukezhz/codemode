@@ -54,6 +54,7 @@ Full docs are a VitePress site under [`docs/`](docs/content):
 - [What code mode is](docs/content/overview.md)
 - [**Add it to your application**](docs/content/using-it.md) — empty `main.go` to a working request
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
+- [Permissions](docs/content/permissions.md) — roles in the contract, rows in your code
 - [Many services, many users](docs/content/scaling-up.md) — composing proto files, and per-user scoping
 - [The flow, step by step](docs/content/flow.md) — one request end to end
 - [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
