@@ -203,7 +203,7 @@ func schemaFor(typeName string, messages map[string]*descriptorpb.DescriptorProt
 
 	fields := make(map[string]string, len(message.Field))
 	for _, field := range message.Field {
-		fieldType, err := scriptType(field, messages)
+		fieldType, err := neutralType(field, messages)
 		if err != nil {
 			return TypeSchema{}, fmt.Errorf("%s.%s: %w", typeName, field.GetName(), err)
 		}
@@ -212,32 +212,40 @@ func schemaFor(typeName string, messages map[string]*descriptorpb.DescriptorProt
 	return TypeSchema{Type: shortTypeName(typeName), Fields: fields}, nil
 }
 
-func scriptType(field *descriptorpb.FieldDescriptorProto, messages map[string]*descriptorpb.DescriptorProto) (string, error) {
+// neutralType renders a field in the registry's language-neutral notation,
+// which is protobuf's own: bool, string, bytes, number, a message or enum name,
+// "repeated T", and "map<K, V>". The registry is data read by three sandbox
+// dialects, so it must not commit to any one of their type syntaxes; each
+// dialect renders this form into its own in sandbox/prompt.go.
+//
+// Numeric scalars all collapse to "number" because every one of them crosses
+// the bridge as a JSON number.
+func neutralType(field *descriptorpb.FieldDescriptorProto, messages map[string]*descriptorpb.DescriptorProto) (string, error) {
 	if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 		if message := messages[field.GetTypeName()]; message != nil && message.GetOptions().GetMapEntry() {
 			if len(message.Field) != 2 {
 				return "", fmt.Errorf("invalid map entry")
 			}
-			key, err := scriptType(message.Field[0], messages)
+			key, err := neutralType(message.Field[0], messages)
 			if err != nil {
 				return "", err
 			}
-			value, err := scriptType(message.Field[1], messages)
+			value, err := neutralType(message.Field[1], messages)
 			if err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("Record<%s, %s>", key, value), nil
+			return fmt.Sprintf("map<%s, %s>", key, value), nil
 		}
 	}
 
 	var result string
 	switch field.GetType() {
 	case descriptorpb.FieldDescriptorProto_TYPE_BOOL:
-		result = "boolean"
+		result = "bool"
 	case descriptorpb.FieldDescriptorProto_TYPE_STRING:
 		result = "string"
 	case descriptorpb.FieldDescriptorProto_TYPE_BYTES:
-		result = "Uint8Array"
+		result = "bytes"
 	case descriptorpb.FieldDescriptorProto_TYPE_MESSAGE, descriptorpb.FieldDescriptorProto_TYPE_ENUM:
 		result = shortTypeName(field.GetTypeName())
 	case descriptorpb.FieldDescriptorProto_TYPE_DOUBLE,
@@ -258,7 +266,7 @@ func scriptType(field *descriptorpb.FieldDescriptorProto, messages map[string]*d
 	}
 
 	if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
-		result += "[]"
+		result = "repeated " + result
 	}
 	return result, nil
 }

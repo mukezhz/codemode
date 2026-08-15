@@ -61,7 +61,7 @@ func TestGenerateRegistry(t *testing.T) {
 	if capability.Input.Fields["days"] != "number" {
 		t.Errorf("input days = %q", capability.Input.Fields["days"])
 	}
-	if capability.Output.Fields["students"] != "string[]" {
+	if capability.Output.Fields["students"] != "repeated string" {
 		t.Errorf("output students = %q", capability.Output.Fields["students"])
 	}
 }

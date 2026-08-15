@@ -203,7 +203,7 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 	// its own interpreter would accept.
 	want := map[string][]string{
 		"goja":     {"todos.complete", "Mark a todo as complete", "/**", "id: number"},
-		"starlark": {"todos.complete", "Mark a todo as complete", "#", `"id": number`},
+		"starlark": {"todos.complete", "Mark a todo as complete", "#", `"id": int|float`},
 		"lua":      {"todos.complete", "Mark a todo as complete", "--", "id = number"},
 	}
 
@@ -225,6 +225,46 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 			// engine evaluates, or it teaches the model the wrong syntax.
 			if _, err := runner.Run(context.Background(), newFake(), exampleOf(engine.name)); err != nil {
 				t.Fatalf("the dialect's own example does not run: %v", err)
+			}
+		})
+	}
+}
+
+// TestEnginesRenderNeutralTypesInTheirOwnNotation covers every shape the
+// registry can emit. The protos in this repository happen to use none of the
+// compound ones, so without this the map and bytes paths would ship untried.
+func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
+	neutral := map[string]string{
+		"flag":   "bool",
+		"count":  "number",
+		"blob":   "bytes",
+		"todo":   "Todo",
+		"todos":  "repeated Todo",
+		"labels": "map<string, Todo>",
+	}
+
+	want := map[string]map[string]string{
+		"goja": {
+			"flag": "boolean", "count": "number", "blob": "string (base64)",
+			"todo": "Todo", "todos": "Todo[]", "labels": "Record<string, Todo>",
+		},
+		"starlark": {
+			"flag": "bool", "count": "int|float", "blob": "string (base64)",
+			"todo": "Todo", "todos": "[Todo]", "labels": "{string: Todo}",
+		},
+		"lua": {
+			"flag": "boolean", "count": "number", "blob": "string (base64)",
+			"todo": "Todo", "todos": "{Todo}", "labels": "{[string] = Todo}",
+		},
+	}
+
+	styles := map[string]types{"goja": javascriptTypes, "starlark": starlarkTypes, "lua": luaTypes}
+	for engine, expected := range want {
+		t.Run(engine, func(t *testing.T) {
+			for field, neutralType := range neutral {
+				if got := styles[engine].render(neutralType); got != expected[field] {
+					t.Errorf("render(%q) = %q, want %q", neutralType, got, expected[field])
+				}
 			}
 		})
 	}

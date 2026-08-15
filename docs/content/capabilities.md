@@ -39,21 +39,47 @@ in the requested period" beats "InterviewsWithin RPC".
 
 ## Field types
 
-Field names stay protobuf `snake_case`. Types are rendered in a compact,
-script-oriented form, because a model is going to read them:
+Field names stay protobuf `snake_case`. Types stay in protobuf's own
+vocabulary, with one simplification: every numeric scalar collapses to `number`,
+because every one of them crosses the bridge as a JSON number.
 
 | Protobuf | Registry type |
 | --- | --- |
-| `bool` | `boolean` |
+| `bool` | `bool` |
 | `string` | `string` |
-| `bytes` | `Uint8Array` |
+| `bytes` | `bytes` |
 | Numeric scalar | `number` |
 | Message or enum | Its unqualified type name |
-| `repeated T` | `T[]` |
-| `map<K, V>` | `Record<K, V>` |
+| `repeated T` | `repeated T` |
+| `map<K, V>` | `map<K, V>` |
 
 Schemas describe the direct fields of each request and response. Referenced
 message types are named, not recursively expanded.
+
+### Why the registry is language-neutral
+
+The registry is data, read by three sandbox dialects that disagree about how to
+spell a list. Committing it to one syntax would mean showing a model asked for
+Lua a type written in TypeScript. So the registry stores the neutral form and
+each dialect renders it, in `sandbox/prompt.go`:
+
+| Registry | JavaScript | Starlark | Lua |
+| --- | --- | --- | --- |
+| `bool` | `boolean` | `bool` | `boolean` |
+| `number` | `number` | `int\|float` | `number` |
+| `bytes` | `string (base64)` | `string (base64)` | `string (base64)` |
+| `Todo` | `Todo` | `Todo` | `Todo` |
+| `repeated Todo` | `Todo[]` | `[Todo]` | `{Todo}` |
+| `map<string, Todo>` | `Record<string, Todo>` | `{string: Todo}` | `{[string] = Todo}` |
+
+Bytes are a base64 `string` in all three, including JavaScript. That is not a
+simplification for the model's benefit — it is what actually arrives. The bridge
+returns decoded protojson, and protojson encodes `bytes` as base64 text. Decode
+it in the program if you need the octets, or keep bytes out of capability
+schemas and pass a handle instead.
+
+Adding a dialect means adding a `types` value beside its `dialect`; nothing else
+in the pipeline knows a language exists.
 
 ## Generate the registry
 

@@ -71,16 +71,52 @@ func (dialect dialect) declarations(matches []capability.Match) string {
 	return builder.String()
 }
 
+// types renders the registry's language-neutral field types into one dialect's
+// notation. The registry stores protobuf's own vocabulary — "repeated Todo",
+// "map<string, int>", "bytes" — because it is read by every engine; a model
+// being asked for Lua should not be shown TypeScript.
+type types struct {
+	// scalar maps a neutral scalar name to this dialect's name for it. A name
+	// absent from the map is passed through, which is what message and enum
+	// names want: they are the same word in every dialect.
+	scalar map[string]string
+	// list renders a repeated field given its already-rendered element type.
+	list func(element string) string
+	// dict renders a map field given its already-rendered key and value types.
+	dict func(key, value string) string
+}
+
+// render converts one neutral type. Three shapes exist and they never nest,
+// because protobuf forbids repeated maps and map values that are themselves
+// maps or repeated.
+func (style types) render(neutral string) string {
+	if element, found := strings.CutPrefix(neutral, "repeated "); found {
+		return style.list(style.render(element))
+	}
+	if inner, found := strings.CutPrefix(neutral, "map<"); found {
+		if inner, found := strings.CutSuffix(inner, ">"); found {
+			// A map key is always a scalar, so the first separator splits it.
+			if key, value, found := strings.Cut(inner, ", "); found {
+				return style.dict(style.render(key), style.render(value))
+			}
+		}
+	}
+	if scalar, found := style.scalar[neutral]; found {
+		return scalar
+	}
+	return neutral
+}
+
 // fields renders a schema's fields with a per-dialect separator and formatter,
 // sorted so the same match set always produces the same bytes and the prompt
 // stays cacheable.
-func fields(schema capability.TypeSchema, format func(name, fieldType string) string, empty, open, close string) string {
+func fields(schema capability.TypeSchema, style types, format func(name, fieldType string) string, empty, open, close string) string {
 	if len(schema.Fields) == 0 {
 		return empty
 	}
 	rendered := make([]string, 0, len(schema.Fields))
 	for name, fieldType := range schema.Fields {
-		rendered = append(rendered, format(name, fieldType))
+		rendered = append(rendered, format(name, style.render(fieldType)))
 	}
 	sort.Strings(rendered)
 	return open + strings.Join(rendered, ", ") + close

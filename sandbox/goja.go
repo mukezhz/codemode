@@ -32,6 +32,18 @@ func NewGoja(options Options) (Runner, error) {
 	return &gojaRunner{options: options}, nil
 }
 
+// javascriptTypes renders registry types as TypeScript. Bytes are shown as a
+// base64 string rather than Uint8Array because that is what actually arrives:
+// the bridge decodes protojson, which encodes bytes as base64 text.
+var javascriptTypes = types{
+	scalar: map[string]string{
+		"bool":  "boolean",
+		"bytes": "string (base64)",
+	},
+	list: func(element string) string { return element + "[]" },
+	dict: func(key, value string) string { return "Record<" + key + ", " + value + ">" },
+}
+
 // javascript is the dialect goja evaluates.
 var javascript = dialect{
 	id:    "javascript",
@@ -51,7 +63,7 @@ return "completed " + pending[0].title;`,
 	comment: func(description string) string { return "/** " + description + " */" },
 	signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
-			return fields(schema, func(name, fieldType string) string {
+			return fields(schema, javascriptTypes, func(name, fieldType string) string {
 				return name + ": " + fieldType
 			}, "{}", "{ ", " }")
 		}

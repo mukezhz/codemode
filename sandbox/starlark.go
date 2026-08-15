@@ -36,6 +36,18 @@ func NewStarlark(options Options) (Runner, error) {
 	return &starlarkRunner{options: options}, nil
 }
 
+// starlarkTypes renders registry types as Starlark values. Numbers stay open
+// between int and float because the registry collapses every protobuf numeric
+// scalar into one, and Starlark keeps the two apart.
+var starlarkTypes = types{
+	scalar: map[string]string{
+		"number": "int|float",
+		"bytes":  "string (base64)",
+	},
+	list: func(element string) string { return "[" + element + "]" },
+	dict: func(key, value string) string { return "{" + key + ": " + value + "}" },
+}
+
 // starlarkDialect is the dialect the Starlark engine evaluates.
 var starlarkDialect = dialect{
 	id:    "starlark",
@@ -56,7 +68,7 @@ return "completed " + pending[0]["title"]`,
 	comment: func(description string) string { return "# " + description },
 	signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
-			return fields(schema, func(name, fieldType string) string {
+			return fields(schema, starlarkTypes, func(name, fieldType string) string {
 				return fmt.Sprintf("%q: %s", name, fieldType)
 			}, "{}", "{", "}")
 		}

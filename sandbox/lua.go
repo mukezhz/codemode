@@ -32,6 +32,18 @@ func NewLua(options Options) (Runner, error) {
 	return &luaRunner{options: options}, nil
 }
 
+// luaTypes renders registry types as Lua table constructors, which is the only
+// shape Lua has for both lists and maps. The bracketed key form is real Lua, so
+// a model reading it can copy the construction directly.
+var luaTypes = types{
+	scalar: map[string]string{
+		"bool":  "boolean",
+		"bytes": "string (base64)",
+	},
+	list: func(element string) string { return "{" + element + "}" },
+	dict: func(key, value string) string { return "{[" + key + "] = " + value + "}" },
+}
+
 // luaDialect is the dialect the Lua engine evaluates.
 var luaDialect = dialect{
 	id:    "lua",
@@ -59,7 +71,7 @@ return "completed " .. pending[1].title`,
 	comment: func(description string) string { return "-- " + description },
 	signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
-			return fields(schema, func(name, fieldType string) string {
+			return fields(schema, luaTypes, func(name, fieldType string) string {
 				return name + " = " + fieldType
 			}, "{}", "{ ", " }")
 		}
