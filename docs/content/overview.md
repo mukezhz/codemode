@@ -39,10 +39,10 @@ generated or configured.
 
 ```proto
 service TodoService {
-  option (code_mode.namespace) = "todos";
+  option (codemode.namespace) = "todos";
 
   rpc Complete(CompleteRequest) returns (CompleteResponse) {
-    option (code_mode.description) = "Marks a todo item as completed by ID.";
+    option (codemode.description) = "Marks a todo item as completed by ID.";
   }
 }
 ```

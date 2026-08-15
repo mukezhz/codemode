@@ -45,7 +45,7 @@ func FromFiles(files ...protoreflect.FileDescriptor) (Registry, error) {
 //
 //	registry, err := registry.FromGlobalFiles()
 //
-// Only services carrying (code_mode.namespace) contribute, so linking an
+// Only services carrying (codemode.namespace) contribute, so linking an
 // unrelated protobuf package cannot widen the registry. Even so, FromFiles is
 // the safer habit: it says in code exactly which contracts are exposed, and a
 // new transitive dependency cannot quietly add to them.
@@ -64,7 +64,7 @@ func FromGlobalFiles() (Registry, error) {
 
 // collect appends file and everything it imports, depth first and once each.
 // Imports matter for two reasons: the request and response messages may live in
-// another file, and code_mode.proto is where the custom options are declared.
+// another file, and codemode.proto is where the custom options are declared.
 func collect(file protoreflect.FileDescriptor, set *descriptorpb.FileDescriptorSet, seen map[string]bool) {
 	path := file.Path()
 	if seen[path] {

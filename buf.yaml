@@ -11,7 +11,7 @@ lint:
     - RPC_RESPONSE_STANDARD_NAME
   ignore_only:
     PACKAGE_VERSION_SUFFIX:
-      - proto/code_mode.proto
+      - proto/codemode.proto
 breaking:
   use:
     - FILE

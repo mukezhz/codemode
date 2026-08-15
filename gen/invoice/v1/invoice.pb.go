@@ -7,12 +7,13 @@
 package invoicev1
 
 import (
-	_ "github.com/mukezhz/code-mode/gen/code_mode"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	_ "github.com/mukezhz/codemode/gen/codemode"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -263,7 +264,7 @@ var File_invoice_proto protoreflect.FileDescriptor
 const file_invoice_proto_rawDesc = "" +
 	"\n" +
 	"\rinvoice.proto\x12\n" +
-	"invoice.v1\x1a\x0fcode_mode.proto\"\x13\n" +
+	"invoice.v1\x1a\x0fcodemode.proto\"\x13\n" +
 	"\x11ListUnpaidRequest\"E\n" +
 	"\x12ListUnpaidResponse\x12/\n" +
 	"\binvoices\x18\x01 \x03(\v2\x13.invoice.v1.InvoiceR\binvoices\"1\n" +
@@ -280,7 +281,7 @@ const file_invoice_proto_rawDesc = "" +
 	"\x0eInvoiceService\x12m\n" +
 	"\n" +
 	"ListUnpaid\x12\x1d.invoice.v1.ListUnpaidRequest\x1a\x1e.invoice.v1.ListUnpaidResponse\" \x82\xb5\x18\x1cReturns all unpaid invoices.\x12s\n" +
-	"\x06Create\x12 .invoice.v1.CreateInvoiceRequest\x1a!.invoice.v1.CreateInvoiceResponse\"$\x82\xb5\x18 Creates an invoice for an order.\x1a\f\x82\xb5\x18\binvoicesB7Z5github.com/mukezhz/code-mode/gen/invoice/v1;invoicev1b\x06proto3"
+	"\x06Create\x12 .invoice.v1.CreateInvoiceRequest\x1a!.invoice.v1.CreateInvoiceResponse\"$\x82\xb5\x18 Creates an invoice for an order.\x1a\f\x82\xb5\x18\binvoicesB7Z5github.com/mukezhz/codemode/gen/invoice/v1;invoicev1b\x06proto3"
 
 var (
 	file_invoice_proto_rawDescOnce sync.Once

@@ -2,16 +2,17 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: code_mode.proto
+// source: codemode.proto
 
-package code_mode
+package codemode
 
 import (
+	reflect "reflect"
+	unsafe "unsafe"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
-	reflect "reflect"
-	unsafe "unsafe"
 )
 
 const (
@@ -21,52 +22,52 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-var file_code_mode_proto_extTypes = []protoimpl.ExtensionInfo{
+var file_codemode_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.ServiceOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50000,
-		Name:          "code_mode.namespace",
+		Name:          "codemode.namespace",
 		Tag:           "bytes,50000,opt,name=namespace",
-		Filename:      "code_mode.proto",
+		Filename:      "codemode.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50000,
-		Name:          "code_mode.description",
+		Name:          "codemode.description",
 		Tag:           "bytes,50000,opt,name=description",
-		Filename:      "code_mode.proto",
+		Filename:      "codemode.proto",
 	},
 }
 
 // Extension fields to descriptorpb.ServiceOptions.
 var (
 	// optional string namespace = 50000;
-	E_Namespace = &file_code_mode_proto_extTypes[0]
+	E_Namespace = &file_codemode_proto_extTypes[0]
 )
 
 // Extension fields to descriptorpb.MethodOptions.
 var (
 	// optional string description = 50000;
-	E_Description = &file_code_mode_proto_extTypes[1]
+	E_Description = &file_codemode_proto_extTypes[1]
 )
 
-var File_code_mode_proto protoreflect.FileDescriptor
+var File_codemode_proto protoreflect.FileDescriptor
 
-const file_code_mode_proto_rawDesc = "" +
+const file_codemode_proto_rawDesc = "" +
 	"\n" +
-	"\x0fcode_mode.proto\x12\tcode_mode\x1a google/protobuf/descriptor.proto:?\n" +
+	"\x0fcodemode.proto\x12\tcodemode\x1a google/protobuf/descriptor.proto:?\n" +
 	"\tnamespace\x12\x1f.google.protobuf.ServiceOptions\x18І\x03 \x01(\tR\tnamespace:B\n" +
-	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescriptionB6Z4github.com/mukezhz/code-mode/gen/code_mode;code_modeb\x06proto3"
+	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescriptionB6Z4github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
 
-var file_code_mode_proto_goTypes = []any{
+var file_codemode_proto_goTypes = []any{
 	(*descriptorpb.ServiceOptions)(nil), // 0: google.protobuf.ServiceOptions
 	(*descriptorpb.MethodOptions)(nil),  // 1: google.protobuf.MethodOptions
 }
-var file_code_mode_proto_depIdxs = []int32{
-	0, // 0: code_mode.namespace:extendee -> google.protobuf.ServiceOptions
-	1, // 1: code_mode.description:extendee -> google.protobuf.MethodOptions
+var file_codemode_proto_depIdxs = []int32{
+	0, // 0: codemode.namespace:extendee -> google.protobuf.ServiceOptions
+	1, // 1: codemode.description:extendee -> google.protobuf.MethodOptions
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -74,26 +75,26 @@ var file_code_mode_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_code_mode_proto_init() }
-func file_code_mode_proto_init() {
-	if File_code_mode_proto != nil {
+func init() { file_codemode_proto_init() }
+func file_codemode_proto_init() {
+	if File_codemode_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_code_mode_proto_rawDesc), len(file_code_mode_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_codemode_proto_rawDesc), len(file_codemode_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   0,
 			NumExtensions: 2,
 			NumServices:   0,
 		},
-		GoTypes:           file_code_mode_proto_goTypes,
-		DependencyIndexes: file_code_mode_proto_depIdxs,
-		ExtensionInfos:    file_code_mode_proto_extTypes,
+		GoTypes:           file_codemode_proto_goTypes,
+		DependencyIndexes: file_codemode_proto_depIdxs,
+		ExtensionInfos:    file_codemode_proto_extTypes,
 	}.Build()
-	File_code_mode_proto = out.File
-	file_code_mode_proto_goTypes = nil
-	file_code_mode_proto_depIdxs = nil
+	File_codemode_proto = out.File
+	file_codemode_proto_goTypes = nil
+	file_codemode_proto_depIdxs = nil
 }

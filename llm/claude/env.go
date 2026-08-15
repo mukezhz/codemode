@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/codemode/llm"
 )
 
 // Environment variables read by OptionsFromEnv.

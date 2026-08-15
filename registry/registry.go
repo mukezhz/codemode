@@ -30,8 +30,8 @@ type Capability = capability.Capability
 type TypeSchema = capability.TypeSchema
 
 // Generate builds a registry from a Buf descriptor set. Every service carrying
-// (code_mode.namespace) contributes its methods; a method missing
-// (code_mode.description) is an error, because the description is the only
+// (codemode.namespace) contributes its methods; a method missing
+// (codemode.description) is an error, because the description is the only
 // thing search and the model ever see.
 func Generate(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	return generateRegistry(files)
@@ -47,11 +47,11 @@ func Parse(descriptor []byte) (Registry, error) {
 }
 
 func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
-	namespaceOption, err := customOptionNumber(files, ".code_mode.namespace", ".google.protobuf.ServiceOptions")
+	namespaceOption, err := customOptionNumber(files, ".codemode.namespace", ".google.protobuf.ServiceOptions")
 	if err != nil {
 		return Registry{}, err
 	}
-	descriptionOption, err := customOptionNumber(files, ".code_mode.description", ".google.protobuf.MethodOptions")
+	descriptionOption, err := customOptionNumber(files, ".codemode.description", ".google.protobuf.MethodOptions")
 	if err != nil {
 		return Registry{}, err
 	}
@@ -68,7 +68,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 			}
 			namespace = strings.TrimSpace(namespace)
 			if !namespacePattern.MatchString(namespace) {
-				return Registry{}, fmt.Errorf("%s.%s: service option (code_mode.namespace) must match %s", file.GetPackage(), service.GetName(), namespacePattern)
+				return Registry{}, fmt.Errorf("%s.%s: service option (codemode.namespace) must match %s", file.GetPackage(), service.GetName(), namespacePattern)
 			}
 
 			for _, method := range service.Method {
@@ -82,7 +82,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				}
 				description = strings.TrimSpace(description)
 				if description == "" {
-					return Registry{}, fmt.Errorf("%s.%s: method option (code_mode.description) is required", service.GetName(), method.GetName())
+					return Registry{}, fmt.Errorf("%s.%s: method option (codemode.description) is required", service.GetName(), method.GetName())
 				}
 
 				name := namespace + "." + lowerFirst(method.GetName())
@@ -137,10 +137,10 @@ func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee st
 // stringOption reads the custom option with the given field number.
 //
 // It has to handle the option arriving two ways. When the descriptors come from
-// a Buf descriptor set, code_mode.proto's extensions are not linked into this
+// a Buf descriptor set, codemode.proto's extensions are not linked into this
 // binary, so the option sits in the message's unknown fields as raw wire bytes.
 // When the descriptors come from generated Go — the registry.FromFiles path —
-// the consumer's generated code_mode package registered the extension, so the
+// the consumer's generated codemode package registered the extension, so the
 // option is resolved and the unknown fields are empty. Reading only one way
 // silently produces an empty namespace for half of all callers.
 func stringOption(options proto.Message, number protowire.Number) (string, error) {

@@ -15,8 +15,8 @@ func TestGenerateRegistry(t *testing.T) {
 	setStringOption(methodOptions, 50000, "Returns matching students.")
 
 	files := &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{{
-		Name:    proto.String("code_mode.proto"),
-		Package: proto.String("code_mode"),
+		Name:    proto.String("codemode.proto"),
+		Package: proto.String("codemode"),
 		Extension: []*descriptorpb.FieldDescriptorProto{
 			{Name: proto.String("namespace"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
 			{Name: proto.String("description"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},

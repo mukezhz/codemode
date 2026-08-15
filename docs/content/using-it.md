@@ -40,10 +40,10 @@ copy that matches your library version — and import it:
 
 ```protobuf
 service TodoService {
-  option (code_mode.namespace) = "todos";
+  option (codemode.namespace) = "todos";
 
   rpc Complete(CompleteTodoRequest) returns (CompleteTodoResponse) {
-    option (code_mode.description) = "Marks a todo item as completed by ID.";
+    option (codemode.description) = "Marks a todo item as completed by ID.";
   }
 }
 ```
@@ -86,7 +86,7 @@ extra build tool** — and the registry cannot drift from your contracts, becaus
 it is derived from them every time the process starts.
 
 `registry.FromGlobalFiles()` scans every protobuf file linked into the binary
-instead. Only services carrying `(code_mode.namespace)` contribute, so an
+instead. Only services carrying `(codemode.namespace)` contribute, so an
 unrelated dependency cannot widen the registry — but naming the files is the
 safer habit, because it says in code exactly which contracts are exposed.
 

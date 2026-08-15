@@ -5,4 +5,4 @@ version: v2
 plugins:
   - remote: buf.build/protocolbuffers/go:v1.36.11
     out: .
-    opt: module=github.com/mukezhz/code-mode
+    opt: module=github.com/mukezhz/codemode

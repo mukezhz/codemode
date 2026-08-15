@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 // EnvExtension names the sqlite-vector library. There is no default: loading an

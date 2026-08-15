@@ -2,19 +2,19 @@ syntax = "proto3";
 
 package invoice.v1;
 
-import "code_mode.proto";
+import "codemode.proto";
 
 option go_package = "github.com/mukezhz/codemode/gen/invoice/v1;invoicev1";
 
 service InvoiceService {
-  option (code_mode.namespace) = "invoices";
+  option (codemode.namespace) = "invoices";
 
   rpc ListUnpaid(ListUnpaidRequest) returns (ListUnpaidResponse) {
-    option (code_mode.description) = "Returns all unpaid invoices.";
+    option (codemode.description) = "Returns all unpaid invoices.";
   }
 
   rpc Create(CreateInvoiceRequest) returns (CreateInvoiceResponse) {
-    option (code_mode.description) = "Creates an invoice for an order.";
+    option (codemode.description) = "Creates an invoice for an order.";
   }
 }
 

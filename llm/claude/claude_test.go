@@ -3,7 +3,7 @@ package claude
 import (
 	"testing"
 
-	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/codemode/llm"
 )
 
 // Anthropic rejects a temperature alongside extended thinking, so asking for

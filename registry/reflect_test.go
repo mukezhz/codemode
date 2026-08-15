@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/registry"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/registry"
 
-	todov1 "github.com/mukezhz/code-mode/gen/todo/v1"
+	todov1 "github.com/mukezhz/codemode/gen/todo/v1"
 
 	// Linked, so FromGlobalFiles can see them. FromFiles above cannot: it
 	// scans only what it is handed.
-	_ "github.com/mukezhz/code-mode/gen/email/v1"
-	_ "github.com/mukezhz/code-mode/gen/invoice/v1"
-	_ "github.com/mukezhz/code-mode/gen/student/v1"
+	_ "github.com/mukezhz/codemode/gen/email/v1"
+	_ "github.com/mukezhz/codemode/gen/invoice/v1"
+	_ "github.com/mukezhz/codemode/gen/student/v1"
 )
 
 // FromFiles is the short path: generated code already carries its descriptors,

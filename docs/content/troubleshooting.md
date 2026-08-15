@@ -4,9 +4,9 @@
 
 | Error | Cause and fix |
 | --- | --- |
-| `custom option ... is not defined` | Import `code_mode.proto` so its definitions enter the descriptor set. |
-| `service option (code_mode.namespace) must match ...` | Set an explicit lower-camel-case namespace on the service. |
-| `method option (code_mode.description) is required` | Add a meaningful description option to the RPC. |
+| `custom option ... is not defined` | Import `codemode.proto` so its definitions enter the descriptor set. |
+| `service option (codemode.namespace) must match ...` | Set an explicit lower-camel-case namespace on the service. |
+| `method option (codemode.description) is required` | Add a meaningful description option to the RPC. |
 | `streaming RPCs are not supported` | Model the capability as a unary RPC. |
 | `duplicate capability` | Give services distinct namespaces, or rename the RPC. |
 | `message ... not found` | The request or response type is missing from the descriptor set. Check the import. |

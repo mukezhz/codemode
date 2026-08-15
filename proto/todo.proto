@@ -2,23 +2,23 @@ syntax = "proto3";
 
 package todo.v1;
 
-import "code_mode.proto";
+import "codemode.proto";
 
 option go_package = "github.com/mukezhz/codemode/gen/todo/v1;todov1";
 
 service TodoService {
-  option (code_mode.namespace) = "todos";
+  option (codemode.namespace) = "todos";
 
   rpc Create(CreateTodoRequest) returns (CreateTodoResponse) {
-    option (code_mode.description) = "Creates a todo item with the given title.";
+    option (codemode.description) = "Creates a todo item with the given title.";
   }
 
   rpc List(ListTodosRequest) returns (ListTodosResponse) {
-    option (code_mode.description) = "Lists all todo items and their completion state.";
+    option (codemode.description) = "Lists all todo items and their completion state.";
   }
 
   rpc Complete(CompleteTodoRequest) returns (CompleteTodoResponse) {
-    option (code_mode.description) = "Marks a todo item as completed by ID.";
+    option (codemode.description) = "Marks a todo item as completed by ID.";
   }
 }
 

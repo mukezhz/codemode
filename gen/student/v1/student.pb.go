@@ -7,12 +7,13 @@
 package studentv1
 
 import (
-	_ "github.com/mukezhz/code-mode/gen/code_mode"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	_ "github.com/mukezhz/codemode/gen/codemode"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -271,7 +272,7 @@ var File_student_proto protoreflect.FileDescriptor
 const file_student_proto_rawDesc = "" +
 	"\n" +
 	"\rstudent.proto\x12\n" +
-	"student.v1\x1a\x0fcode_mode.proto\"-\n" +
+	"student.v1\x1a\x0fcodemode.proto\"-\n" +
 	"\x17InterviewsWithinRequest\x12\x12\n" +
 	"\x04days\x18\x01 \x01(\x05R\x04days\"K\n" +
 	"\x18InterviewsWithinResponse\x12/\n" +
@@ -288,7 +289,7 @@ const file_student_proto_rawDesc = "" +
 	"\x0einterview_date\x18\x04 \x01(\tR\rinterviewDate2\xb6\x02\n" +
 	"\x0eStudentService\x12\x9e\x01\n" +
 	"\x10InterviewsWithin\x12#.student.v1.InterviewsWithinRequest\x1a$.student.v1.InterviewsWithinResponse\"?\x82\xb5\x18;Returns students whose visa interview occurs within N days.\x12u\n" +
-	"\fSendReminder\x12\x1f.student.v1.SendReminderRequest\x1a .student.v1.SendReminderResponse\"\"\x82\xb5\x18\x1eSends a reminder to a student.\x1a\f\x82\xb5\x18\bstudentsB7Z5github.com/mukezhz/code-mode/gen/student/v1;studentv1b\x06proto3"
+	"\fSendReminder\x12\x1f.student.v1.SendReminderRequest\x1a .student.v1.SendReminderResponse\"\"\x82\xb5\x18\x1eSends a reminder to a student.\x1a\f\x82\xb5\x18\bstudentsB7Z5github.com/mukezhz/codemode/gen/student/v1;studentv1b\x06proto3"
 
 var (
 	file_student_proto_rawDescOnce sync.Once

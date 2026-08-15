@@ -6,7 +6,7 @@
 ## Context
 
 Getting a registry required four steps in a consuming project: copy
-`code_mode.proto` into your buf module, run `buf build --as-file-descriptor-set`,
+`codemode.proto` into your buf module, run `buf build --as-file-descriptor-set`,
 run `codemode-registry`, then `go:embed` the JSON. Three of those are build
 plumbing, and the artifact can silently fall out of step with the protos — a
 stale `registry.json` offers a model capabilities the host will reject.
@@ -26,10 +26,10 @@ capabilities, err := registry.FromFiles(todov1.File_todo_proto)
 `protoc-gen-go` embeds the file descriptor in the package it generates. A
 consumer already imports that package to implement the service, so nothing new
 is linked and nothing is generated. Imports are followed transitively, which
-picks up both the request and response messages and `code_mode.proto` itself.
+picks up both the request and response messages and `codemode.proto` itself.
 
 `registry.FromGlobalFiles()` scans `protoregistry.GlobalFiles` instead. Only
-services carrying `(code_mode.namespace)` contribute, so an unrelated dependency
+services carrying `(codemode.namespace)` contribute, so an unrelated dependency
 cannot widen the registry — but naming the files stays the documented habit,
 because it states the exposed surface in code.
 
@@ -41,8 +41,8 @@ project's rather than the library's.
 ## The bug this surfaced
 
 `stringOption` read the custom options out of the message's *unknown* fields,
-which is correct only when `code_mode.proto`'s extensions are not linked. On the
-`FromFiles` path the consumer's generated `code_mode` package registers them, so
+which is correct only when `codemode.proto`'s extensions are not linked. On the
+`FromFiles` path the consumer's generated `codemode` package registers them, so
 the options resolve and the unknown fields are empty — every namespace came back
 blank, and the error blamed the regex.
 

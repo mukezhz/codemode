@@ -12,7 +12,7 @@
 //
 // To start a project, write out the options file your protos must import:
 //
-//	codemode-registry -print-proto > proto/code_mode.proto
+//	codemode-registry -print-proto > proto/codemode.proto
 package main
 
 import (
@@ -33,7 +33,7 @@ func main() {
 	out := flag.String("out", "registry/registry.json",
 		"path to write the generated registry; - writes to stdout")
 	printProto := flag.Bool("print-proto", false,
-		"write code_mode.proto to stdout and exit, for importing into your own protos")
+		"write codemode.proto to stdout and exit, for importing into your own protos")
 	quiet := flag.Bool("quiet", false, "suppress the summary line")
 	flag.Parse()
 

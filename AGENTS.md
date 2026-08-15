@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Protobuf contracts live in `proto/`, which is also a Go package embedding `code_mode.proto` for consumers. `registry/` turns a Buf descriptor set into a registry; `cmd/codemode-registry/` is its CLI. Shared registry types and vector search live in `capability/`, the request pipeline in `agent/`; tests sit beside their Go source. Keep generated descriptor and registry files out of commits. Root configuration includes `buf.yaml`, `mise.toml`, and the `Makefile`.
+Protobuf contracts live in `proto/`, which is also a Go package embedding `codemode.proto` for consumers. `registry/` turns a Buf descriptor set into a registry; `cmd/codemode-registry/` is its CLI. Shared registry types and vector search live in `capability/`, the request pipeline in `agent/`; tests sit beside their Go source. Keep generated descriptor and registry files out of commits. Root configuration includes `buf.yaml`, `mise.toml`, and the `Makefile`.
 
 Every swappable backend is an interface in a parent package and an implementation in a child that registers itself from `init`: stores in `capability/{sqlitestore,pgstore}`, providers in `llm/{claude,openai}`, engines in `sandbox/{goja,starlark,lua}`. **The parent packages must never import a vendor SDK** — that property is what lets a consumer link only what it blank-imports, and `scripts/check-consumer.sh` fails the build if it breaks. Add a backend by adding a package, never by adding a case to a switch in the parent.
 

@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package code_mode;
+package codemode;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/mukezhz/codemode/gen/code_mode;code_mode";
+option go_package = "github.com/mukezhz/codemode/gen/codemode;codemode";
 
 extend google.protobuf.ServiceOptions {
   string namespace = 50000;

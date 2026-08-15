@@ -90,7 +90,7 @@ Each provider package has its own `Options` embedding `llm.Options`, for knobs
 the other one has no equivalent of:
 
 ```go
-import "github.com/mukezhz/code-mode/llm/claude"
+import "github.com/mukezhz/codemode/llm/claude"
 
 model, err := claude.New(claude.Options{
 	Options:  llm.Options{Model: "claude-opus-5"},

@@ -7,12 +7,13 @@
 package emailv1
 
 import (
-	_ "github.com/mukezhz/code-mode/gen/code_mode"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	_ "github.com/mukezhz/codemode/gen/codemode"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -130,7 +131,7 @@ var File_email_proto protoreflect.FileDescriptor
 
 const file_email_proto_rawDesc = "" +
 	"\n" +
-	"\vemail.proto\x12\bemail.v1\x1a\x0fcode_mode.proto\"P\n" +
+	"\vemail.proto\x12\bemail.v1\x1a\x0fcodemode.proto\"P\n" +
 	"\x10SendEmailRequest\x12\x0e\n" +
 	"\x02to\x18\x01 \x01(\tR\x02to\x12\x18\n" +
 	"\asubject\x18\x02 \x01(\tR\asubject\x12\x12\n" +
@@ -138,7 +139,7 @@ const file_email_proto_rawDesc = "" +
 	"\x11SendEmailResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess2\x8a\x01\n" +
 	"\fEmailService\x12o\n" +
-	"\x04Send\x12\x1a.email.v1.SendEmailRequest\x1a\x1b.email.v1.SendEmailResponse\".\x82\xb5\x18*Sends an email to the specified recipient.\x1a\t\x82\xb5\x18\x05emailB3Z1github.com/mukezhz/code-mode/gen/email/v1;emailv1b\x06proto3"
+	"\x04Send\x12\x1a.email.v1.SendEmailRequest\x1a\x1b.email.v1.SendEmailResponse\".\x82\xb5\x18*Sends an email to the specified recipient.\x1a\t\x82\xb5\x18\x05emailB3Z1github.com/mukezhz/codemode/gen/email/v1;emailv1b\x06proto3"
 
 var (
 	file_email_proto_rawDescOnce sync.Once

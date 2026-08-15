@@ -9,14 +9,14 @@ there is no second place to keep in sync.
 Capabilities start as unary RPCs in `proto/`:
 
 ```proto
-import "code_mode.proto";
+import "codemode.proto";
 
 service StudentService {
-  option (code_mode.namespace) = "students";
+  option (codemode.namespace) = "students";
 
   rpc InterviewsWithin(InterviewsWithinRequest)
       returns (InterviewsWithinResponse) {
-    option (code_mode.description) =
+    option (codemode.description) =
         "Returns students with an interview in the requested period.";
   }
 }
@@ -24,9 +24,9 @@ service StudentService {
 
 The generator requires:
 
-- An import of `code_mode.proto`.
-- An explicit, lower-camel-case `(code_mode.namespace)` service option.
-- A non-empty `(code_mode.description)` option on every RPC.
+- An import of `codemode.proto`.
+- An explicit, lower-camel-case `(codemode.namespace)` service option.
+- A non-empty `(codemode.description)` option on every RPC.
 - Unique generated names. The example becomes `students.interviewsWithin`.
 - Unary RPCs. Client- and server-streaming methods are rejected.
 - Request and response messages present in the descriptor set.
