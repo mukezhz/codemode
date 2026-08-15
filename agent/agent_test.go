@@ -10,6 +10,7 @@ import (
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
 	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/code-mode/sandbox"
 )
 
 // mode answers searches and capability calls from a fixed script.
@@ -139,8 +140,48 @@ func TestAnswerRendersValues(t *testing.T) {
 	}
 }
 
+// runner records the programs it was asked to evaluate and returns a fixed
+// answer, so the agent's use of the sandbox seam is observable.
+type runner struct {
+	sources []string
+	closed  bool
+}
+
+func (runner *runner) Name() string { return "test/runner" }
+
+func (runner *runner) Run(_ context.Context, _ codemode.CodeMode, source string) (any, error) {
+	runner.sources = append(runner.sources, source)
+	return "ran " + source, nil
+}
+
+func (runner *runner) Close() error {
+	runner.closed = true
+	return nil
+}
+
+func TestRunUsesTheProvidedRunner(t *testing.T) {
+	engine := &runner{}
+	author := &model{responses: []string{workingProgram}}
+
+	result, err := Run(context.Background(), &mode{}, author, "list my todos", Options{Runner: engine})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(engine.sources) != 1 || engine.sources[0] != workingProgram {
+		t.Fatalf("runner saw %#v, want the generated program", engine.sources)
+	}
+	if result.Answer != "ran "+workingProgram {
+		t.Fatalf("answer = %#v, want the runner's value", result.Answer)
+	}
+	// A caller-supplied runner is the caller's to close.
+	if engine.closed {
+		t.Fatal("Run closed a runner it did not build")
+	}
+}
+
 // The fakes must satisfy the interfaces the agent depends on.
 var (
 	_ codemode.CodeMode = (*mode)(nil)
 	_ llm.Client        = (*model)(nil)
+	_ sandbox.Runner    = (*runner)(nil)
 )

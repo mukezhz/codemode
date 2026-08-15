@@ -41,6 +41,62 @@ func newFake() *fake {
 
 const options = time.Second
 
+func TestNewSelectsTheEngineFromTheEnvironment(t *testing.T) {
+	t.Setenv("SANDBOX_ENGINE", "")
+	runner, err := New(Options{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer runner.Close()
+	if !strings.Contains(runner.Name(), "goja") {
+		t.Fatalf("Name() = %q, want it to name the goja engine", runner.Name())
+	}
+}
+
+func TestNewRejectsAnUnknownEngine(t *testing.T) {
+	t.Setenv("SANDBOX_ENGINE", "wasm")
+	if _, err := New(Options{}); err == nil {
+		t.Fatal("New returned no error for an unknown engine")
+	}
+}
+
+func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
+	t.Setenv("SANDBOX_ENGINE", "")
+	t.Setenv("SANDBOX_TIMEOUT", "7s")
+	t.Setenv("SANDBOX_MAX_CALLS", "9")
+
+	runner, err := New(Options{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer runner.Close()
+	for _, want := range []string{"7s", "9"} {
+		if !strings.Contains(runner.Name(), want) {
+			t.Fatalf("Name() = %q, want it to report %q", runner.Name(), want)
+		}
+	}
+
+	// An explicitly set field wins over the environment.
+	explicit, err := New(Options{MaxCalls: 3})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer explicit.Close()
+	if !strings.Contains(explicit.Name(), "3 call budget") {
+		t.Fatalf("Name() = %q, want the explicit budget to win", explicit.Name())
+	}
+}
+
+func TestNewRejectsUnparseableBounds(t *testing.T) {
+	t.Setenv("SANDBOX_TIMEOUT", "soon")
+	if _, err := New(Options{}); err == nil {
+		t.Fatal("New returned no error for an unparseable SANDBOX_TIMEOUT")
+	}
+}
+
+// The engine must satisfy the interface callers depend on.
+var _ Runner = (*gojaRunner)(nil)
+
 func TestRunComposesCapabilityCalls(t *testing.T) {
 	mode := newFake()
 	source := `

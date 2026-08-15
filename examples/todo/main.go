@@ -58,8 +58,14 @@ func run(ctx context.Context, request string) error {
 		return err
 	}
 
-	fmt.Printf("model\n  %s\n\n", model.Name())
-	result, err := agent.Run(ctx, mode, model, request, agent.Options{})
+	runner, err := sandbox.New(sandbox.Options{})
+	if err != nil {
+		return err
+	}
+	defer runner.Close()
+
+	fmt.Printf("model\n  %s\n\nsandbox\n  %s\n\n", model.Name(), runner.Name())
+	result, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner})
 	report(result)
 	if err != nil {
 		return err
@@ -120,12 +126,20 @@ func report(result agent.Result) {
 // credentials. Everything except the program's authorship is unchanged: search
 // still selects the capabilities, and the sandbox still calls the host.
 func offline(ctx context.Context, mode codemode.CodeMode, request string) error {
+	runner, err := sandbox.New(sandbox.Options{})
+	if err != nil {
+		return err
+	}
+	defer runner.Close()
+
 	fmt.Println("model\n  none (set ANTHROPIC_API_KEY or OPENAI_API_KEY to generate the program)")
+	fmt.Printf("\nsandbox\n  %s\n", runner.Name())
 
 	matches, err := mode.Search(ctx, request, agent.DefaultLimit)
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("\nsearch\n")
 	for _, match := range matches {
 		fmt.Printf("  %s -> %s\n", match.Capability.Name, match.Capability.RPC)
@@ -133,7 +147,7 @@ func offline(ctx context.Context, mode codemode.CodeMode, request string) error 
 	fmt.Printf("\nprompt\n%s\n", indent(agent.SystemPrompt(matches)))
 	fmt.Printf("\nprogram (fixed)\n%s\n", indent(fixedProgram))
 
-	value, err := sandbox.Run(ctx, mode, fixedProgram, sandbox.Options{Timeout: agent.DefaultTimeout})
+	value, err := runner.Run(ctx, mode, fixedProgram)
 	if err != nil {
 		return err
 	}

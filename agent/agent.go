@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
@@ -30,15 +29,15 @@ type Options struct {
 	// attempt after the first is told why the previous one failed. Zero
 	// applies DefaultAttempts.
 	Attempts int
-	// Sandbox bounds each program run. A zero Timeout applies DefaultTimeout.
-	Sandbox sandbox.Options
+	// Runner isolates and evaluates each generated program. Nil builds the
+	// environment's default runner, and Run closes what it built.
+	Runner sandbox.Runner
 }
 
 // Defaults applied when the matching Options field is zero.
 const (
 	DefaultLimit    = 5
 	DefaultAttempts = 3
-	DefaultTimeout  = 30 * time.Second
 )
 
 // checked validates options and applies defaults.
@@ -51,9 +50,6 @@ func (options Options) checked() (Options, error) {
 	}
 	if options.Attempts == 0 {
 		options.Attempts = DefaultAttempts
-	}
-	if options.Sandbox.Timeout == 0 {
-		options.Sandbox.Timeout = DefaultTimeout
 	}
 	return options, nil
 }
@@ -85,6 +81,17 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 		return Result{}, err
 	}
 
+	runner := options.Runner
+	if runner == nil {
+		// Built here rather than in checked so the caller's runner is never
+		// closed by us, and ours always is.
+		runner, err = sandbox.New(sandbox.Options{})
+		if err != nil {
+			return Result{}, err
+		}
+		defer runner.Close()
+	}
+
 	matches, err := mode.Search(ctx, request, options.Limit)
 	if err != nil {
 		return Result{}, fmt.Errorf("search: %w", err)
@@ -109,7 +116,7 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 		}
 		result.Source = Program(response)
 
-		answer, err := sandbox.Run(ctx, mode, result.Source, options.Sandbox)
+		answer, err := runner.Run(ctx, mode, result.Source)
 		if err == nil {
 			result.Answer = answer
 			return result, nil
