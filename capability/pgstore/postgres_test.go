@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/capability/internal/fixture"
-	"github.com/mukezhz/code-mode/capability/pgstore"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/capability/internal/fixture"
+	"github.com/mukezhz/codemode/capability/pgstore"
 )
 
 // TestPostgresSearch exercises the pgvector backend end to end. It skips

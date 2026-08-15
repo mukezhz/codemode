@@ -7,11 +7,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/codemode/llm"
 
 	// Both providers, so llm.OptionsFromEnv can select either.
-	_ "github.com/mukezhz/code-mode/llm/claude"
-	_ "github.com/mukezhz/code-mode/llm/openai"
+	_ "github.com/mukezhz/codemode/llm/claude"
+	_ "github.com/mukezhz/codemode/llm/openai"
 )
 
 // The environment path has to select the right provider and carry its own

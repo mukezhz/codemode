@@ -4,7 +4,7 @@ package code_mode;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/mukezhz/code-mode/gen/code_mode;code_mode";
+option go_package = "github.com/mukezhz/codemode/gen/code_mode;code_mode";
 
 extend google.protobuf.ServiceOptions {
   string namespace = 50000;

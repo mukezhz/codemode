@@ -14,10 +14,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
-	"github.com/mukezhz/code-mode/llm"
-	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/sandbox"
 )
 
 // Options tunes one request.

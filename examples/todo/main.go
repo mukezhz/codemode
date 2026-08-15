@@ -8,28 +8,28 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mukezhz/code-mode/agent"
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
-	coderegistry "github.com/mukezhz/code-mode/registry"
+	"github.com/mukezhz/codemode/agent"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
+	coderegistry "github.com/mukezhz/codemode/registry"
 
-	"github.com/mukezhz/code-mode/examples/todo/app"
-	demosearch "github.com/mukezhz/code-mode/examples/todo/search"
-	todov1 "github.com/mukezhz/code-mode/gen/todo/v1"
-	"github.com/mukezhz/code-mode/llm"
-	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/codemode/examples/todo/app"
+	demosearch "github.com/mukezhz/codemode/examples/todo/search"
+	todov1 "github.com/mukezhz/codemode/gen/todo/v1"
+	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/sandbox"
 
 	// The demo links every backend so one binary can show all of them. A real
 	// application blank-imports only what it runs, which is the point of the
 	// split: no cgo unless you asked for SQLite, no goja unless you asked for
 	// JavaScript.
-	_ "github.com/mukezhz/code-mode/capability/pgstore"
-	_ "github.com/mukezhz/code-mode/capability/sqlitestore"
-	_ "github.com/mukezhz/code-mode/llm/claude"
-	openaiprovider "github.com/mukezhz/code-mode/llm/openai"
-	_ "github.com/mukezhz/code-mode/sandbox/goja"
-	_ "github.com/mukezhz/code-mode/sandbox/lua"
-	_ "github.com/mukezhz/code-mode/sandbox/starlark"
+	_ "github.com/mukezhz/codemode/capability/pgstore"
+	_ "github.com/mukezhz/codemode/capability/sqlitestore"
+	_ "github.com/mukezhz/codemode/llm/claude"
+	openaiprovider "github.com/mukezhz/codemode/llm/openai"
+	_ "github.com/mukezhz/codemode/sandbox/goja"
+	_ "github.com/mukezhz/codemode/sandbox/lua"
+	_ "github.com/mukezhz/codemode/sandbox/starlark"
 )
 
 func main() {

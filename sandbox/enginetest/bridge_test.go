@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
-	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/sandbox"
 
 	// Every engine this module ships, so sandbox.New can select any of them.
 	// A real binary imports only the ones it runs.
-	_ "github.com/mukezhz/code-mode/sandbox/goja"
-	_ "github.com/mukezhz/code-mode/sandbox/lua"
-	_ "github.com/mukezhz/code-mode/sandbox/starlark"
+	_ "github.com/mukezhz/codemode/sandbox/goja"
+	_ "github.com/mukezhz/codemode/sandbox/lua"
+	_ "github.com/mukezhz/codemode/sandbox/starlark"
 )
 
 // fake records the capability calls a program makes and answers them from a

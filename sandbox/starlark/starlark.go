@@ -11,10 +11,10 @@ import (
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
-	"github.com/mukezhz/code-mode/sandbox"
-	"github.com/mukezhz/code-mode/sandbox/internal/prompt"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/sandbox"
+	"github.com/mukezhz/codemode/sandbox/internal/prompt"
 )
 
 func init() {

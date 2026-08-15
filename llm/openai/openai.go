@@ -2,7 +2,7 @@
 //
 // Blank-import it to make LLM_PROVIDER=openai available:
 //
-//	import _ "github.com/mukezhz/code-mode/llm/openai"
+//	import _ "github.com/mukezhz/codemode/llm/openai"
 //
 // Most self-hosted and third-party endpoints speak this protocol, so pointing
 // OPENAI_BASE_URL at one reaches it without another provider. It also holds
@@ -19,7 +19,7 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/shared"
 
-	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/codemode/llm"
 )
 
 func init() {

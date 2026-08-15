@@ -8,7 +8,7 @@ import (
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/codemode/llm"
 )
 
 // DefaultEmbeddingModel is used when neither EmbedOptions.Model nor

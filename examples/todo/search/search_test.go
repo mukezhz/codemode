@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 func TestTodoCapabilitiesRankFirst(t *testing.T) {

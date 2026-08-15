@@ -75,8 +75,8 @@ const (
 const DefaultBackend = BackendSQLite
 
 var shipped = map[string]string{
-	BackendSQLite:   "github.com/mukezhz/code-mode/capability/sqlitestore",
-	BackendPostgres: "github.com/mukezhz/code-mode/capability/pgstore",
+	BackendSQLite:   "github.com/mukezhz/codemode/capability/sqlitestore",
+	BackendPostgres: "github.com/mukezhz/codemode/capability/pgstore",
 }
 
 var (

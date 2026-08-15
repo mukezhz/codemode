@@ -4,7 +4,7 @@ package email.v1;
 
 import "code_mode.proto";
 
-option go_package = "github.com/mukezhz/code-mode/gen/email/v1;emailv1";
+option go_package = "github.com/mukezhz/codemode/gen/email/v1;emailv1";
 
 service EmailService {
   option (code_mode.namespace) = "email";

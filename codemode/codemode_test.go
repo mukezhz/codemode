@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 func TestSearchAndExecute(t *testing.T) {

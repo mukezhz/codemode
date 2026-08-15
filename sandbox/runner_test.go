@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
 )
 
 // stub is an engine registered only by this test, so the registration

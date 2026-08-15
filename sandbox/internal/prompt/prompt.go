@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 // Dialect describes how programs are written for one engine. Everything a

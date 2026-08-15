@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
-	"github.com/mukezhz/code-mode/llm"
-	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/sandbox"
 
-	"github.com/mukezhz/code-mode/sandbox/goja"
+	"github.com/mukezhz/codemode/sandbox/goja"
 )
 
 // mode answers searches and capability calls from a fixed script.

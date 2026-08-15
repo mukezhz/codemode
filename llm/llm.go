@@ -26,8 +26,8 @@
 // actually call:
 //
 //	import (
-//		"github.com/mukezhz/code-mode/llm"
-//		_ "github.com/mukezhz/code-mode/llm/claude"
+//		"github.com/mukezhz/codemode/llm"
+//		_ "github.com/mukezhz/codemode/llm/claude"
 //	)
 //
 // Importing a provider directly and calling its own New skips this package's
@@ -86,8 +86,8 @@ const (
 )
 
 var shipped = map[string]string{
-	ProviderClaude: "github.com/mukezhz/code-mode/llm/claude",
-	ProviderOpenAI: "github.com/mukezhz/code-mode/llm/openai",
+	ProviderClaude: "github.com/mukezhz/codemode/llm/claude",
+	ProviderOpenAI: "github.com/mukezhz/codemode/llm/openai",
 }
 
 var (

@@ -18,9 +18,9 @@ CGO_ENABLED=0 go build \
 	"$root/sandbox" "$root/sandbox/goja" "$root/sandbox/starlark" "$root/sandbox/lua"
 
 goversion=$(go mod edit -json "$root/go.mod" | sed -n 's/.*"Go": "\([^"]*\)".*/\1/p')
-printf 'module consumer\n\ngo %s\n\nrequire github.com/mukezhz/code-mode v0.0.0\n\nreplace github.com/mukezhz/code-mode => %s\n' \
+printf 'module consumer\n\ngo %s\n\nrequire github.com/mukezhz/codemode v0.0.0\n\nreplace github.com/mukezhz/codemode => %s\n' \
 	"$goversion" "$root" >"$work/go.mod"
-printf 'package main\n\nimport "github.com/mukezhz/code-mode/codemode"\n\nfunc main() { var _ codemode.CodeMode }\n' \
+printf 'package main\n\nimport "github.com/mukezhz/codemode/codemode"\n\nfunc main() { var _ codemode.CodeMode }\n' \
 	>"$work/main.go"
 
 cd "$work"

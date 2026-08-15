@@ -6,12 +6,12 @@ register themselves, and your binary links nothing else.
 
 ```go
 import (
-	"github.com/mukezhz/code-mode/agent"
-	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/codemode/agent"
+	"github.com/mukezhz/codemode/codemode"
 
-	_ "github.com/mukezhz/code-mode/capability/pgstore"  // pgvector search
-	_ "github.com/mukezhz/code-mode/llm/claude"          // Anthropic
-	_ "github.com/mukezhz/code-mode/sandbox/goja"        // JavaScript
+	_ "github.com/mukezhz/codemode/capability/pgstore"  // pgvector search
+	_ "github.com/mukezhz/codemode/llm/claude"          // Anthropic
+	_ "github.com/mukezhz/codemode/sandbox/goja"        // JavaScript
 )
 ```
 
@@ -96,7 +96,7 @@ of choosing a backend from the environment. So the error names the fix:
 
 ```
 sandbox engine "lua" is not registered:
-  add `_ "github.com/mukezhz/code-mode/sandbox/lua"` to your imports
+  add `_ "github.com/mukezhz/codemode/sandbox/lua"` to your imports
 ```
 
 A genuinely unknown name reads differently, and does not invent an import path:
@@ -127,7 +127,7 @@ register it, blank-import it:
 ```go
 package wasmengine
 
-import "github.com/mukezhz/code-mode/sandbox"
+import "github.com/mukezhz/codemode/sandbox"
 
 func init() {
 	sandbox.RegisterEngine(sandbox.Engine{Name: "wasm", New: New})

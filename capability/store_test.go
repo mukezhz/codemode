@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/capability/internal/fixture"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/capability/internal/fixture"
 )
 
 // A backend registered only by this test, so registration mechanics are

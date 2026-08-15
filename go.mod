@@ -1,4 +1,4 @@
-module github.com/mukezhz/code-mode
+module github.com/mukezhz/codemode
 
 go 1.25.0
 

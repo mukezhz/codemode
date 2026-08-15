@@ -21,8 +21,8 @@
 // interpreters it can actually run:
 //
 //	import (
-//		"github.com/mukezhz/code-mode/sandbox"
-//		_ "github.com/mukezhz/code-mode/sandbox/goja"
+//		"github.com/mukezhz/codemode/sandbox"
+//		_ "github.com/mukezhz/codemode/sandbox/goja"
 //	)
 //
 //	runner, err := sandbox.New(sandbox.Options{Engine: sandbox.EngineGoja})
@@ -40,8 +40,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
 )
 
 // Runner evaluates untrusted, model-authored programs.
@@ -146,9 +146,9 @@ const DefaultEngine = EngineGoja
 // so an unregistered name produces an error naming the missing import rather
 // than a bare "unsupported".
 var shipped = map[string]string{
-	EngineGoja:     "github.com/mukezhz/code-mode/sandbox/goja",
-	EngineStarlark: "github.com/mukezhz/code-mode/sandbox/starlark",
-	EngineLua:      "github.com/mukezhz/code-mode/sandbox/lua",
+	EngineGoja:     "github.com/mukezhz/codemode/sandbox/goja",
+	EngineStarlark: "github.com/mukezhz/codemode/sandbox/starlark",
+	EngineLua:      "github.com/mukezhz/codemode/sandbox/lua",
 }
 
 var (

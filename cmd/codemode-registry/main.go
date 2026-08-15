@@ -3,7 +3,7 @@
 //
 // Install it, or run it without installing:
 //
-//	go run github.com/mukezhz/code-mode/cmd/codemode-registry@latest -help
+//	go run github.com/mukezhz/codemode/cmd/codemode-registry@latest -help
 //
 // A typical build step, from anywhere in your repository:
 //
@@ -22,9 +22,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mukezhz/code-mode/registry"
+	"github.com/mukezhz/codemode/registry"
 
-	codemodeproto "github.com/mukezhz/code-mode/proto"
+	codemodeproto "github.com/mukezhz/codemode/proto"
 )
 
 func main() {

@@ -6,7 +6,7 @@ here compiles against the module as it stands.
 ## Install
 
 ```sh
-go get github.com/mukezhz/code-mode
+go get github.com/mukezhz/codemode
 ```
 
 Your binary links only what you blank-import. Importing `codemode` alone pulls
@@ -74,7 +74,7 @@ describe it is linked into your binary:
 
 ```go
 import (
-	"github.com/mukezhz/code-mode/registry"
+	"github.com/mukezhz/codemode/registry"
 	todov1 "myapp/gen/todo/v1"
 )
 
@@ -98,7 +98,7 @@ the command stays supported:
 
 ```sh
 buf build --as-file-descriptor-set -o build/protoset.pb
-go run github.com/mukezhz/code-mode/cmd/codemode-registry@latest \
+go run github.com/mukezhz/codemode/cmd/codemode-registry@latest \
   -descriptor build/protoset.pb -out internal/capabilities/registry.json
 ```
 
@@ -254,7 +254,7 @@ twenty capabilities you can describe all of them every time and skip search
 entirely. Above that, ranking starts to matter:
 
 ```go
-import _ "github.com/mukezhz/code-mode/capability/pgstore"   // or sqlitestore
+import _ "github.com/mukezhz/codemode/capability/pgstore"   // or sqlitestore
 
 store, err := capability.OpenStore(ctx)   // CAPABILITY_DB, CAPABILITY_DB_DSN
 if err != nil {
@@ -367,13 +367,13 @@ import (
 	"log"
 	"strings"
 
-	"github.com/mukezhz/code-mode/agent"
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/codemode"
-	"github.com/mukezhz/code-mode/llm"
-	"github.com/mukezhz/code-mode/llm/claude"
-	"github.com/mukezhz/code-mode/registry"
-	"github.com/mukezhz/code-mode/sandbox/goja"
+	"github.com/mukezhz/codemode/agent"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/llm/claude"
+	"github.com/mukezhz/codemode/registry"
+	"github.com/mukezhz/codemode/sandbox/goja"
 
 	todov1 "myapp/gen/todo/v1"
 )
@@ -444,7 +444,7 @@ func keywordSearch(capabilities capability.Registry) codemode.SearchFunc {
 }
 ```
 
-Set `ANTHROPIC_API_KEY` and run it. [`examples/todo`](https://github.com/mukezhz/code-mode/tree/main/examples/todo)
+Set `ANTHROPIC_API_KEY` and run it. [`examples/todo`](https://github.com/mukezhz/codemode/tree/main/examples/todo)
 is the same shape with a real in-memory application behind `execute`.
 
 ## Driving it yourself

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/sandbox"
-	"github.com/mukezhz/code-mode/sandbox/goja"
-	"github.com/mukezhz/code-mode/sandbox/lua"
-	"github.com/mukezhz/code-mode/sandbox/starlark"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/sandbox"
+	"github.com/mukezhz/codemode/sandbox/goja"
+	"github.com/mukezhz/codemode/sandbox/lua"
+	"github.com/mukezhz/codemode/sandbox/starlark"
 )
 
 // engine pairs a runner with a program written in its dialect, so every engine

@@ -2,7 +2,7 @@
 //
 // Blank-import it to make LLM_PROVIDER=claude available:
 //
-//	import _ "github.com/mukezhz/code-mode/llm/claude"
+//	import _ "github.com/mukezhz/codemode/llm/claude"
 //
 // Anthropic publishes no embeddings API, so capability search always uses
 // llm/openai's embedder, whichever provider writes the programs.
@@ -17,7 +17,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/mukezhz/code-mode/llm"
+	"github.com/mukezhz/codemode/llm"
 )
 
 func init() {

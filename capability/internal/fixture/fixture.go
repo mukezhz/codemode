@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 // Memory is an in-memory Store, so the Index logic is testable without a

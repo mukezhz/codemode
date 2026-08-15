@@ -3,7 +3,7 @@
 //
 // Blank-import it to make CAPABILITY_DB=sqlite available:
 //
-//	import _ "github.com/mukezhz/code-mode/capability/sqlitestore"
+//	import _ "github.com/mukezhz/codemode/capability/sqlitestore"
 //
 // It requires cgo, because the SQLite driver and the vector extension are C.
 // A binary that must build with CGO_ENABLED=0 should use capability/pgstore
@@ -21,7 +21,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 // sqliteStore indexes capabilities in SQLite using the sqlite-vector extension.

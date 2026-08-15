@@ -3,7 +3,7 @@
 //
 // Blank-import it to make CAPABILITY_DB=postgres available:
 //
-//	import _ "github.com/mukezhz/code-mode/capability/pgstore"
+//	import _ "github.com/mukezhz/codemode/capability/pgstore"
 //
 // It is pure Go, so it builds with CGO_ENABLED=0. The database must allow
 // CREATE EXTENSION vector, or have it installed already.
@@ -18,7 +18,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 func init() {

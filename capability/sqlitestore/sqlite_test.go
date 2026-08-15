@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mukezhz/code-mode/capability"
-	"github.com/mukezhz/code-mode/capability/internal/fixture"
-	"github.com/mukezhz/code-mode/capability/sqlitestore"
+	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/capability/internal/fixture"
+	"github.com/mukezhz/codemode/capability/sqlitestore"
 )
 
 // TestVectorSearch exercises the sqlite-vector backend end to end. It skips

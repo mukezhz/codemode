@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/codemode/capability"
 )
 
 const registryJSON = `{"capabilities":[{"name":"todos.list","rpc":"todo.v1.TodoService/List",` +
