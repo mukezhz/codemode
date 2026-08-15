@@ -1,7 +1,0 @@
-This file keeps dist/ present in a fresh checkout.
-
-//go:embed all:dist fails to compile when the directory does not exist, so a
-clone that has never run `pnpm build` would not even build the Go binary.
-web.Assets() looks for index.html and reports ErrNotBuilt when it is missing,
-which is the failure worth having: the API still works and the server says how
-to build the frontend.
