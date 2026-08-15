@@ -4,7 +4,7 @@ package user.v1;
 
 import "codemode.proto";
 
-option go_package = "github.com/mukezhz/codemode/gen/user/v1;userv1";
+option go_package = "github.com/mukezhz/codemode/examples/taskreport/gen/user/v1;userv1";
 
 // UserService is a second proto file feeding the same registry, which is how a
 // larger application is assembled: one file per subsystem, each owning its own

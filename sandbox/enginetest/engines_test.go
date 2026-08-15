@@ -316,3 +316,63 @@ var (
 	_ func(sandbox.Options) (sandbox.Runner, error) = starlark.New
 	_ func(sandbox.Options) (sandbox.Runner, error) = lua.New
 )
+
+// The shapes a declaration refers to must reach the prompt, in the dialect's
+// own notation. Without them a model guesses field names, and a wrong guess is
+// silent: reading group.project when the field is group.name yields undefined.
+func TestEnginesDeclareReferencedShapes(t *testing.T) {
+	matches := []capability.Match{{Capability: capability.Capability{
+		Name:        "reports.byProject",
+		Description: "Counts tasks per project",
+		Input:       capability.TypeSchema{Fields: map[string]string{}},
+		Output:      capability.TypeSchema{Fields: map[string]string{"groups": "repeated GroupCount"}},
+		Types: map[string]capability.TypeSchema{
+			"GroupCount": {Type: "GroupCount", Fields: map[string]string{
+				"name": "string", "open": "number",
+			}},
+		},
+	}}}
+
+	want := map[string]string{
+		"goja":     "type GroupCount = { name: string, open: number };",
+		"starlark": `# GroupCount = {"name": string, "open": int|float}`,
+		"lua":      "-- GroupCount = { name = string, open = number }",
+	}
+
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			runner, err := engine.new(sandbox.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
+
+			prompt := runner.Prompt(matches)
+			if !strings.Contains(prompt, want[engine.name]) {
+				t.Fatalf("prompt is missing %q:\n%s", want[engine.name], prompt)
+			}
+		})
+	}
+}
+
+// A capability referring to nothing must not leave an empty section behind: it
+// would be prompt spent on a heading with no content.
+func TestEnginesOmitTheShapesSectionWhenEmpty(t *testing.T) {
+	matches := []capability.Match{{Capability: capability.Capability{
+		Name:        "tasks.count",
+		Description: "Counts tasks",
+		Input:       capability.TypeSchema{Fields: map[string]string{}},
+		Output:      capability.TypeSchema{Fields: map[string]string{"count": "number"}},
+	}}}
+
+	for _, engine := range engines() {
+		runner, err := engine.new(sandbox.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if prompt := runner.Prompt(matches); strings.Contains(prompt, "Shapes referred to above") {
+			t.Errorf("%s emitted an empty shapes section", engine.name)
+		}
+		runner.Close()
+	}
+}

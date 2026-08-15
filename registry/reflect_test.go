@@ -1,32 +1,24 @@
 package registry_test
 
 import (
-	"encoding/json"
+	"strings"
 	"testing"
 
-	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/registry"
 
-	todov1 "github.com/mukezhz/codemode/gen/todo/v1"
-
-	// Linked, so FromGlobalFiles can see them. FromFiles above cannot: it
-	// scans only what it is handed.
-	_ "github.com/mukezhz/codemode/gen/email/v1"
-	_ "github.com/mukezhz/codemode/gen/invoice/v1"
-	_ "github.com/mukezhz/codemode/gen/student/v1"
-	_ "github.com/mukezhz/codemode/gen/task/v1"
-	_ "github.com/mukezhz/codemode/gen/user/v1"
+	// The registry's own fixture, so a library test does not reach into an
+	// example. Both files are linked, which is what lets FromGlobalFiles see
+	// more than FromFiles is handed.
+	fixturev1 "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1"
+	shippingv1 "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/shipping/v1"
 )
 
 // FromFiles is the short path: generated code already carries its descriptors,
 // so a consumer needs no descriptor set, no JSON, and no build step.
-func TestFromFilesBuildsTheSameRegistryAsTheGenerator(t *testing.T) {
-	built, err := registry.FromFiles(todov1.File_todo_proto)
+func TestFromFilesReadsLinkedDescriptors(t *testing.T) {
+	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
 		t.Fatalf("FromFiles returned error: %v", err)
-	}
-	if len(built.Capabilities) != 3 {
-		t.Fatalf("capabilities = %d, want 3: %+v", len(built.Capabilities), built.Capabilities)
 	}
 
 	byName := map[string]string{}
@@ -34,20 +26,24 @@ func TestFromFilesBuildsTheSameRegistryAsTheGenerator(t *testing.T) {
 		byName[item.Name] = item.RPC
 	}
 	for name, rpc := range map[string]string{
-		"todos.create":   "todo.v1.TodoService/Create",
-		"todos.list":     "todo.v1.TodoService/List",
-		"todos.complete": "todo.v1.TodoService/Complete",
+		"orders.list":   "fixture.v1.OrderService/List",
+		"orders.get":    "fixture.v1.OrderService/Get",
+		"orders.cancel": "fixture.v1.OrderService/Cancel",
 	} {
 		if byName[name] != rpc {
 			t.Errorf("%s = %q, want %q", name, byName[name], rpc)
 		}
 	}
+	if len(built.Capabilities) != 3 {
+		t.Fatalf("capabilities = %d, want 3", len(built.Capabilities))
+	}
 }
 
 // The descriptions and schemas are the whole point — search matches on one and
-// the model reads the other.
+// the model reads the other. The fixture carries one field of every shape the
+// neutral type renderer handles.
 func TestFromFilesCarriesDescriptionsAndSchemas(t *testing.T) {
-	built, err := registry.FromFiles(todov1.File_todo_proto)
+	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,14 +51,14 @@ func TestFromFilesCarriesDescriptionsAndSchemas(t *testing.T) {
 		if item.Description == "" {
 			t.Errorf("%s has no description", item.Name)
 		}
-		if item.Name == "todos.list" {
-			if got := item.Output.Fields["todos"]; got != "repeated Todo" {
-				t.Errorf("todos.list output = %q, want %q", got, "repeated Todo")
+		if item.Name == "orders.list" {
+			if got := item.Output.Fields["orders"]; got != "repeated Order" {
+				t.Errorf("output = %q, want %q", got, "repeated Order")
 			}
 		}
-		if item.Name == "todos.complete" {
+		if item.Name == "orders.get" {
 			if got := item.Input.Fields["id"]; got != "number" {
-				t.Errorf("todos.complete input id = %q, want %q", got, "number")
+				t.Errorf("input id = %q, want %q", got, "number")
 			}
 		}
 	}
@@ -71,31 +67,42 @@ func TestFromFilesCarriesDescriptionsAndSchemas(t *testing.T) {
 // FromFiles scans only what it is handed, which is what makes it the safer
 // habit: a new transitive dependency cannot widen the registry.
 func TestFromFilesScansOnlyTheFilesGiven(t *testing.T) {
-	built, err := registry.FromFiles(todov1.File_todo_proto)
+	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range built.Capabilities {
-		if item.Name[:indexDot(item.Name)] != "todos" {
+		if !strings.HasPrefix(item.Name, "orders.") {
 			t.Fatalf("FromFiles returned %q from a file it was not given", item.Name)
 		}
 	}
+
+	// Handed both, it returns both.
+	pair, err := registry.FromFiles(fixturev1.File_orders_proto, shippingv1.File_shipping_proto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(pair.Namespaces(), ","); got != "orders,shipping" {
+		t.Fatalf("namespaces = %q, want both", got)
+	}
 }
 
-// Every linked file is scanned, but only annotated services contribute.
+// Every linked file is scanned, but only annotated services contribute — so
+// linking an unrelated protobuf package cannot widen the registry.
 func TestFromGlobalFilesFindsEveryAnnotatedService(t *testing.T) {
 	built, err := registry.FromGlobalFiles()
 	if err != nil {
 		t.Fatalf("FromGlobalFiles returned error: %v", err)
 	}
-	namespaces := map[string]bool{}
-	for _, item := range built.Capabilities {
-		namespaces[item.Name[:indexDot(item.Name)]] = true
-	}
-	for _, want := range []string{"todos", "students", "invoices", "email"} {
-		if !namespaces[want] {
-			t.Errorf("namespace %q is missing from %v", want, namespaces)
+	for _, want := range []string{"orders", "shipping"} {
+		if !strings.Contains(strings.Join(built.Namespaces(), ","), want) {
+			t.Errorf("namespace %q is missing from %v", want, built.Namespaces())
 		}
+	}
+	// codemode.proto is linked too and declares no service, so it must
+	// contribute nothing rather than error.
+	if len(built.Capabilities) != 4 {
+		t.Fatalf("capabilities = %d, want 4: %v", len(built.Capabilities), built.Names())
 	}
 }
 
@@ -103,61 +110,6 @@ func TestFromFilesRejectsNoInput(t *testing.T) {
 	if _, err := registry.FromFiles(); err == nil {
 		t.Fatal("FromFiles accepted no descriptors")
 	}
-}
-
-func indexDot(name string) int {
-	for i := range name {
-		if name[i] == '.' {
-			return i
-		}
-	}
-	return len(name)
-}
-
-// The two paths must produce identical registries. If they drift, a project
-// that generates registry.json in CI and one that calls FromFiles at startup
-// would expose different capabilities from the same protos.
-func TestFromFilesMatchesTheGeneratedRegistry(t *testing.T) {
-	built, err := registry.FromGlobalFiles()
-	if err != nil {
-		t.Fatal(err)
-	}
-	generated, err := capability.LoadFile("registry.json")
-	if err != nil {
-		t.Skipf("registry.json is not generated: %v", err)
-	}
-
-	// Compared by name rather than as one blob: the two paths visit files in
-	// different orders, and order is not part of what a registry means.
-	reflected := byName(t, built)
-	fromFile := byName(t, generated)
-	if len(reflected) != len(fromFile) {
-		t.Fatalf("capability counts differ: reflection %d, registry.json %d",
-			len(reflected), len(fromFile))
-	}
-	for name, want := range fromFile {
-		got, found := reflected[name]
-		if !found {
-			t.Errorf("%s is in registry.json but not in the reflected registry", name)
-			continue
-		}
-		if got != want {
-			t.Errorf("%s differs:\n reflection: %s\nregistry.json: %s", name, got, want)
-		}
-	}
-}
-
-func byName(t *testing.T, built capability.Registry) map[string]string {
-	t.Helper()
-	byName := make(map[string]string, len(built.Capabilities))
-	for _, item := range built.Capabilities {
-		encoded, err := json.Marshal(item)
-		if err != nil {
-			t.Fatal(err)
-		}
-		byName[item.Name] = string(encoded)
-	}
-	return byName
 }
 
 // The same binary must produce the same registry every run, or the prompt built
@@ -172,11 +124,47 @@ func TestFromGlobalFilesIsDeterministic(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for index := range first.Capabilities {
-			if first.Capabilities[index].Name != next.Capabilities[index].Name {
-				t.Fatalf("capability %d moved: %q then %q",
-					index, first.Capabilities[index].Name, next.Capabilities[index].Name)
-			}
+		if strings.Join(first.Names(), ",") != strings.Join(next.Names(), ",") {
+			t.Fatalf("order changed: %v then %v", first.Names(), next.Names())
 		}
 	}
+}
+
+// A model told only that a call returns "repeated Order" has to guess what an
+// Order holds, and a wrong guess reads as undefined rather than failing. The
+// referenced shapes travel with the capability so it never has to guess.
+func TestFromFilesCarriesReferencedShapes(t *testing.T) {
+	built, err := registry.FromFiles(fixturev1.File_orders_proto)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, item := range built.Capabilities {
+		if item.Name != "orders.list" {
+			continue
+		}
+		order, found := item.Types["Order"]
+		if !found {
+			t.Fatalf("orders.list carries no Order shape: %v", item.Types)
+		}
+		for field, want := range map[string]string{
+			"id":        "number",
+			"reference": "string",
+			"shipped":   "bool",
+			"items":     "repeated string",
+			"labels":    "map<string, string>",
+			"receipt":   "bytes",
+		} {
+			if order.Fields[field] != want {
+				t.Errorf("Order.%s = %q, want %q", field, order.Fields[field], want)
+			}
+		}
+		// The request and response themselves are already spelled out by Input
+		// and Output; repeating them would only pad the prompt.
+		if _, repeated := item.Types["ListOrdersResponse"]; repeated {
+			t.Error("the response type is repeated in Types")
+		}
+		return
+	}
+	t.Fatal("orders.list is missing")
 }

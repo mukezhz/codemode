@@ -12,7 +12,7 @@ Written material is split by whether it is published. `docs/` is the VitePress s
 
 Install pinned tools with `mise install`, then use:
 
-- `make generate` — build protobuf descriptors with Buf and regenerate `registry/registry.json`.
+- `make generate` — regenerate Go from every proto module and rebuild the taskreport example's `registry.json`.
 - `make test` — run Buf lint, all Go tests, and the consumer check; the native vector test skips without its extension.
 - `make test-consumer` — verify importing `codemode` alone links nothing third-party and the core packages build with `CGO_ENABLED=0`.
 - `SQLITE_VECTOR_EXTENSION=/absolute/path/vector.dylib make test-vector` — exercise real semantic search using sqlite-vector 1.0.0. Use `vector.so` on Linux.

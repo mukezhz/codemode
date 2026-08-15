@@ -43,14 +43,14 @@ Two things happen long before a user types anything.
 
 ### B1 — Protobuf files describe your services
 
-You write `proto/todo.proto` as normal, with two extra annotations: a namespace
+You write `todo.proto` as normal, with two extra annotations: a namespace
 on the service and a description on each method. The description is what a model
 will read later, so write it for a reader, not a compiler.
 
 ### B2 — The generator turns them into a registry
 
 `make generate` asks Buf for a descriptor set, then `registry/main.go` walks it
-and writes `registry/registry.json`. Each entry has a friendly `name` like
+and writes `registry.json`. Each entry has a friendly `name` like
 `todos.complete`, the real `rpc` path `todo.v1.TodoService/Complete`, the
 description, and the input and output field types.
 

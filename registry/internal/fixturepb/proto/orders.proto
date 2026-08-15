@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package fixture.v1;
+
+import "codemode.proto";
+
+option go_package = "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1;fixturev1";
+
+// OrderService exists only to give the registry tests a real generated package
+// to read descriptors from. It is deliberately minimal: one service, three
+// methods, and one field of each shape the neutral type renderer handles.
+service OrderService {
+  option (codemode.namespace) = "orders";
+
+  rpc List(ListOrdersRequest) returns (ListOrdersResponse) {
+    option (codemode.description) = "Lists orders, newest first.";
+  }
+
+  rpc Get(GetOrderRequest) returns (OrderResponse) {
+    option (codemode.description) = "Returns one order by ID.";
+  }
+
+  rpc Cancel(GetOrderRequest) returns (OrderResponse) {
+    option (codemode.description) = "Cancels an order that has not shipped.";
+  }
+}
+
+message Order {
+  int64 id = 1;
+  string reference = 2;
+  bool shipped = 3;
+  repeated string items = 4;
+  map<string, string> labels = 5;
+  bytes receipt = 6;
+}
+
+message ListOrdersRequest {}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+}
+
+message GetOrderRequest {
+  int64 id = 1;
+}
+
+message OrderResponse {
+  Order order = 1;
+}

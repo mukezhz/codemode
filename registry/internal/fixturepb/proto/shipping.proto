@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package shipping.v1;
+
+import "codemode.proto";
+
+option go_package = "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/shipping/v1;shippingv1";
+
+// A second file, so the tests cover merging across files and the namespace
+// collision check that comes with it.
+service ShippingService {
+  option (codemode.namespace) = "shipping";
+
+  rpc Quote(QuoteRequest) returns (QuoteResponse) {
+    option (codemode.description) = "Quotes shipping for a destination.";
+  }
+}
+
+message QuoteRequest {
+  string destination = 1;
+}
+
+message QuoteResponse {
+  double amount = 1;
+}

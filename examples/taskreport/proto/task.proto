@@ -4,7 +4,7 @@ package task.v1;
 
 import "codemode.proto";
 
-option go_package = "github.com/mukezhz/codemode/gen/task/v1;taskv1";
+option go_package = "github.com/mukezhz/codemode/examples/taskreport/gen/task/v1;taskv1";
 
 // TaskService is the write and read surface a model composes against. The
 // methods are deliberately primitive: listing, filtering, and totalling belong

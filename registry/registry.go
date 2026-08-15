@@ -104,12 +104,28 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				if file.GetPackage() != "" {
 					serviceName = file.GetPackage() + "." + serviceName
 				}
+				// The messages the request and response refer to. A model that
+				// cannot see them guesses field names, and a wrong guess reads
+				// as undefined rather than failing.
+				types := map[string]TypeSchema{}
+				for _, root := range []string{method.GetInputType(), method.GetOutputType()} {
+					if err := collectTypes(root, messages, types); err != nil {
+						return Registry{}, fmt.Errorf("%s: %w", name, err)
+					}
+				}
+				delete(types, input.Type)
+				delete(types, output.Type)
+				if len(types) == 0 {
+					types = nil
+				}
+
 				registry.Capabilities = append(registry.Capabilities, Capability{
 					Name:        name,
 					RPC:         serviceName + "/" + method.GetName(),
 					Description: description,
 					Input:       input,
 					Output:      output,
+					Types:       types,
 				})
 			}
 		}
@@ -242,6 +258,46 @@ func schemaFor(typeName string, messages map[string]*descriptorpb.DescriptorProt
 //
 // Numeric scalars all collapse to "number" because every one of them crosses
 // the bridge as a JSON number.
+// collectTypes walks every message reachable from typeName and records its
+// shape. Recursion is bounded by the seen set in into, so a message that refers
+// to itself — a tree node, a threaded comment — terminates.
+func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorProto, into map[string]TypeSchema) error {
+	message, ok := messages[typeName]
+	if !ok {
+		return fmt.Errorf("message %q not found", typeName)
+	}
+	short := shortTypeName(typeName)
+	if _, visited := into[short]; visited {
+		return nil
+	}
+
+	schema, err := schemaFor(typeName, messages)
+	if err != nil {
+		return err
+	}
+	into[short] = schema
+
+	for _, field := range message.Field {
+		if field.GetType() != descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+			continue
+		}
+		referenced := field.GetTypeName()
+		// A map is a synthetic entry message. Its shape is already carried by
+		// the map<K, V> notation, so follow the value and skip the entry.
+		if entry := messages[referenced]; entry != nil && entry.GetOptions().GetMapEntry() {
+			value := entry.Field[1]
+			if value.GetType() != descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+				continue
+			}
+			referenced = value.GetTypeName()
+		}
+		if err := collectTypes(referenced, messages, into); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func neutralType(field *descriptorpb.FieldDescriptorProto, messages map[string]*descriptorpb.DescriptorProto) (string, error) {
 	if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 		if message := messages[field.GetTypeName()]; message != nil && message.GetOptions().GetMapEntry() {

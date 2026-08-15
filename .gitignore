@@ -1,9 +1,12 @@
 protoset.pb
-registry.json
+examples/taskreport/registry.json
 
 # Documentation site build artefacts.
 docs/node_modules/
 docs/.vitepress/dist/
+# …except the example's, which is committed so `go run` serves the app without
+# Node installed. go:embed also fails to compile if the directory is absent.
+!examples/taskreport/web/dist/
 docs/.vitepress/cache/
 
 # gen/ is committed on purpose: `go get` must work without buf installed,
@@ -11,3 +14,17 @@ docs/.vitepress/cache/
 
 # The taskreport example writes here.
 tasks.db
+
+# Frontend build artifacts. dist/
+# …except the example's, which is committed so `go run` serves the app without
+# Node installed. go:embed also fails to compile if the directory is absent.
+!examples/taskreport/web/dist/ is committed on purpose, so `go run`
+# serves the app without Node installed.
+examples/taskreport/web/node_modules/
+
+dist/
+# …except the example's, which is committed so `go run` serves the app without
+# Node installed. go:embed also fails to compile if the directory is absent.
+!examples/taskreport/web/dist/
+# Local credentials for the taskreport example. The .example is committed.
+examples/taskreport/.env

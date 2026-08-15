@@ -4,7 +4,7 @@ package todo.v1;
 
 import "codemode.proto";
 
-option go_package = "github.com/mukezhz/codemode/gen/todo/v1;todov1";
+option go_package = "github.com/mukezhz/codemode/examples/todo/gen/todo/v1;todov1";
 
 service TodoService {
   option (codemode.namespace) = "todos";

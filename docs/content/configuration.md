@@ -74,7 +74,7 @@ Options passed in code win over these. See [Sandbox](/sandbox).
 | Command | What it does |
 | --- | --- |
 | `mise install` | Install pinned tools: Buf, Node, pnpm |
-| `make generate` | Build descriptors and regenerate `registry/registry.json` |
+| `make generate` | Regenerate Go from every proto module and the example's `registry.json` |
 | `make demo-todo` | Regenerate, then run the Todo example end to end |
 | `make test` | Buf lint plus all Go tests |
 | `make test-vector` | SQLite vector search; needs `SQLITE_VECTOR_EXTENSION` |

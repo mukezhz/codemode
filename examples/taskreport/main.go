@@ -38,16 +38,25 @@ import (
 	"github.com/mukezhz/codemode/sandbox/goja"
 
 	"github.com/mukezhz/codemode/capability"
-	taskv1 "github.com/mukezhz/codemode/gen/task/v1"
-	userv1 "github.com/mukezhz/codemode/gen/user/v1"
+	taskv1 "github.com/mukezhz/codemode/examples/taskreport/gen/task/v1"
+	userv1 "github.com/mukezhz/codemode/examples/taskreport/gen/user/v1"
 
 	"github.com/mukezhz/codemode/examples/taskreport/app"
 	"github.com/mukezhz/codemode/examples/taskreport/auth"
 	"github.com/mukezhz/codemode/examples/taskreport/search"
 	"github.com/mukezhz/codemode/examples/taskreport/store"
+	"github.com/mukezhz/codemode/examples/taskreport/trace"
 )
 
 func main() {
+	// Before the flags are parsed, so the file can supply their defaults. The
+	// path is fixed rather than a flag for that reason; -env would have to be
+	// read before flag.Parse to be useful.
+	if err := loadEnvFile(envFile()); err != nil {
+		fmt.Fprintln(os.Stderr, "taskreport:", err)
+		os.Exit(1)
+	}
+
 	var config config
 	flag.StringVar(&config.request, "request", "give me a status report across every project", "what to ask")
 	flag.StringVar(&config.database, "db", "tasks.db", "SQLite file; :memory: keeps nothing")
@@ -62,6 +71,8 @@ func main() {
 	flag.StringVar(&config.role, "role", "member", "member or admin; decides which capabilities exist")
 	flag.BoolVar(&config.seed, "seed", true, "seed a sample backlog when the database is empty")
 	flag.BoolVar(&config.verbose, "v", false, "print the system prompt as well as the program")
+	flag.StringVar(&config.serve, "serve", "", "serve the web app on this address, e.g. :8080")
+	flag.StringVar(&config.logLevel, "log", "info", "debug, info, warn, or error; debug shows the prompt, the program, and every capability call")
 	flag.Parse()
 
 	if err := run(context.Background(), config); err != nil {
@@ -84,6 +95,8 @@ type config struct {
 	role         string
 	seed         bool
 	verbose      bool
+	serve        string
+	logLevel     string
 }
 
 func run(ctx context.Context, config config) error {
@@ -143,6 +156,11 @@ func run(ctx context.Context, config config) error {
 	}
 	defer runner.Close()
 
+	// Wrapped so the program that reaches the interpreter is printed. This is
+	// the code the model actually produced, after the agent stripped whatever
+	// markdown fences it wrapped it in.
+	runner = trace.Runner(runner, logger(config), os.Stderr)
+
 	withheld := len(full.Capabilities) - len(allowed.Capabilities)
 	fmt.Printf("request\n  %s\n\nsigned in as\n  %s (%s)\n\ncapabilities\n  %d across %s",
 		config.request, identity.User, identity.Role,
@@ -154,6 +172,10 @@ func run(ctx context.Context, config config) error {
 
 	// 7. The model, configured entirely from this command's own flags.
 	if config.apiKey == "" && config.baseURL == "" {
+		if config.serve != "" {
+			// The board works without a model; only the chat needs one.
+			return serve(ctx, config, tasks, full, runner, nil)
+		}
 		return offline(ctx, mode, runner, config)
 	}
 	model, err := openai.New(openai.Options{Options: llm.Options{
@@ -168,6 +190,10 @@ func run(ctx context.Context, config config) error {
 	}
 	fmt.Printf("model\n  %s at %s\n\n", model.Name(), endpointLabel(config.baseURL))
 
+	if config.serve != "" {
+		return serve(ctx, config, tasks, full, runner, model)
+	}
+
 	result, err := agent.Run(ctx, mode, model, config.request, agent.Options{
 		Runner:       runner,
 		Limit:        config.limit,
@@ -180,6 +206,15 @@ func run(ctx context.Context, config config) error {
 	}
 	fmt.Printf("answer\n%s\n", indent(agent.Answer(result.Answer)))
 	return nil
+}
+
+// envFile is the dotfile this command reads. TASKREPORT_ENV moves it, for
+// running several configurations without editing one file.
+func envFile() string {
+	if path := strings.TrimSpace(os.Getenv("TASKREPORT_ENV")); path != "" {
+		return path
+	}
+	return "examples/taskreport/.env"
 }
 
 // capabilities assembles the whole surface from every proto file the
@@ -247,9 +282,8 @@ func report(result agent.Result, verbose bool, runner sandbox.Runner) {
 			fmt.Printf("system prompt\n%s\n\n", indent(runner.Prompt(result.Matches)))
 		}
 	}
-	if result.Source != "" {
-		fmt.Printf("program (attempt %d of %d)\n%s\n\n", result.Attempts, result.Attempts, indent(result.Source))
-	}
+	// The program itself is printed by trace.Runner as it reaches the sandbox,
+	// so repeating it here would only make the two drift.
 }
 
 // offline runs without a model so the whole path stays inspectable without
@@ -270,7 +304,6 @@ func offline(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner,
 		fmt.Printf("\nsystem prompt\n%s\n", indent(runner.Prompt(matches)))
 	}
 
-	fmt.Printf("\nprogram (fixed, stands in for the model)\n%s\n", indent(fixedProgram))
 	value, err := runner.Run(ctx, mode, fixedProgram)
 	if err != nil {
 		return err

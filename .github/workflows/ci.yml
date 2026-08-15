@@ -79,12 +79,12 @@ jobs:
 
       # A registry that no longer matches the protos is a silent failure: the
       # model is offered capabilities the host will reject.
-      - name: Generated code and registry are up to date
+      # Generated Go is committed so `go get` needs no buf. registry.json is
+      # not, so only the code is diffed; a test asserts the two paths agree.
+      - name: Generated code is up to date
         run: |
           buf generate
-          buf build --as-file-descriptor-set -o registry/protoset.pb
-          go run ./cmd/codemode-registry -out registry/registry.json
-          git diff --exit-code gen registry/registry.json
+          git diff --exit-code -- '*.pb.go'
 
   docs:
     runs-on: ubuntu-latest

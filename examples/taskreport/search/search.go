@@ -31,9 +31,11 @@ func New(registry capability.Registry) codemode.SearchFunc {
 		words := tokenize(query)
 
 		scored := make([]capability.Match, 0, len(indexed))
+		unmatched := make([]capability.Match, 0, len(indexed))
 		for _, item := range indexed {
 			score := item.score(words)
 			if score == 0 {
+				unmatched = append(unmatched, capability.Match{Capability: item.capability, Distance: 1})
 				continue
 			}
 			// Distance is "lower is closer", so it inverts the score. Staying on
@@ -52,15 +54,18 @@ func New(registry capability.Registry) codemode.SearchFunc {
 			return scored[i].Capability.Name < scored[j].Capability.Name
 		})
 
-		// Nothing matched: hand back the whole registry rather than nothing.
-		// An empty result set means the agent fails outright, and a request
-		// phrased in words the descriptions do not use is a ranking failure,
-		// not a reason to refuse.
-		if len(scored) == 0 {
-			for _, item := range indexed {
-				scored = append(scored, capability.Match{Capability: item.capability, Distance: 1})
-			}
-		}
+		// Top up to the limit with whatever did not match.
+		//
+		// This is the important part, and it was missing. Ranking should decide
+		// the *order* a model sees capabilities in, not whether it sees enough
+		// of them to answer. One weak accidental match used to suppress
+		// everything else — "how many todos do I have" matched the word "many"
+		// in one description and offered that capability alone, so the model
+		// dutifully answered a question nobody asked.
+		//
+		// A model handed twelve capabilities and needing three will ignore nine.
+		// A model handed one will use the one.
+		scored = append(scored, unmatched...)
 		if limit > 0 && limit < len(scored) {
 			scored = scored[:limit]
 		}
@@ -124,12 +129,51 @@ func (item indexedCapability) score(words []string) float64 {
 
 // stop words carry no signal about which capability is wanted, and matching
 // them would make every capability score alike.
+//
+// The quantity words matter more than they look. "how many" appears in the
+// description of a capability that counts one specific thing, so leaving "many"
+// in made every counting question match that one capability and nothing else.
 var stop = set([]string{
 	"a", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "do",
-	"for", "from", "give", "how", "i", "in", "is", "it", "me", "my", "of", "on",
-	"or", "please", "show", "than", "that", "the", "then", "there", "this",
-	"to", "was", "what", "when", "which", "with", "you",
+	"does", "for", "from", "get", "give", "had", "has", "have", "how", "i",
+	"in", "is", "it", "me", "much", "my", "of", "on", "or", "please", "show",
+	"than", "that", "the", "then", "there", "these", "this", "those", "to",
+	"was", "we", "what", "when", "which", "with", "you",
+	// Quantity words. A request is almost always asking "how many" of
+	// something, so they separate no two capabilities.
+	"many", "lot", "lots", "some", "few", "several", "number", "total",
 })
+
+// synonyms map what a person says to what the contracts say. The gap is real
+// and it is the application's to close: this app calls them tasks, and half its
+// users will call them todos.
+//
+// An embedding index closes it without a table — "what is late?" finds
+// "overdue" there. This is the honest cost of ranking by shared words.
+var synonyms = map[string]string{
+	"todo":     "task",
+	"todos":    "task",
+	"item":     "task",
+	"items":    "task",
+	"work":     "task",
+	"ticket":   "task",
+	"finished": "complete",
+	"done":     "complete",
+	"closed":   "complete",
+	"late":     "overdue",
+	"behind":   "overdue",
+	"due":      "overdue",
+	"pending":  "open",
+	"owner":    "user",
+	"person":   "user",
+	"people":   "user",
+	"team":     "user",
+	"who":      "user",
+	"summary":  "report",
+	"stats":    "report",
+	"chart":    "report",
+	"trend":    "throughput",
+}
 
 func tokenize(text string) []string {
 	fields := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
@@ -137,9 +181,13 @@ func tokenize(text string) []string {
 	})
 	words := make([]string, 0, len(fields))
 	for _, field := range fields {
-		if len(field) > 1 && !stop[field] {
-			words = append(words, field)
+		if len(field) <= 1 || stop[field] {
+			continue
 		}
+		if replacement, found := synonyms[field]; found {
+			field = replacement
+		}
+		words = append(words, field)
 	}
 	return words
 }
@@ -147,11 +195,21 @@ func tokenize(text string) []string {
 // stem is deliberately crude: it strips the few suffixes that separate a
 // request's phrasing from a contract's. A real stemmer would be better and a
 // real embedder better still.
+//
+// The trailing "e" matters more than it looks. Stripping "ed" from "completed"
+// gives "complet", so leaving "complete" alone meant the two never matched —
+// a request saying "finished work" reached tasks.complete and never
+// reports.completedBetween. Applying the same rule to both sides is what makes
+// a crude stemmer usable; applying it to one is worse than not stemming.
 func stem(word string) string {
 	for _, suffix := range []string{"ing", "ed", "es", "s"} {
 		if trimmed, found := strings.CutSuffix(word, suffix); found && len(trimmed) > 2 {
-			return trimmed
+			word = trimmed
+			break
 		}
+	}
+	if trimmed, found := strings.CutSuffix(word, "e"); found && len(trimmed) > 2 {
+		return trimmed
 	}
 	return word
 }

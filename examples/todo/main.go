@@ -14,8 +14,8 @@ import (
 	coderegistry "github.com/mukezhz/codemode/registry"
 
 	"github.com/mukezhz/codemode/examples/todo/app"
+	todov1 "github.com/mukezhz/codemode/examples/todo/gen/todo/v1"
 	demosearch "github.com/mukezhz/codemode/examples/todo/search"
-	todov1 "github.com/mukezhz/codemode/gen/todo/v1"
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
 

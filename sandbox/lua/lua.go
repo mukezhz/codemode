@@ -79,6 +79,11 @@ end
 codemode.execute("todos.complete", { id = pending[1].id })
 return "completed " .. pending[1].title`,
 	Comment: func(description string) string { return "-- " + description },
+	Shape: func(name string, schema capability.TypeSchema) string {
+		return "-- " + name + " = " + prompt.Fields(schema, luaTypes,
+			func(field, fieldType string) string { return field + " = " + fieldType },
+			"{}", "{ ", " }")
+	},
 	Signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
 			return prompt.Fields(schema, luaTypes, func(name, fieldType string) string {

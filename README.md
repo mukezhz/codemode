@@ -33,17 +33,19 @@ export ANTHROPIC_API_KEY=...
 go run ./examples/todo -request "finish anything about docs"
 ```
 
-For something complete — a task tracker in SQLite with eighteen capabilities and
-reporting — see [`examples/taskreport`](examples/taskreport). It answers
-questions like *"which projects are behind, and what should I do first?"* by
-writing one program, and works against any OpenAI-compatible endpoint:
+For something complete — a task tracker with a web UI, SQLite storage,
+twenty-three capabilities, per-user scoping, and charts rendered from a prompt —
+see [`examples/taskreport`](examples/taskreport):
 
 ```sh
-go run ./examples/taskreport                      # no key needed
-go run ./examples/taskreport \
-  -base-url https://api.deepseek.com/v1 -api-key sk-... -model deepseek-chat \
-  -request "what is overdue, and which of it is high priority?"
+cd examples/taskreport/web && pnpm install && pnpm build && cd -
+go run ./examples/taskreport -serve :8080 \
+  -base-url https://api.deepseek.com/v1 -api-key sk-... -model deepseek-chat
 ```
+
+Ask it *"what is overdue, and which of it is high priority?"* and one model turn
+produces one program, which returns a document the browser renders as stat
+cards, a chart, and a table. Works against any OpenAI-compatible endpoint.
 
 ## Documentation
 
@@ -66,9 +68,9 @@ make docs-build  # build the static site
 
 | Path | What it is |
 | --- | --- |
-| `proto/` | Capability contracts, annotated with a namespace and descriptions |
+| `proto/` | `codemode.proto`: the two annotations, embedded for consumers |
 | `registry/` | Builds a registry from linked descriptors or a Buf descriptor set; CLI in `cmd/codemode-registry/` |
-| `gen/` | Generated Go for the example protos. Committed, so `go get` needs no buf |
+| `gen/` | Generated Go for `codemode.proto`. Each example generates into its own tree |
 | `capability/` | Registry types and the vector index; backends in `sqlitestore/` and `pgstore/` |
 | `codemode/` | The two-method public interface: `Search` and `Execute` |
 | `llm/` | The `Client` interface; providers in `claude/` and `openai/` |
@@ -83,7 +85,7 @@ make docs-build  # build the static site
 
 | Command | What it does |
 | --- | --- |
-| `make generate` | Regenerate Go from the protos and rebuild `registry/registry.json` |
+| `make generate` | Regenerate Go from every proto module and rebuild the example's `registry.json` |
 | `make test` | Buf lint plus all Go tests |
 | `make test-vector` | SQLite vector search; needs `SQLITE_VECTOR_EXTENSION` |
 | `make test-consumer` | Checks a consumer links only what it blank-imports |

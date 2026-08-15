@@ -13,8 +13,8 @@ import (
 	"github.com/mukezhz/codemode/sandbox/goja"
 
 	"github.com/mukezhz/codemode/capability"
-	taskv1 "github.com/mukezhz/codemode/gen/task/v1"
-	userv1 "github.com/mukezhz/codemode/gen/user/v1"
+	taskv1 "github.com/mukezhz/codemode/examples/taskreport/gen/task/v1"
+	userv1 "github.com/mukezhz/codemode/examples/taskreport/gen/user/v1"
 	coderegistry "github.com/mukezhz/codemode/registry"
 
 	"github.com/mukezhz/codemode/examples/taskreport/app"

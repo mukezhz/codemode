@@ -1,4 +1,4 @@
-.PHONY: demo-todo demo-report generate generate-go generate-registry test test-vector \
+.PHONY: demo-todo demo-report demo-web generate generate-go generate-registry test test-vector \
 	test-postgres test-consumer test-env docs docs-build docs-preview
 
 demo-todo: generate
@@ -6,6 +6,13 @@ demo-todo: generate
 
 # A complete application: SQLite tasks, 18 capabilities, reporting. Runs without
 # credentials; pass BASE_URL and API_KEY to have a model write the program.
+# The web app. Builds the frontend if pnpm is available, then serves.
+demo-web: generate
+	mise exec -- pnpm --dir examples/taskreport/web install --frozen-lockfile
+	mise exec -- pnpm --dir examples/taskreport/web build
+	go run ./examples/taskreport -serve :8080 $(if $(BASE_URL),-base-url $(BASE_URL)) \
+		$(if $(API_KEY),-api-key $(API_KEY)) $(if $(MODEL),-model $(MODEL))
+
 demo-report: generate
 	go run ./examples/taskreport $(if $(BASE_URL),-base-url $(BASE_URL)) \
 		$(if $(API_KEY),-api-key $(API_KEY)) $(if $(MODEL),-model $(MODEL)) \
@@ -19,9 +26,14 @@ generate: generate-go generate-registry
 generate-go:
 	mise exec -- buf generate
 
+# Demonstrates the file-based path for the same contracts registry.FromFiles
+# reads at runtime. A test asserts the two agree, so this is not decoration.
 generate-registry:
-	mise exec -- buf build --as-file-descriptor-set -o registry/protoset.pb
-	go run ./cmd/codemode-registry -out registry/registry.json
+	mise exec -- buf build examples/taskreport/proto \
+		--as-file-descriptor-set -o examples/taskreport/protoset.pb
+	go run ./cmd/codemode-registry \
+		-descriptor examples/taskreport/protoset.pb \
+		-out examples/taskreport/registry.json
 
 test:
 	mise exec -- buf lint

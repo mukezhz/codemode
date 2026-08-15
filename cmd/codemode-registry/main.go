@@ -28,9 +28,9 @@ import (
 )
 
 func main() {
-	descriptor := flag.String("descriptor", "registry/protoset.pb",
+	descriptor := flag.String("descriptor", "protoset.pb",
 		"path to a Buf file descriptor set (buf build --as-file-descriptor-set)")
-	out := flag.String("out", "registry/registry.json",
+	out := flag.String("out", "registry.json",
 		"path to write the generated registry; - writes to stdout")
 	printProto := flag.Bool("print-proto", false,
 		"write codemode.proto to stdout and exit, for importing into your own protos")

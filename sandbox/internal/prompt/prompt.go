@@ -31,6 +31,8 @@ type Dialect struct {
 	Signature func(capability.Capability) string
 	// Comment wraps a description in this dialect's comment syntax.
 	Comment func(string) string
+	// Shape renders one referenced message type as a named object.
+	Shape func(name string, schema capability.TypeSchema) string
 }
 
 // Render produces the shared frame around a dialect's rules and the
@@ -56,6 +58,10 @@ func (dialect Dialect) Render(matches []capability.Match) string {
 
 	builder.WriteString("\nReply with the program only. No prose, no markdown fences.\n\nDeclared capabilities:\n\n")
 	builder.WriteString(dialect.Declarations(matches))
+	if types := dialect.Types(matches); types != "" {
+		builder.WriteString("Shapes referred to above:\n\n")
+		builder.WriteString(types)
+	}
 	builder.WriteString("\nExample of the shape expected:\n\n")
 	builder.WriteString(strings.TrimSpace(dialect.Example))
 	builder.WriteString("\n")
@@ -72,6 +78,41 @@ func (dialect Dialect) Declarations(matches []capability.Match) string {
 		builder.WriteString(dialect.Signature(match.Capability))
 		builder.WriteString("\n\n")
 	}
+	return builder.String()
+}
+
+// Types renders each message shape the declarations refer to, once.
+//
+// Without this a model reads "repeated GroupCount" and has to guess what a
+// GroupCount holds. A wrong guess does not fail: reading group.project when the
+// field is group.name yields undefined, and the answer is quietly wrong.
+//
+// Shapes are shared between capabilities, so they are rendered once after all
+// the declarations rather than inline with each — which also keeps the prompt
+// byte-stable for caching as the match set changes.
+func (dialect Dialect) Types(matches []capability.Match) string {
+	shapes := map[string]capability.TypeSchema{}
+	for _, match := range matches {
+		for name, schema := range match.Capability.Types {
+			shapes[name] = schema
+		}
+	}
+	if len(shapes) == 0 {
+		return ""
+	}
+
+	names := make([]string, 0, len(shapes))
+	for name := range shapes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var builder strings.Builder
+	for _, name := range names {
+		builder.WriteString(dialect.Shape(name, shapes[name]))
+		builder.WriteString("\n")
+	}
+	builder.WriteString("\n")
 	return builder.String()
 }
 

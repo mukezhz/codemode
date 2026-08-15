@@ -1,6 +1,15 @@
 version: v2
+# One module per owner. codemode.proto belongs to the library; everything else
+# belongs to the example or the test that uses it, and lives beside it.
+#
+# Buf resolves imports across modules in the workspace, so an example's proto
+# can import codemode.proto without vendoring a copy — which is exactly what a
+# consuming repository cannot do, and why codemode-registry -print-proto exists.
 modules:
   - path: proto
+  - path: examples/taskreport/proto
+  - path: examples/todo/proto
+  - path: registry/internal/fixturepb/proto
 lint:
   use:
     - STANDARD

@@ -53,8 +53,23 @@ because every one of them crosses the bridge as a JSON number.
 | `repeated T` | `repeated T` |
 | `map<K, V>` | `map<K, V>` |
 
-Schemas describe the direct fields of each request and response. Referenced
-message types are named, not recursively expanded.
+Schemas describe the direct fields of each request and response. Every message
+they refer to travels alongside, transitively, in `Capability.Types`:
+
+```json
+"output": { "type": "GroupCountsResponse", "fields": { "groups": "repeated GroupCount" } },
+"types":  { "GroupCount": { "type": "GroupCount",
+             "fields": { "name": "string", "open": "number", "total": "number" } } }
+```
+
+The prompt renders them once, after the declarations, under "Shapes referred to
+above". Without them a model reads `repeated GroupCount` and has to guess what a
+`GroupCount` holds — and a wrong guess does not fail. Reading `group.project`
+when the field is `group.name` yields `undefined`, so the program runs, the
+answer arrives, and it is quietly wrong.
+
+Recursion is bounded, so a message that refers to itself terminates. Map entry
+messages are skipped, since `map<K, V>` already says their shape.
 
 ### Why the registry is language-neutral
 
@@ -95,7 +110,7 @@ make generate
 
 ```mermaid
 flowchart LR
-  proto["proto/*.proto"] -->|buf build| pb["registry/protoset.pb<br/><small>descriptor set</small>"]
+  proto["your *.proto"] -->|buf build| pb["protoset.pb<br/><small>descriptor set</small>"]
   pb -->|codemode-registry| json["registry.json<br/><small>the catalogue</small>"]
 ```
 
@@ -129,7 +144,7 @@ generation and search cannot drift onto separate schemas.
 and a trusted executor:
 
 ```go
-registry, err := capability.LoadFile("registry/registry.json")
+registry, err := capability.LoadFile("registry.json")
 if err != nil {
     return err
 }
