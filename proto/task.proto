@@ -1,0 +1,282 @@
+syntax = "proto3";
+
+package task.v1;
+
+import "codemode.proto";
+
+option go_package = "github.com/mukezhz/codemode/gen/task/v1;taskv1";
+
+// TaskService is the write and read surface a model composes against. The
+// methods are deliberately primitive: listing, filtering, and totalling belong
+// in the program the model writes, not in an RPC per question someone might
+// ask. ReportService below holds only the aggregates SQL genuinely does better.
+//
+// Every method here is scoped to the signed-in user, and none of them takes a
+// user ID to say who that is. The two that deliberately reach across owners are
+// marked administrators only and are withheld from the registry entirely for
+// everyone else.
+service TaskService {
+  option (codemode.namespace) = "tasks";
+
+  rpc Create(CreateTaskRequest) returns (TaskResponse) {
+    option (codemode.description) =
+      "Creates a task. Title is required. Priority is low, medium, or high and defaults to medium. Due date is YYYY-MM-DD.";
+  }
+
+  rpc Get(GetTaskRequest) returns (TaskResponse) {
+    option (codemode.description) = "Returns one task by its numeric ID.";
+  }
+
+  rpc List(ListTasksRequest) returns (TaskListResponse) {
+    option (codemode.description) =
+      "Lists tasks, newest first. Every filter is optional and they combine: status is open or completed, and tag matches a single tag.";
+  }
+
+  rpc Update(UpdateTaskRequest) returns (TaskResponse) {
+    option (codemode.description) =
+      "Changes a task's title, project, priority, or due date. Only the fields you set are written; the rest keep their current values.";
+  }
+
+  rpc Complete(TaskIDRequest) returns (TaskResponse) {
+    option (codemode.description) = "Marks a task completed, recording the completion date. Completing an already completed task is an error.";
+  }
+
+  rpc Reopen(TaskIDRequest) returns (TaskResponse) {
+    option (codemode.description) = "Marks a completed task open again and clears its completion date.";
+  }
+
+  rpc Delete(TaskIDRequest) returns (DeleteTaskResponse) {
+    option (codemode.description) = "Deletes a task permanently by ID.";
+  }
+
+  rpc AddTag(TagRequest) returns (TaskResponse) {
+    option (codemode.description) = "Adds a tag to a task. Adding a tag it already has changes nothing.";
+  }
+
+  rpc RemoveTag(TagRequest) returns (TaskResponse) {
+    option (codemode.description) = "Removes a tag from a task.";
+  }
+
+  rpc Search(SearchTasksRequest) returns (TaskListResponse) {
+    option (codemode.description) = "Finds tasks whose title contains the given text, case-insensitively.";
+  }
+
+  // Administrators only. These are the two capabilities that reach across
+  // owners, so they are kept apart from the ones above rather than added as an
+  // owner field on them: a capability a caller must not have is easier to
+  // withhold than a field they must not set.
+  rpc ListFor(ListForRequest) returns (TaskListResponse) {
+    option (codemode.description) =
+      "Lists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.";
+  }
+
+  rpc Assign(AssignTaskRequest) returns (TaskResponse) {
+    option (codemode.description) = "Moves a task to a different owner. Administrators only.";
+  }
+}
+
+// ProjectService groups tasks. A project is just a name a task carries, so
+// there is nothing to create: it exists as soon as a task uses it.
+service ProjectService {
+  option (codemode.namespace) = "projects";
+
+  rpc List(ListProjectsRequest) returns (ListProjectsResponse) {
+    option (codemode.description) = "Lists every project name that has at least one task, with how many tasks each holds.";
+  }
+
+  rpc Rename(RenameProjectRequest) returns (RenameProjectResponse) {
+    option (codemode.description) = "Moves every task in one project to another project name.";
+  }
+}
+
+// ReportService holds the aggregates a database answers better than a program
+// would: counting and grouping over the whole table. Anything that needs
+// judgement — what counts as stale, how to phrase a summary — stays in the
+// program the model writes.
+service ReportService {
+  option (codemode.namespace) = "reports";
+
+  rpc StatusCounts(ReportRequest) returns (StatusCountsResponse) {
+    option (codemode.description) = "Totals every task by state: open, completed, overdue, and due today.";
+  }
+
+  rpc ByProject(ReportRequest) returns (GroupCountsResponse) {
+    option (codemode.description) = "Counts open and completed tasks per project, so one call answers where the work sits.";
+  }
+
+  rpc ByPriority(ReportRequest) returns (GroupCountsResponse) {
+    option (codemode.description) = "Counts open and completed tasks per priority level.";
+  }
+
+  rpc Overdue(OverdueRequest) returns (TaskListResponse) {
+    option (codemode.description) =
+      "Lists open tasks whose due date is before as_of, oldest first. Leave as_of empty for today.";
+  }
+
+  rpc CompletedBetween(DateRangeRequest) returns (TaskListResponse) {
+    option (codemode.description) = "Lists tasks completed between two YYYY-MM-DD dates, inclusive.";
+  }
+
+  rpc Throughput(ThroughputRequest) returns (ThroughputResponse) {
+    option (codemode.description) =
+      "Counts tasks completed on each of the last N days, most recent first, including days with none.";
+  }
+
+  rpc ByOwner(ReportRequest) returns (GroupCountsResponse) {
+    option (codemode.description) =
+      "Counts open and completed tasks per person across the whole workspace. Administrators only.";
+  }
+}
+
+message Task {
+  int64 id = 1;
+  // Who the task belongs to. Set from the signed-in user on creation; there is
+  // no request field for it, so a program cannot create work under someone
+  // else's name.
+  string owner = 10;
+  string title = 2;
+  string project = 3;
+  // low, medium, or high.
+  string priority = 4;
+  // YYYY-MM-DD, or empty when the task has no due date.
+  string due_date = 5;
+  bool completed = 6;
+  // YYYY-MM-DD, or empty while the task is open.
+  string completed_date = 7;
+  string created_date = 8;
+  repeated string tags = 9;
+}
+
+message CreateTaskRequest {
+  string title = 1;
+  string project = 2;
+  string priority = 3;
+  string due_date = 4;
+  repeated string tags = 5;
+}
+
+message GetTaskRequest {
+  int64 id = 1;
+}
+
+message TaskIDRequest {
+  int64 id = 1;
+}
+
+message ListTasksRequest {
+  string project = 1;
+  // open or completed. Empty returns both.
+  string status = 2;
+  string priority = 3;
+  string tag = 4;
+  // Zero returns every match.
+  int32 limit = 5;
+}
+
+message UpdateTaskRequest {
+  int64 id = 1;
+  string title = 2;
+  string project = 3;
+  string priority = 4;
+  string due_date = 5;
+}
+
+message TagRequest {
+  int64 id = 1;
+  string tag = 2;
+}
+
+message SearchTasksRequest {
+  string text = 1;
+  int32 limit = 2;
+}
+
+message ListForRequest {
+  string owner = 1;
+  // open or completed. Empty returns both.
+  string status = 2;
+  int32 limit = 3;
+}
+
+message AssignTaskRequest {
+  int64 id = 1;
+  string owner = 2;
+}
+
+message TaskResponse {
+  Task task = 1;
+}
+
+message TaskListResponse {
+  repeated Task tasks = 1;
+  int32 count = 2;
+}
+
+message DeleteTaskResponse {
+  bool deleted = 1;
+}
+
+message ListProjectsRequest {}
+
+message Project {
+  string name = 1;
+  int32 total = 2;
+  int32 open = 3;
+  int32 completed = 4;
+}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+message RenameProjectRequest {
+  string from = 1;
+  string to = 2;
+}
+
+message RenameProjectResponse {
+  int32 moved = 1;
+}
+
+message ReportRequest {}
+
+message StatusCountsResponse {
+  int32 total = 1;
+  int32 open = 2;
+  int32 completed = 3;
+  int32 overdue = 4;
+  int32 due_today = 5;
+}
+
+message GroupCount {
+  string name = 1;
+  int32 total = 2;
+  int32 open = 3;
+  int32 completed = 4;
+}
+
+message GroupCountsResponse {
+  repeated GroupCount groups = 1;
+}
+
+message OverdueRequest {
+  string as_of = 1;
+}
+
+message DateRangeRequest {
+  string start = 1;
+  string end = 2;
+}
+
+message ThroughputRequest {
+  int32 days = 1;
+}
+
+message DayCount {
+  string date = 1;
+  int32 completed = 2;
+}
+
+message ThroughputResponse {
+  repeated DayCount days = 1;
+}

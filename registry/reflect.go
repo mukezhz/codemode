@@ -2,6 +2,7 @@ package registry
 
 import (
 	"fmt"
+	"sort"
 
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -50,12 +51,21 @@ func FromFiles(files ...protoreflect.FileDescriptor) (Registry, error) {
 // the safer habit: it says in code exactly which contracts are exposed, and a
 // new transitive dependency cannot quietly add to them.
 func FromGlobalFiles() (Registry, error) {
-	set := &descriptorpb.FileDescriptorSet{}
-	seen := map[string]bool{}
+	// RangeFiles walks a map, so its order changes between runs of the same
+	// binary. Sorting by path first makes the registry — and therefore the
+	// prompt built from it — byte-stable, which is what prompt caching needs.
+	var files []protoreflect.FileDescriptor
 	protoregistry.GlobalFiles.RangeFiles(func(file protoreflect.FileDescriptor) bool {
-		collect(file, set, seen)
+		files = append(files, file)
 		return true
 	})
+	sort.Slice(files, func(i, j int) bool { return files[i].Path() < files[j].Path() })
+
+	set := &descriptorpb.FileDescriptorSet{}
+	seen := map[string]bool{}
+	for _, file := range files {
+		collect(file, set, seen)
+	}
 	if len(set.File) == 0 {
 		return Registry{}, fmt.Errorf("no protobuf files are linked into this binary")
 	}

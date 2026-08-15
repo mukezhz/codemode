@@ -24,7 +24,7 @@ export default withMermaid(
         {
           text: "Guide",
           link: "/overview",
-          activeMatch: "^/(overview|flow|using-it|dependencies)",
+          activeMatch: "^/(overview|flow|using-it|dependencies|scaling-up)",
         },
         {
           text: "Reference",
@@ -46,6 +46,7 @@ export default withMermaid(
           items: [
             { text: "Add it to your application", link: "/using-it" },
             { text: "What your binary links", link: "/dependencies" },
+            { text: "Many services, many users", link: "/scaling-up" },
           ],
         },
         {

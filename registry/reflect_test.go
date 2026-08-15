@@ -14,6 +14,8 @@ import (
 	_ "github.com/mukezhz/codemode/gen/email/v1"
 	_ "github.com/mukezhz/codemode/gen/invoice/v1"
 	_ "github.com/mukezhz/codemode/gen/student/v1"
+	_ "github.com/mukezhz/codemode/gen/task/v1"
+	_ "github.com/mukezhz/codemode/gen/user/v1"
 )
 
 // FromFiles is the short path: generated code already carries its descriptors,
@@ -125,16 +127,56 @@ func TestFromFilesMatchesTheGeneratedRegistry(t *testing.T) {
 		t.Skipf("registry.json is not generated: %v", err)
 	}
 
-	fromReflection, err := json.Marshal(built)
+	// Compared by name rather than as one blob: the two paths visit files in
+	// different orders, and order is not part of what a registry means.
+	reflected := byName(t, built)
+	fromFile := byName(t, generated)
+	if len(reflected) != len(fromFile) {
+		t.Fatalf("capability counts differ: reflection %d, registry.json %d",
+			len(reflected), len(fromFile))
+	}
+	for name, want := range fromFile {
+		got, found := reflected[name]
+		if !found {
+			t.Errorf("%s is in registry.json but not in the reflected registry", name)
+			continue
+		}
+		if got != want {
+			t.Errorf("%s differs:\n reflection: %s\nregistry.json: %s", name, got, want)
+		}
+	}
+}
+
+func byName(t *testing.T, built capability.Registry) map[string]string {
+	t.Helper()
+	byName := make(map[string]string, len(built.Capabilities))
+	for _, item := range built.Capabilities {
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		byName[item.Name] = string(encoded)
+	}
+	return byName
+}
+
+// The same binary must produce the same registry every run, or the prompt built
+// from it stops being cacheable. RangeFiles walks a map, so this is a real risk.
+func TestFromGlobalFilesIsDeterministic(t *testing.T) {
+	first, err := registry.FromGlobalFiles()
 	if err != nil {
 		t.Fatal(err)
 	}
-	fromDescriptorSet, err := json.Marshal(generated)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(fromReflection) != string(fromDescriptorSet) {
-		t.Fatalf("the two paths disagree:\nreflection:  %s\ndescriptors: %s",
-			fromReflection, fromDescriptorSet)
+	for range 5 {
+		next, err := registry.FromGlobalFiles()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index := range first.Capabilities {
+			if first.Capabilities[index].Name != next.Capabilities[index].Name {
+				t.Fatalf("capability %d moved: %q then %q",
+					index, first.Capabilities[index].Name, next.Capabilities[index].Name)
+			}
+		}
 	}
 }

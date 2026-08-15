@@ -28,7 +28,7 @@ go mod tidy >/dev/null 2>&1
 
 echo "==> a minimal consumer links no third-party dependency"
 leaked=$(go list -deps ./... |
-	grep -Ev '^github\.com/mukezhz/code-mode' |
+	grep -Ev '^github\.com/mukezhz/codemode' |
 	grep -E '^(github\.com|go\.starlark\.net|google\.golang\.org|golang\.org/x)' || true)
 if [ -n "$leaked" ]; then
 	echo "importing codemode alone pulled in:" >&2

@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "codemode.proto";
+
+option go_package = "github.com/mukezhz/codemode/gen/user/v1;userv1";
+
+// UserService is a second proto file feeding the same registry, which is how a
+// larger application is assembled: one file per subsystem, each owning its own
+// namespace, joined at startup.
+//
+// Note what is absent. No request here takes a user ID for "who is asking" —
+// that comes from the request context, never from the program. A program
+// written by a model is untrusted input, and a field it can set is a field it
+// can set to someone else.
+service UserService {
+  option (codemode.namespace) = "users";
+
+  rpc Me(MeRequest) returns (UserResponse) {
+    option (codemode.description) =
+      "Returns the signed-in user: their name and role. Takes no arguments — the caller is already known.";
+  }
+
+  rpc List(ListUsersRequest) returns (ListUsersResponse) {
+    option (codemode.description) = "Lists everyone in the workspace with their role. Administrators only.";
+  }
+}
+
+message User {
+  string name = 1;
+  // member or admin.
+  string role = 2;
+}
+
+message MeRequest {}
+
+message UserResponse {
+  User user = 1;
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}

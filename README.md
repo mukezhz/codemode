@@ -33,6 +33,18 @@ export ANTHROPIC_API_KEY=...
 go run ./examples/todo -request "finish anything about docs"
 ```
 
+For something complete — a task tracker in SQLite with eighteen capabilities and
+reporting — see [`examples/taskreport`](examples/taskreport). It answers
+questions like *"which projects are behind, and what should I do first?"* by
+writing one program, and works against any OpenAI-compatible endpoint:
+
+```sh
+go run ./examples/taskreport                      # no key needed
+go run ./examples/taskreport \
+  -base-url https://api.deepseek.com/v1 -api-key sk-... -model deepseek-chat \
+  -request "what is overdue, and which of it is high priority?"
+```
+
 ## Documentation
 
 Full docs are a VitePress site under [`docs/`](docs/content):
@@ -40,6 +52,7 @@ Full docs are a VitePress site under [`docs/`](docs/content):
 - [What code mode is](docs/content/overview.md)
 - [**Add it to your application**](docs/content/using-it.md) — empty `main.go` to a working request
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
+- [Many services, many users](docs/content/scaling-up.md) — composing proto files, and per-user scoping
 - [The flow, step by step](docs/content/flow.md) — one request end to end
 - [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
 - [Configuration](docs/content/configuration.md) · [Troubleshooting](docs/content/troubleshooting.md)
@@ -61,7 +74,8 @@ make docs-build  # build the static site
 | `llm/` | The `Client` interface; providers in `claude/` and `openai/` |
 | `sandbox/` | The `Runner` interface; engines in `goja/`, `starlark/`, `lua/` |
 | `agent/` | Search → prompt → model → sandbox, with a repair loop |
-| `examples/todo/` | A runnable end-to-end example |
+| `examples/todo/` | The smallest end-to-end example |
+| `examples/taskreport/` | A complete app: SQLite tasks, 18 capabilities, reporting |
 | `docs/` | The published documentation site |
 | `notes/` | Internal writing: PRDs, milestones, decisions. Never published. |
 

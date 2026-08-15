@@ -7,12 +7,11 @@
 package codemode
 
 import (
-	reflect "reflect"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
+	reflect "reflect"
+	unsafe "unsafe"
 )
 
 const (
@@ -57,9 +56,9 @@ var File_codemode_proto protoreflect.FileDescriptor
 
 const file_codemode_proto_rawDesc = "" +
 	"\n" +
-	"\x0fcodemode.proto\x12\tcodemode\x1a google/protobuf/descriptor.proto:?\n" +
+	"\x0ecodemode.proto\x12\bcodemode\x1a google/protobuf/descriptor.proto:?\n" +
 	"\tnamespace\x12\x1f.google.protobuf.ServiceOptions\x18І\x03 \x01(\tR\tnamespace:B\n" +
-	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescriptionB6Z4github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
+	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescriptionB3Z1github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
 
 var file_codemode_proto_goTypes = []any{
 	(*descriptorpb.ServiceOptions)(nil), // 0: google.protobuf.ServiceOptions

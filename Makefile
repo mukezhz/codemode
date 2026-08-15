@@ -1,8 +1,15 @@
-.PHONY: demo-todo generate generate-go generate-registry test test-vector \
+.PHONY: demo-todo demo-report generate generate-go generate-registry test test-vector \
 	test-postgres test-consumer test-env docs docs-build docs-preview
 
 demo-todo: generate
 	go run ./examples/todo
+
+# A complete application: SQLite tasks, 18 capabilities, reporting. Runs without
+# credentials; pass BASE_URL and API_KEY to have a model write the program.
+demo-report: generate
+	go run ./examples/taskreport $(if $(BASE_URL),-base-url $(BASE_URL)) \
+		$(if $(API_KEY),-api-key $(API_KEY)) $(if $(MODEL),-model $(MODEL)) \
+		$(if $(REQUEST),-request "$(REQUEST)")
 
 # Generated Go carries its own descriptors, which is what lets a consumer call
 # registry.FromFiles and skip the registry.json step entirely. The registry

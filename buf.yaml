@@ -9,6 +9,10 @@ lint:
     - PACKAGE_DIRECTORY_MATCH
     - RPC_REQUEST_STANDARD_NAME
     - RPC_RESPONSE_STANDARD_NAME
+    # Capability schemas end up in the model's prompt. Two RPCs that return the
+    # same shape should say so with one type name rather than two identical
+    # ones, because every extra name is prompt the model has to reconcile.
+    - RPC_REQUEST_RESPONSE_UNIQUE
   ignore_only:
     PACKAGE_VERSION_SUFFIX:
       - proto/codemode.proto
