@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -12,33 +11,62 @@ import (
 	"github.com/mukezhz/code-mode/llm"
 )
 
-// defaultEmbeddingModel is used when EMBEDDING_MODEL is unset.
-const defaultEmbeddingModel = "text-embedding-3-small"
+// DefaultEmbeddingModel is used when neither EmbedOptions.Model nor
+// EMBEDDING_MODEL is set.
+const DefaultEmbeddingModel = "text-embedding-3-small"
+
+// EmbedOptions configures the embedder. Every field is optional and falls back
+// to the environment, then to the embedding-specific defaults.
+//
+// Only Model, APIKey, BaseURL, and Timeout are read; sampling parameters have
+// no meaning for an embeddings request.
+type EmbedOptions = llm.Options
 
 // NewEmbedder builds an embedder over the OpenAI embeddings protocol. Anthropic
 // publishes no embeddings API, so this path is used regardless of LLM_PROVIDER;
-// point EMBEDDING_BASE_URL at any compatible endpoint to embed locally.
+// point BaseURL or EMBEDDING_BASE_URL at any compatible endpoint to embed
+// locally.
 //
-// Environment:
+// Options left zero fall back to the environment:
 //
 //	EMBEDDING_MODEL     (default text-embedding-3-small)
 //	EMBEDDING_API_KEY   (falls back to OPENAI_API_KEY)
 //	EMBEDDING_BASE_URL  (falls back to OPENAI_BASE_URL, then LLM_BASE_URL)
 //
 // It returns llm.ErrNoProvider when neither a key nor a base URL is configured.
-func NewEmbedder() (llm.Embedder, error) {
-	key := llm.Env("EMBEDDING_API_KEY", os.Getenv("OPENAI_API_KEY"))
-	endpoint := llm.Env("EMBEDDING_BASE_URL", llm.BaseURL("OPENAI_BASE_URL"))
+func NewEmbedder(options EmbedOptions) (llm.Embedder, error) {
+	resolved, err := options.Resolve(llm.Defaults{
+		Model:      DefaultEmbeddingModel,
+		ModelEnv:   "EMBEDDING_MODEL",
+		APIKeyEnv:  "EMBEDDING_API_KEY",
+		BaseURLEnv: "EMBEDDING_BASE_URL",
+	})
+	if err != nil {
+		return llm.Embedder{}, err
+	}
+	// The embedding variables win, but an application that configured only the
+	// OpenAI ones should not have to repeat them.
+	key := resolved.APIKey
+	if key == "" {
+		key = llm.Env("OPENAI_API_KEY", "")
+	}
+	endpoint := resolved.BaseURL
+	if endpoint == "" {
+		endpoint = llm.BaseURL("OPENAI_BASE_URL")
+	}
 	if key == "" && endpoint == "" {
 		return llm.Embedder{}, fmt.Errorf("%w: set EMBEDDING_API_KEY or EMBEDDING_BASE_URL", llm.ErrNoProvider)
 	}
 
-	options := []option.RequestOption{option.WithAPIKey(key)}
+	requestOptions := []option.RequestOption{option.WithAPIKey(key)}
 	if endpoint != "" {
-		options = append(options, option.WithBaseURL(endpoint))
+		requestOptions = append(requestOptions, option.WithBaseURL(endpoint))
 	}
-	client := openaisdk.NewClient(options...)
-	model := llm.Env("EMBEDDING_MODEL", defaultEmbeddingModel)
+	if resolved.Timeout > 0 {
+		requestOptions = append(requestOptions, option.WithRequestTimeout(resolved.Timeout))
+	}
+	client := openaisdk.NewClient(requestOptions...)
+	model := resolved.Model
 
 	return llm.Embedder{
 		Model: model,

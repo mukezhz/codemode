@@ -265,7 +265,7 @@ import (
 	_ "github.com/mukezhz/code-mode/sandbox/goja"  // registers SANDBOX_ENGINE=goja
 )
 
-model, err := llm.New()               // LLM_PROVIDER, ANTHROPIC_API_KEY, ...
+model, err := llm.New(llm.Options{})           // all env-driven
 runner, err := sandbox.New(sandbox.Options{})  // SANDBOX_ENGINE
 defer runner.Close()
 
@@ -284,6 +284,20 @@ source and the error and asks again, up to `Attempts` times.
 
 `Result` carries more than the answer — `Source`, `Matches`, and `Attempts` are
 what you log when something goes wrong.
+
+To pin the model, bound the response, or add domain guidance:
+
+```go
+model, err := llm.New(llm.Options{Model: "claude-sonnet-5", MaxTokens: 8000})
+
+result, err := agent.Run(ctx, mode, model, request, agent.Options{
+	Runner:       runner,
+	Instructions: "Answer in one sentence. Never create a todo without a title.",
+})
+```
+
+`Instructions` is appended to the engine's system prompt, not a replacement for
+it — see [configuring the model](/models#configuring-the-model).
 
 ::: tip Pass your own runner
 `agent.Options{Runner: nil}` builds a runner per request and closes it. Building
@@ -332,8 +346,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// 4. Model and sandbox, both from the environment.
-	model, err := llm.New()
+	// 4. Model and sandbox. A zero Options is entirely environment-driven;
+	// set a field to pin it in code instead.
+	model, err := llm.New(llm.Options{})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -32,6 +32,18 @@ type Options struct {
 	// Runner isolates and evaluates each generated program. Nil builds the
 	// environment's default runner, and Run closes what it built.
 	Runner sandbox.Runner
+
+	// Instructions are appended to the system prompt, after the engine's own
+	// rules and the capability declarations. This is where domain guidance
+	// goes: house style for the answer, a policy the program must respect, a
+	// hint about which capability to prefer.
+	//
+	// The engine's rules are not replaceable, because they describe the
+	// language and the single binding the program is evaluated against; a
+	// prompt without them produces code the sandbox cannot run. To take over
+	// the prompt entirely, drive the loop yourself — Runner.Prompt gives you
+	// the same base to build on.
+	Instructions string
 }
 
 // Defaults applied when the matching Options field is zero.
@@ -103,6 +115,9 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	// The engine that will evaluate the program writes the instructions for
 	// producing it, so switching engines switches dialects with no other change.
 	system := runner.Prompt(matches)
+	if instructions := strings.TrimSpace(options.Instructions); instructions != "" {
+		system += "\nAdditional instructions:\n" + instructions + "\n"
+	}
 	prompt := request
 	result := Result{Matches: matches}
 

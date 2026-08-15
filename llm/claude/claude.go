@@ -25,7 +25,7 @@ func init() {
 	llm.RegisterProvider(llm.Provider{
 		Name:    llm.ProviderClaude,
 		Aliases: []string{"anthropic"},
-		New:     New,
+		New:     func(options llm.Options) (llm.Client, error) { return New(Options{Options: options}) },
 		// LLM_BASE_URL names no provider, so it must not select this one;
 		// only Anthropic's own variables count as configuration.
 		Configured: func() bool {
@@ -35,49 +35,137 @@ func init() {
 	})
 }
 
-// defaultClaudeModel is used when ANTHROPIC_MODEL is unset.
-const defaultClaudeModel = "claude-opus-5"
+// DefaultModel is used when neither Options.Model nor ANTHROPIC_MODEL is set.
+const DefaultModel = "claude-opus-5"
 
-// claudeMaxTokens bounds thinking and response text together. Claude Opus 5
+// DefaultMaxTokens bounds thinking and response text together. Claude Opus 5
 // thinks by default, so a budget sized only for the program would truncate it.
-const claudeMaxTokens = 16000
+const DefaultMaxTokens = 16000
 
-type claude struct {
-	client anthropic.Client
-	model  string
-	// fallbacks is off against a custom endpoint, which may not implement the
-	// server-side fallback beta.
-	fallbacks bool
+// Thinking selects the extended-thinking mode.
+type Thinking int
+
+const (
+	// ThinkingDefault leaves the model's own default in place, which is
+	// adaptive thinking on current models. Setting Temperature or TopP
+	// overrides this to ThinkingOff, because Anthropic rejects sampling
+	// parameters alongside thinking.
+	ThinkingDefault Thinking = iota
+	// ThinkingOff disables extended thinking. Programs are measurably worse
+	// without it; choose this only when you need sampling control.
+	ThinkingOff
+	// ThinkingAdaptive asks the model to decide how much to think.
+	ThinkingAdaptive
+)
+
+// Options configures the Claude client. The embedded llm.Options carries
+// everything portable; the fields beside it are Anthropic-specific.
+type Options struct {
+	llm.Options
+
+	// Thinking selects the extended-thinking mode. See Thinking.
+	Thinking Thinking
+
+	// Fallbacks lets a request be served by a recommended fallback model when
+	// a safety classifier declines it. Nil enables it against api.anthropic.com
+	// and disables it against a custom endpoint, which may not implement the
+	// beta. Use llm.Bool-style explicitness only if you need to force it.
+	Fallbacks *bool
+
+	// Betas are additional beta headers to send.
+	Betas []anthropic.AnthropicBeta
+
+	// Request are raw SDK request options — retries, headers, an HTTP client.
+	// The escape hatch for anything this struct does not model.
+	Request []option.RequestOption
 }
 
-// New builds a Claude client from the environment. Blank-import this package
-// instead to have llm.New select it from LLM_PROVIDER.
+type client struct {
+	client    anthropic.Client
+	model     string
+	maxTokens int64
+	params    Options
+	fallbacks bool
+	thinking  anthropic.BetaThinkingConfigParamUnion
+}
+
+// New builds a Claude client. Options left zero fall back to the environment,
+// then to this package's defaults. Blank-import this package instead to have
+// llm.New select it from LLM_PROVIDER.
 //
-// Environment: ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_BASE_URL.
-func New() (llm.Client, error) {
-	key := os.Getenv("ANTHROPIC_API_KEY")
-	endpoint := llm.BaseURL("ANTHROPIC_BASE_URL")
-	if key == "" && endpoint == "" {
+// Environment: ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_BASE_URL, plus the
+// shared LLM_* variables documented on llm.Options.
+func New(options Options) (llm.Client, error) {
+	resolved, err := options.Options.Resolve(llm.Defaults{
+		Model:      DefaultModel,
+		MaxTokens:  DefaultMaxTokens,
+		ModelEnv:   "ANTHROPIC_MODEL",
+		APIKeyEnv:  "ANTHROPIC_API_KEY",
+		BaseURLEnv: "ANTHROPIC_BASE_URL",
+	})
+	if err != nil {
+		return nil, err
+	}
+	options.Options = resolved
+
+	if resolved.APIKey == "" && resolved.BaseURL == "" {
 		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY or a base URL", llm.ErrNoProvider)
 	}
 
-	options := []option.RequestOption{option.WithAPIKey(key)}
-	if endpoint != "" {
-		options = append(options, option.WithBaseURL(endpoint))
+	requestOptions := append([]option.RequestOption{option.WithAPIKey(resolved.APIKey)}, options.Request...)
+	if resolved.BaseURL != "" {
+		requestOptions = append(requestOptions, option.WithBaseURL(resolved.BaseURL))
 	}
-	return &claude{
-		client:    anthropic.NewClient(options...),
-		model:     llm.Env("ANTHROPIC_MODEL", defaultClaudeModel),
-		fallbacks: endpoint == "",
+	if resolved.Timeout > 0 {
+		requestOptions = append(requestOptions, option.WithRequestTimeout(resolved.Timeout))
+	}
+
+	// Fallbacks default off against a custom endpoint, which may not implement
+	// the beta at all.
+	fallbacks := resolved.BaseURL == ""
+	if options.Fallbacks != nil {
+		fallbacks = *options.Fallbacks
+	}
+
+	return &client{
+		client:    anthropic.NewClient(requestOptions...),
+		model:     resolved.Model,
+		maxTokens: int64(resolved.MaxTokens),
+		params:    options,
+		fallbacks: fallbacks,
+		thinking:  thinkingConfig(options),
 	}, nil
 }
 
-func (claude *claude) Name() string { return "claude/" + claude.model }
+// thinkingConfig resolves the thinking mode, honouring the rule that Anthropic
+// rejects a temperature or top_p alongside extended thinking. Asking for
+// sampling control is taken as asking for thinking to be off, because the
+// alternative is a request that always fails.
+func thinkingConfig(options Options) anthropic.BetaThinkingConfigParamUnion {
+	mode := options.Thinking
+	if mode == ThinkingDefault && options.Sampling() {
+		mode = ThinkingOff
+	}
+	switch mode {
+	case ThinkingOff:
+		return anthropic.BetaThinkingConfigParamUnion{
+			OfDisabled: &anthropic.BetaThinkingConfigDisabledParam{},
+		}
+	case ThinkingAdaptive:
+		return anthropic.BetaThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.BetaThinkingConfigAdaptiveParam{},
+		}
+	default:
+		return anthropic.BetaThinkingConfigParamUnion{}
+	}
+}
 
-func (claude *claude) Complete(ctx context.Context, system, user string) (string, error) {
+func (client *client) Name() string { return "claude/" + client.model }
+
+func (client *client) Complete(ctx context.Context, system, user string) (string, error) {
 	params := anthropic.BetaMessageNewParams{
-		Model:     anthropic.Model(claude.model),
-		MaxTokens: claudeMaxTokens,
+		Model:     anthropic.Model(client.model),
+		MaxTokens: client.maxTokens,
 		System: []anthropic.BetaTextBlockParam{{
 			Text: system,
 			// The capability declarations are stable across a session, so
@@ -87,15 +175,26 @@ func (claude *claude) Complete(ctx context.Context, system, user string) (string
 		Messages: []anthropic.BetaMessageParam{
 			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(user)),
 		},
+		Thinking: client.thinking,
 	}
-	if claude.fallbacks {
+	if temperature := client.params.Temperature; temperature != nil {
+		params.Temperature = anthropic.Float(*temperature)
+	}
+	if topP := client.params.TopP; topP != nil {
+		params.TopP = anthropic.Float(*topP)
+	}
+	if len(client.params.StopSequences) > 0 {
+		params.StopSequences = client.params.StopSequences
+	}
+	params.Betas = client.params.Betas
+	if client.fallbacks {
 		// A safety classifier may decline; the recommended fallback model
 		// serves the request instead of the call failing.
 		params.Fallbacks = anthropic.BetaFallbacksParamOfDefault()
-		params.Betas = []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01}
+		params.Betas = append(params.Betas, anthropic.AnthropicBetaServerSideFallback2026_07_01)
 	}
 
-	response, err := claude.client.Beta.Messages.New(ctx, params)
+	response, err := client.client.Beta.Messages.New(ctx, params)
 	if err != nil {
 		return "", fmt.Errorf("claude: %w", err)
 	}

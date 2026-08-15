@@ -50,8 +50,9 @@ type Provider struct {
 	Name string
 	// Aliases are other accepted spellings, such as "anthropic" for claude.
 	Aliases []string
-	// New builds a Client from the environment.
-	New func() (Client, error)
+	// New builds a Client. Options given by the caller win over the
+	// environment; a zero Options is entirely environment-driven.
+	New func(Options) (Client, error)
 	// Configured reports whether this provider's own environment variables are
 	// set, so New can pick one when LLM_PROVIDER is unset.
 	Configured func() bool
@@ -113,7 +114,8 @@ func RegisteredProviders() []string {
 	return names
 }
 
-// New builds the client named by LLM_PROVIDER from the registered providers.
+// New builds a client from options, falling back to the environment for every
+// field left zero. Options.Provider, then LLM_PROVIDER, names the provider.
 // Any endpoint speaking either wire protocol works by setting a base URL, so
 // self-hosted and third-party models are reached through the same providers.
 // It returns ErrNoProvider when nothing is configured.
@@ -127,8 +129,11 @@ func RegisteredProviders() []string {
 //
 // The provider-specific base URL wins over LLM_BASE_URL. A base URL with no API
 // key is allowed, for local endpoints that do not authenticate.
-func New() (Client, error) {
-	name := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+func New(options Options) (Client, error) {
+	name := strings.ToLower(strings.TrimSpace(options.Provider))
+	if name == "" {
+		name = strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+	}
 	if name != "" {
 		providersMutex.RLock()
 		provider, registered := providers[name]
@@ -136,13 +141,13 @@ func New() (Client, error) {
 		if !registered {
 			return nil, unregisteredProvider(name)
 		}
-		return provider.New()
+		return provider.New(options)
 	}
 
 	// Unset means "whichever provider is configured", so a single variable is
 	// enough to get started.
 	if provider, found := detect(); found {
-		return provider.New()
+		return provider.New(options)
 	}
 	if len(RegisteredProviders()) == 0 {
 		return nil, fmt.Errorf("%w: no providers are registered, blank-import %s or %s",

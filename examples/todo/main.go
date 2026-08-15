@@ -31,15 +31,23 @@ import (
 
 func main() {
 	request := flag.String("request", "add two todos and finish the first one", "what the agent should do")
+	model := flag.String("model", "", "model name, overriding ANTHROPIC_MODEL / OPENAI_MODEL")
+	temperature := flag.Float64("temperature", -1, "sampling temperature; negative leaves the provider default")
+	instructions := flag.String("instructions", "", "extra guidance appended to the system prompt")
 	flag.Parse()
 
-	if err := run(context.Background(), *request); err != nil {
+	options := llm.Options{Model: *model}
+	if *temperature >= 0 {
+		options.Temperature = llm.Float(*temperature)
+	}
+
+	if err := run(context.Background(), *request, options, *instructions); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, request string) error {
+func run(ctx context.Context, request string, options llm.Options, instructions string) error {
 	registry, err := capability.LoadFile("registry/registry.json")
 	if err != nil {
 		return fmt.Errorf("run from the repository root: %w", err)
@@ -57,7 +65,7 @@ func run(ctx context.Context, request string) error {
 
 	fmt.Printf("request\n  %s\n\n", request)
 
-	model, err := llm.New()
+	model, err := llm.New(options)
 	if errors.Is(err, llm.ErrNoProvider) {
 		return offline(ctx, mode, request)
 	}
@@ -72,7 +80,10 @@ func run(ctx context.Context, request string) error {
 	defer runner.Close()
 
 	fmt.Printf("model\n  %s\n\nsandbox\n  %s\n\n", model.Name(), runner.Name())
-	result, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner})
+	result, err := agent.Run(ctx, mode, model, request, agent.Options{
+		Runner:       runner,
+		Instructions: instructions,
+	})
 	report(result)
 	if err != nil {
 		return err
@@ -94,7 +105,7 @@ func newSearch(ctx context.Context, registry capability.Registry) (codemode.Sear
 		return nil, nil, err
 	}
 
-	embedder, err := openaiprovider.NewEmbedder()
+	embedder, err := openaiprovider.NewEmbedder(openaiprovider.EmbedOptions{})
 	if err != nil {
 		store.Close()
 		return nil, nil, fmt.Errorf("capability store is configured but embeddings are not: %w", err)

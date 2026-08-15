@@ -47,11 +47,13 @@ func (mode *mode) Execute(_ context.Context, name string, _ json.RawMessage) (js
 type model struct {
 	responses []string
 	prompts   []string
+	systems   []string
 }
 
 func (model *model) Name() string { return "test/model" }
 
-func (model *model) Complete(_ context.Context, _, user string) (string, error) {
+func (model *model) Complete(_ context.Context, system, user string) (string, error) {
+	model.systems = append(model.systems, system)
 	model.prompts = append(model.prompts, user)
 	if len(model.responses) == 0 {
 		return "", errors.New("no responses left")
@@ -194,3 +196,46 @@ var (
 	_ llm.Client        = (*model)(nil)
 	_ sandbox.Runner    = (*runner)(nil)
 )
+
+// Instructions must reach the model, and must not displace the engine's own
+// rules — a prompt without them produces code the sandbox cannot run.
+func TestInstructionsAreAppendedToTheEnginePrompt(t *testing.T) {
+	runtime := &mode{}
+	author := &model{responses: []string{workingProgram}}
+
+	_, err := Run(context.Background(), runtime, author, "list my todos", Options{
+		Instructions: "Always answer in French.",
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(author.systems) != 1 {
+		t.Fatalf("systems = %d, want 1", len(author.systems))
+	}
+	system := author.systems[0]
+	if !strings.Contains(system, "Always answer in French.") {
+		t.Fatalf("system prompt is missing the instructions:\n%s", system)
+	}
+	if !strings.Contains(system, "codemode.execute") {
+		t.Fatalf("instructions displaced the engine's own rules:\n%s", system)
+	}
+	// The engine's rules come first; instructions qualify them.
+	if strings.Index(system, "codemode.execute") > strings.Index(system, "Always answer in French.") {
+		t.Fatalf("instructions were prepended, not appended:\n%s", system)
+	}
+}
+
+// Blank instructions must not add an empty section to a cached prompt.
+func TestBlankInstructionsLeaveThePromptUnchanged(t *testing.T) {
+	plain := &model{responses: []string{workingProgram}}
+	if _, err := Run(context.Background(), &mode{}, plain, "list my todos", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	spaced := &model{responses: []string{workingProgram}}
+	if _, err := Run(context.Background(), &mode{}, spaced, "list my todos", Options{Instructions: "  \n "}); err != nil {
+		t.Fatal(err)
+	}
+	if plain.systems[0] != spaced.systems[0] {
+		t.Fatal("blank instructions changed the system prompt")
+	}
+}

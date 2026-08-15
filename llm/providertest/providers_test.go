@@ -35,7 +35,7 @@ func TestNewSelectsTheProviderFromTheEnvironment(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			setEnv(t, test.env)
-			client, err := llm.New()
+			client, err := llm.New(llm.Options{})
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
@@ -56,7 +56,7 @@ func TestNewReportsMissingCredentials(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			setEnv(t, env)
-			if _, err := llm.New(); !errors.Is(err, llm.ErrNoProvider) {
+			if _, err := llm.New(llm.Options{}); !errors.Is(err, llm.ErrNoProvider) {
 				t.Fatalf("error = %v, want ErrNoProvider", err)
 			}
 		})
@@ -65,7 +65,7 @@ func TestNewReportsMissingCredentials(t *testing.T) {
 
 func TestNewRejectsAnUnknownProvider(t *testing.T) {
 	setEnv(t, map[string]string{"LLM_PROVIDER": "llama", "ANTHROPIC_API_KEY": "test"})
-	_, err := llm.New()
+	_, err := llm.New(llm.Options{})
 	if err == nil {
 		t.Fatal("New returned no error for an unknown provider")
 	}

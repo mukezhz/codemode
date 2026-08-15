@@ -19,20 +19,20 @@ func init() {
 	RegisterProvider(Provider{
 		Name:       "first",
 		Aliases:    []string{"primero"},
-		New:        func() (Client, error) { return &stub{name: "first"}, nil },
+		New:        func(Options) (Client, error) { return &stub{name: "first"}, nil },
 		Configured: func() bool { return os.Getenv("STUB_FIRST") != "" },
 		Priority:   1,
 	})
 	RegisterProvider(Provider{
 		Name:       "second",
-		New:        func() (Client, error) { return &stub{name: "second"}, nil },
+		New:        func(Options) (Client, error) { return &stub{name: "second"}, nil },
 		Configured: func() bool { return os.Getenv("STUB_SECOND") != "" },
 		Priority:   2,
 	})
 	// No Configured func: selectable by name, never self-selected.
 	RegisterProvider(Provider{
 		Name: "manual",
-		New:  func() (Client, error) { return &stub{name: "manual"}, nil },
+		New:  func(Options) (Client, error) { return &stub{name: "manual"}, nil },
 	})
 }
 
@@ -40,7 +40,7 @@ func TestNewSelectsARegisteredProvider(t *testing.T) {
 	for _, name := range []string{"first", "primero", "manual"} {
 		clearEnv(t)
 		t.Setenv("LLM_PROVIDER", name)
-		client, err := New()
+		client, err := New(Options{})
 		if err != nil {
 			t.Fatalf("New(%q) returned error: %v", name, err)
 		}
@@ -59,7 +59,7 @@ func TestNewPrefersTheLowestPriorityConfiguredProvider(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("STUB_FIRST", "yes")
 	t.Setenv("STUB_SECOND", "yes")
-	client, err := New()
+	client, err := New(Options{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestNewPrefersTheLowestPriorityConfiguredProvider(t *testing.T) {
 // registering one would change which provider an existing deployment uses.
 func TestNewNeverSelfSelectsAProviderWithoutDetection(t *testing.T) {
 	clearEnv(t)
-	if _, err := New(); !errors.Is(err, ErrNoProvider) {
+	if _, err := New(Options{}); !errors.Is(err, ErrNoProvider) {
 		t.Fatalf("error = %v, want ErrNoProvider", err)
 	}
 }
@@ -87,7 +87,7 @@ func TestNewNamesTheMissingImportForAShippedProvider(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			clearEnv(t)
 			t.Setenv("LLM_PROVIDER", provider)
-			_, err := New()
+			_, err := New(Options{})
 			if err == nil {
 				t.Fatal("New unexpectedly succeeded")
 			}
@@ -101,7 +101,7 @@ func TestNewNamesTheMissingImportForAShippedProvider(t *testing.T) {
 func TestNewRejectsAnUnknownProvider(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("LLM_PROVIDER", "llama")
-	err := func() error { _, err := New(); return err }()
+	err := func() error { _, err := New(Options{}); return err }()
 	if err == nil {
 		t.Fatal("New returned no error for an unknown provider")
 	}

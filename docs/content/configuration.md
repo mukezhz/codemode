@@ -19,8 +19,26 @@ A copy of this lives in `.env.example` at the repository root.
 | `OPENAI_MODEL` | | `gpt-5` |
 | `OPENAI_BASE_URL` | wins over `LLM_BASE_URL` | — |
 
-A base URL may be set without an API key, for endpoints that do not
-authenticate. See [Models](/models).
+### Generation settings
+
+Shared by every provider. All optional.
+
+| Variable | Values | Default |
+| --- | --- | --- |
+| `LLM_MAX_TOKENS` | integer | `16000`, sized for thinking plus a program |
+| `LLM_TIMEOUT` | Go duration, e.g. `45s` | the SDK's own |
+| `LLM_TEMPERATURE` | float | unset — the provider's own default |
+| `LLM_TOP_P` | float | unset |
+
+Anything set in code wins over these, so an application can pin a value a
+deployment cannot override by accident. A base URL may be set without an API
+key, for endpoints that do not authenticate.
+
+::: warning
+`LLM_TEMPERATURE` and `LLM_TOP_P` turn Claude's extended thinking off —
+Anthropic rejects sampling parameters alongside it. Leave both unset unless you
+have a reason. See [Models](/models#configuring-the-model).
+:::
 
 ## Search
 
