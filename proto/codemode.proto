@@ -7,9 +7,32 @@ import "google/protobuf/descriptor.proto";
 option go_package = "github.com/mukezhz/codemode/gen/codemode;codemode";
 
 extend google.protobuf.ServiceOptions {
+  // namespace prefixes every capability name in this service, such as "tasks"
+  // for tasks.complete. Required.
   string namespace = 50000;
+
+  // default_roles are the caller roles allowed to use this service's methods,
+  // separated by spaces. Empty places no restriction. A method's own (roles)
+  // replaces this.
+  //
+  // Setting it on a service whose methods are all privileged is what makes
+  // forgetting hard: a new RPC inherits the restriction instead of arriving
+  // unguarded.
+  string default_roles = 50001;
 }
 
 extend google.protobuf.MethodOptions {
+  // description is the only prose search matches on and the only prose a model
+  // reads. Required, and worth writing for a stranger.
   string description = 50000;
+
+  // roles are the caller roles allowed to use this method, separated by
+  // spaces. It replaces the service's (default_roles) rather than adding to
+  // them, so a method can narrow a permissive service or open one method of a
+  // restricted one — deliberately, and visibly, in the contract.
+  //
+  // Declaring the policy beside the RPC rather than in a list somewhere in the
+  // host is the point: adding an RPC and forgetting to restrict it should be
+  // hard, not merely unlikely.
+  string roles = 50001;
 }

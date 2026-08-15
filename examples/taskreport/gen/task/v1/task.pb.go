@@ -1623,7 +1623,7 @@ const file_task_proto_rawDesc = "" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x1c\n" +
 	"\tcompleted\x18\x02 \x01(\x05R\tcompleted\";\n" +
 	"\x12ThroughputResponse\x12%\n" +
-	"\x04days\x18\x01 \x03(\v2\x11.task.v1.DayCountR\x04days2\xd8\r\n" +
+	"\x04days\x18\x01 \x03(\v2\x11.task.v1.DayCountR\x04days2\xeb\r\n" +
 	"\vTaskService\x12\xb4\x01\n" +
 	"\x06Create\x12\x1a.task.v1.CreateTaskRequest\x1a\x15.task.v1.TaskResponse\"w\x82\xb5\x18sCreates a task. Title is required. Priority is low, medium, or high and defaults to medium. Due date is YYYY-MM-DD.\x12^\n" +
 	"\x03Get\x12\x17.task.v1.GetTaskRequest\x1a\x15.task.v1.TaskResponse\"'\x82\xb5\x18#Returns one task by its numeric ID.\x12\xc4\x01\n" +
@@ -1634,12 +1634,12 @@ const file_task_proto_rawDesc = "" +
 	"\x06Delete\x12\x16.task.v1.TaskIDRequest\x1a\x1b.task.v1.DeleteTaskResponse\"%\x82\xb5\x18!Deletes a task permanently by ID.\x12|\n" +
 	"\x06AddTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"F\x82\xb5\x18BAdds a tag to a task. Adding a tag it already has changes nothing.\x12W\n" +
 	"\tRemoveTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"\x1e\x82\xb5\x18\x1aRemoves a tag from a task.\x12\x8a\x01\n" +
-	"\x06Search\x12\x1b.task.v1.SearchTasksRequest\x1a\x19.task.v1.TaskListResponse\"H\x82\xb5\x18DFinds tasks whose title contains the given text, case-insensitively.\x12\xab\x01\n" +
-	"\aListFor\x12\x17.task.v1.ListForRequest\x1a\x19.task.v1.TaskListResponse\"l\x82\xb5\x18hLists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.\x12x\n" +
-	"\x06Assign\x12\x1a.task.v1.AssignTaskRequest\x1a\x15.task.v1.TaskResponse\";\x82\xb5\x187Moves a task to a different owner. Administrators only.\x1a\t\x82\xb5\x18\x05tasks2\xc6\x02\n" +
+	"\x06Search\x12\x1b.task.v1.SearchTasksRequest\x1a\x19.task.v1.TaskListResponse\"H\x82\xb5\x18DFinds tasks whose title contains the given text, case-insensitively.\x12\xb4\x01\n" +
+	"\aListFor\x12\x17.task.v1.ListForRequest\x1a\x19.task.v1.TaskListResponse\"u\x82\xb5\x18hLists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.\x8a\xb5\x18\x05admin\x12\x81\x01\n" +
+	"\x06Assign\x12\x1a.task.v1.AssignTaskRequest\x1a\x15.task.v1.TaskResponse\"D\x82\xb5\x187Moves a task to a different owner. Administrators only.\x8a\xb5\x18\x05admin\x1a\t\x82\xb5\x18\x05tasks2\xc6\x02\n" +
 	"\x0eProjectService\x12\x9d\x01\n" +
 	"\x04List\x12\x1c.task.v1.ListProjectsRequest\x1a\x1d.task.v1.ListProjectsResponse\"X\x82\xb5\x18TLists every project name that has at least one task, with how many tasks each holds.\x12\x85\x01\n" +
-	"\x06Rename\x12\x1d.task.v1.RenameProjectRequest\x1a\x1e.task.v1.RenameProjectResponse\"<\x82\xb5\x188Moves every task in one project to another project name.\x1a\f\x82\xb5\x18\bprojects2\xca\b\n" +
+	"\x06Rename\x12\x1d.task.v1.RenameProjectRequest\x1a\x1e.task.v1.RenameProjectResponse\"<\x82\xb5\x188Moves every task in one project to another project name.\x1a\f\x82\xb5\x18\bprojects2\xd3\b\n" +
 	"\rReportService\x12\x8f\x01\n" +
 	"\fStatusCounts\x12\x16.task.v1.ReportRequest\x1a\x1d.task.v1.StatusCountsResponse\"H\x82\xb5\x18DTotals every task by state: open, completed, overdue, and due today.\x12\x9c\x01\n" +
 	"\tByProject\x12\x16.task.v1.ReportRequest\x1a\x1c.task.v1.GroupCountsResponse\"Y\x82\xb5\x18UCounts open and completed tasks per project, so one call answers where the work sits.\x12{\n" +
@@ -1648,8 +1648,8 @@ const file_task_proto_rawDesc = "" +
 	"\aOverdue\x12\x17.task.v1.OverdueRequest\x1a\x19.task.v1.TaskListResponse\"_\x82\xb5\x18[Lists open tasks whose due date is before as_of, oldest first. Leave as_of empty for today.\x12\x8c\x01\n" +
 	"\x10CompletedBetween\x12\x19.task.v1.DateRangeRequest\x1a\x19.task.v1.TaskListResponse\"B\x82\xb5\x18>Lists tasks completed between two YYYY-MM-DD dates, inclusive.\x12\xaa\x01\n" +
 	"\n" +
-	"Throughput\x12\x1a.task.v1.ThroughputRequest\x1a\x1b.task.v1.ThroughputResponse\"c\x82\xb5\x18_Counts tasks completed on each of the last N days, most recent first, including days with none.\x12\xa0\x01\n" +
-	"\aByOwner\x12\x16.task.v1.ReportRequest\x1a\x1c.task.v1.GroupCountsResponse\"_\x82\xb5\x18[Counts open and completed tasks per person across the whole workspace. Administrators only.\x1a\v\x82\xb5\x18\areportsBDZBgithub.com/mukezhz/codemode/examples/taskreport/gen/task/v1;taskv1b\x06proto3"
+	"Throughput\x12\x1a.task.v1.ThroughputRequest\x1a\x1b.task.v1.ThroughputResponse\"c\x82\xb5\x18_Counts tasks completed on each of the last N days, most recent first, including days with none.\x12\xa9\x01\n" +
+	"\aByOwner\x12\x16.task.v1.ReportRequest\x1a\x1c.task.v1.GroupCountsResponse\"h\x82\xb5\x18[Counts open and completed tasks per person across the whole workspace. Administrators only.\x8a\xb5\x18\x05admin\x1a\v\x82\xb5\x18\areportsBDZBgithub.com/mukezhz/codemode/examples/taskreport/gen/task/v1;taskv1b\x06proto3"
 
 var (
 	file_task_proto_rawDescOnce sync.Once

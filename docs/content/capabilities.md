@@ -22,6 +22,28 @@ service StudentService {
 }
 ```
 
+Two more options are optional. `(codemode.roles)` on a method, and
+`(codemode.default_roles)` on a service, name the caller roles allowed to use
+it:
+
+```protobuf
+service AdminService {
+  option (codemode.namespace) = "admin";
+  option (codemode.default_roles) = "admin";   // every method inherits this
+
+  rpc Impersonate(ImpersonateRequest) returns (SessionResponse) {
+    option (codemode.description) = "Starts a session as another user.";
+    option (codemode.roles) = "owner";         // narrower still
+  }
+}
+```
+
+A method's `(codemode.roles)` replaces its service's default rather than adding
+to it. No annotation means no restriction. `Registry.ForRole` then narrows a
+registry per caller, and `Registry.Unrestricted()` returns what nobody
+restricted — worth asserting in a test, since that is where a forgotten
+annotation shows up. See [Many services, many users](/scaling-up).
+
 The generator requires:
 
 - An import of `codemode.proto`.

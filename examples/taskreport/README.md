@@ -312,8 +312,11 @@ aggregates a database genuinely does better than a program would.
 | `reports` | `statusCounts` `byProject` `byPriority` `overdue` `completedBetween` `throughput` · admin: `byOwner` |
 | `users` | `me` · admin: `list` |
 
-The admin ones are **withheld from a member's registry entirely** — absent from
-the map `Execute` resolves against, not merely hidden from the model.
+The admin ones are marked `option (codemode.roles) = "admin";` in the protos, so
+the policy lives beside the RPC rather than in a list in `main.go` that could
+drift. They are **withheld from a member's registry entirely** — absent from the
+map `Execute` resolves against, not merely hidden from the model, and therefore
+absent from the prompt too.
 
 Anything needing judgement — what counts as behind, how to phrase a summary,
 what to do first — stays in the program the model writes. There is no

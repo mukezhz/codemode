@@ -13,6 +13,7 @@ package registry
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -55,6 +56,9 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	if err != nil {
 		return Registry{}, err
 	}
+	// Roles are optional, so a codemode.proto predating them still works.
+	serviceRolesOption, _ := customOptionNumber(files, ".codemode.default_roles", ".google.protobuf.ServiceOptions")
+	methodRolesOption, _ := customOptionNumber(files, ".codemode.roles", ".google.protobuf.MethodOptions")
 
 	messages := indexMessages(files)
 	registry := Registry{Capabilities: []Capability{}}
@@ -66,6 +70,11 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 			if err != nil {
 				return Registry{}, fmt.Errorf("%s.%s: %w", file.GetPackage(), service.GetName(), err)
 			}
+			defaultRoles, err := optionalRoles(service.GetOptions(), serviceRolesOption)
+			if err != nil {
+				return Registry{}, fmt.Errorf("%s: %w", service.GetName(), err)
+			}
+
 			namespace = strings.TrimSpace(namespace)
 			if !namespacePattern.MatchString(namespace) {
 				return Registry{}, fmt.Errorf("%s.%s: service option (codemode.namespace) must match %s", file.GetPackage(), service.GetName(), namespacePattern)
@@ -80,6 +89,16 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
 				}
+				// A method's roles replace the service's rather than adding to
+				// them, so one method of a restricted service can be opened
+				// deliberately and visibly.
+				roles := defaultRoles
+				if methodRoles, err := optionalRoles(method.GetOptions(), methodRolesOption); err != nil {
+					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
+				} else if methodRoles != nil {
+					roles = methodRoles
+				}
+
 				description = strings.TrimSpace(description)
 				if description == "" {
 					return Registry{}, fmt.Errorf("%s.%s: method option (codemode.description) is required", service.GetName(), method.GetName())
@@ -126,12 +145,36 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 					Input:       input,
 					Output:      output,
 					Types:       types,
+					Roles:       roles,
 				})
 			}
 		}
 	}
 
 	return registry, nil
+}
+
+// optionalRoles reads a space-separated role list. It returns nil when the
+// option is absent, which is what lets a method fall back to its service, and
+// an empty non-nil slice is impossible: a declared-but-blank list is an error
+// rather than a silent "everyone".
+func optionalRoles(options proto.Message, number protowire.Number) ([]string, error) {
+	if number == 0 {
+		return nil, nil
+	}
+	value, err := stringOption(options, number)
+	if err != nil {
+		return nil, err
+	}
+	if value == "" {
+		return nil, nil
+	}
+	roles := strings.Fields(value)
+	if len(roles) == 0 {
+		return nil, fmt.Errorf("roles option is blank; remove it to place no restriction")
+	}
+	sort.Strings(roles)
+	return roles, nil
 }
 
 func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee string) (protowire.Number, error) {

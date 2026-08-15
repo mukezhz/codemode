@@ -52,17 +52,16 @@ func serve(
 	}
 
 	handler, err := server.New(server.Options{
-		Store:     tasks,
-		Full:      full,
-		AdminOnly: adminOnly,
-		Admins:    []string{"grace"},
-		Model:     model,
-		Runner:    runner,
-		Limit:     config.limit,
-		Attempts:  config.attempts,
-		Assets:    assets,
-		Logger:    logger(config),
-		Programs:  os.Stderr,
+		Store:    tasks,
+		Full:     full,
+		Admins:   []string{"grace"},
+		Model:    model,
+		Runner:   runner,
+		Limit:    config.limit,
+		Attempts: config.attempts,
+		Assets:   assets,
+		Logger:   logger(config),
+		Programs: os.Stderr,
 	})
 	if err != nil {
 		return err

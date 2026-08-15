@@ -24,6 +24,7 @@ service UserService {
 
   rpc List(ListUsersRequest) returns (ListUsersResponse) {
     option (codemode.description) = "Lists everyone in the workspace with their role. Administrators only.";
+    option (codemode.roles) = "admin";
   }
 }
 

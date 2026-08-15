@@ -36,8 +36,6 @@ func (model *model) Complete(_ context.Context, system, _ string) (string, error
 	return model.program, nil
 }
 
-var adminOnly = capability.Named("users.list", "tasks.listFor", "tasks.assign", "reports.byOwner")
-
 func newServer(t *testing.T, author *model) http.Handler {
 	t.Helper()
 
@@ -74,11 +72,10 @@ func newServer(t *testing.T, author *model) http.Handler {
 	t.Cleanup(func() { runner.Close() })
 
 	options := server.Options{
-		Store:     tasks,
-		Full:      full,
-		AdminOnly: adminOnly,
-		Admins:    []string{"grace"},
-		Runner:    runner,
+		Store:  tasks,
+		Full:   full,
+		Admins: []string{"grace"},
+		Runner: runner,
 	}
 	if author != nil {
 		options.Model = author

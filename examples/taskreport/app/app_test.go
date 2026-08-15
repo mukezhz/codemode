@@ -23,8 +23,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/store"
 )
 
-var adminOnly = capability.Named("users.list", "tasks.listFor", "tasks.assign", "reports.byOwner")
-
 // full is the whole surface, assembled from both proto files exactly as
 // main.go does it.
 func full(t *testing.T) capability.Registry {
@@ -53,10 +51,7 @@ func newMode(t *testing.T, identity auth.Identity) (codemode.CodeMode, *store.St
 	tasks.SetClock(func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) })
 	t.Cleanup(func() { tasks.Close() })
 
-	registry := full(t)
-	if !identity.Admin() {
-		registry = registry.Select(func(item capability.Capability) bool { return !adminOnly(item) })
-	}
+	registry := full(t).ForRole(string(identity.Role))
 	mode, err := codemode.New(registry, search.New(registry), app.New(tasks, "grace").Execute)
 	if err != nil {
 		t.Fatal(err)

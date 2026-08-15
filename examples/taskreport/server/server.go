@@ -47,8 +47,6 @@ type Options struct {
 	// Full is the whole capability surface. It is narrowed per request from
 	// the caller's role.
 	Full capability.Registry
-	// AdminOnly matches the capabilities withheld from members.
-	AdminOnly func(capability.Capability) bool
 	// Admins names the workspace administrators.
 	Admins []string
 	// Model answers chat requests. Nil disables /api/chat with a clear error
@@ -81,9 +79,6 @@ type Server struct {
 func New(options Options) (*Server, error) {
 	if options.Store == nil || options.Runner == nil {
 		return nil, errors.New("server needs a store and a runner")
-	}
-	if options.AdminOnly == nil {
-		options.AdminOnly = func(capability.Capability) bool { return false }
 	}
 	if options.Limit == 0 {
 		options.Limit = 12
@@ -155,12 +150,9 @@ func (server *Server) scoped(ctx context.Context) (codemode.CodeMode, capability
 	if err != nil {
 		return nil, capability.Registry{}, err
 	}
-	allowed := server.options.Full
-	if !identity.Admin() {
-		allowed = allowed.Select(func(item capability.Capability) bool {
-			return !server.options.AdminOnly(item)
-		})
-	}
+	// The policy comes from (codemode.roles) in the contracts, so this server
+	// holds no list of privileged capability names.
+	allowed := server.options.Full.ForRole(string(identity.Role))
 	mode, err := codemode.New(allowed, search.New(allowed), server.app.Execute)
 	if err != nil {
 		return nil, capability.Registry{}, err

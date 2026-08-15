@@ -62,6 +62,54 @@ func (registry Registry) Select(keep func(Capability) bool) Registry {
 	return selected
 }
 
+// ForRole returns the capabilities role may use.
+//
+// This is the whole of role-based access to the capability surface. Build one
+// per request from the caller's role and hand it to codemode.New, and the
+// narrowed registry is what executes *and* what search ranks — so a capability
+// withheld from a role is not merely hidden from the model, it is absent from
+// the map Execute resolves against.
+//
+//	allowed := full.ForRole(identity.Role)
+//	mode, err := codemode.New(allowed, search.New(allowed), execute)
+//
+// It does not replace checking permissions inside ExecuteFunc. The registry
+// knows which capability is being called and nothing about which rows the
+// caller may see.
+func (registry Registry) ForRole(role string) Registry {
+	return registry.Select(func(item Capability) bool { return item.AllowsRole(role) })
+}
+
+// Unrestricted returns the capabilities that declare no roles.
+//
+// Worth asserting in a test. A capability surface where everything is
+// deliberately public returns everything; one where privileged RPCs are meant
+// to be annotated returns the ones somebody forgot:
+//
+//	if got := full.Unrestricted().Names(); !slices.Equal(got, wantPublic) {
+//		t.Fatalf("unrestricted capabilities changed: %v", got)
+//	}
+func (registry Registry) Unrestricted() Registry {
+	return registry.Select(func(item Capability) bool { return len(item.Roles) == 0 })
+}
+
+// Roles returns every role named by any capability, sorted. Useful for
+// validating that a role a caller presents is one the contracts know about.
+func (registry Registry) Roles() []string {
+	unique := map[string]bool{}
+	for _, item := range registry.Capabilities {
+		for _, role := range item.Roles {
+			unique[role] = true
+		}
+	}
+	roles := make([]string, 0, len(unique))
+	for role := range unique {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	return roles
+}
+
 // Namespaces returns each namespace once, sorted. A namespace is the part of a
 // capability name before the dot, which is the service's
 // (codemode.namespace) option.

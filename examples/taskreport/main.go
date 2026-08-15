@@ -232,25 +232,17 @@ func capabilities() (capability.Registry, error) {
 	return capability.Merge(tasks, users)
 }
 
-// adminOnly are the capabilities that reach across owners. Naming them in one
-// place beats scattering role checks through the proto or the dispatcher.
-var adminOnly = capability.Named(
-	"users.list",
-	"tasks.listFor",
-	"tasks.assign",
-	"reports.byOwner",
-)
-
 // forRole returns the registry this caller may execute against.
 //
-// Building a registry per request is cheap — it is a slice and a map — so the
+// There is no policy here to keep in step with the protos: the roles are
+// declared by (codemode.roles) beside each RPC, so adding a privileged method
+// restricts it, and forgetting to edit this file cannot expose it.
+//
+// Building a registry per request is cheap — a slice and a map — so the
 // narrowing happens here rather than as a check deep inside the application.
 // The checks inside stay anyway; this is the outer of two locks.
 func forRole(full capability.Registry, identity auth.Identity) capability.Registry {
-	if identity.Admin() {
-		return full
-	}
-	return full.Select(func(item capability.Capability) bool { return !adminOnly(item) })
+	return full.ForRole(string(identity.Role))
 }
 
 func adminsOf(config config) []string {

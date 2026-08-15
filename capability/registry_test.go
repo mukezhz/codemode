@@ -71,3 +71,61 @@ func TestNamespaceAndNamePredicates(t *testing.T) {
 		t.Fatalf("Namespaces = %q, want them sorted and deduplicated", got)
 	}
 }
+
+func withRoles(name string, roles ...string) capability.Capability {
+	return capability.Capability{Name: name, RPC: "svc/" + name, Roles: roles}
+}
+
+// The policy travels with the contract, so narrowing a registry is one call and
+// there is no list in the host to keep in step.
+func TestForRoleNarrowsToWhatTheContractsAllow(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{
+		withRoles("tasks.list"),
+		withRoles("tasks.assign", "admin"),
+		withRoles("billing.refund", "admin", "finance"),
+		withRoles("reports.export", "finance"),
+	}}
+
+	for role, want := range map[string]string{
+		"member":  "tasks.list",
+		"admin":   "tasks.list,tasks.assign,billing.refund",
+		"finance": "tasks.list,billing.refund,reports.export",
+	} {
+		if got := strings.Join(full.ForRole(role).Names(), ","); got != want {
+			t.Errorf("ForRole(%q) = %q, want %q", role, got, want)
+		}
+	}
+}
+
+// An unrestricted capability is available to everyone, including a role nobody
+// declared — but a restricted one is available to nobody who is not named. A
+// typo in a role must lose access, never gain it.
+func TestForRoleFailsClosedForUnknownRoles(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{
+		withRoles("tasks.list"),
+		withRoles("tasks.assign", "admin"),
+	}}
+
+	for _, role := range []string{"", "Admin", "admins", "root"} {
+		if got := strings.Join(full.ForRole(role).Names(), ","); got != "tasks.list" {
+			t.Errorf("ForRole(%q) = %q, want only the unrestricted capability", role, got)
+		}
+	}
+}
+
+// Unrestricted is what a test asserts against, so a privileged RPC that arrives
+// without its roles option is caught rather than quietly exposed.
+func TestUnrestrictedAndRoles(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{
+		withRoles("tasks.list"),
+		withRoles("tasks.assign", "admin"),
+		withRoles("billing.refund", "finance", "admin"),
+	}}
+
+	if got := strings.Join(full.Unrestricted().Names(), ","); got != "tasks.list" {
+		t.Errorf("Unrestricted() = %q", got)
+	}
+	if got := strings.Join(full.Roles(), ","); got != "admin,finance" {
+		t.Errorf("Roles() = %q, want them deduplicated and sorted", got)
+	}
+}

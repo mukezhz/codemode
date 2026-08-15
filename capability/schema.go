@@ -2,6 +2,7 @@ package capability
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -27,6 +28,23 @@ type Capability struct {
 	// Keyed by unqualified type name, which is how the field strings refer to
 	// them.
 	Types map[string]TypeSchema `json:"types,omitempty"`
+
+	// Roles are the caller roles allowed to use this capability, from the
+	// (codemode.roles) option or the service's (codemode.default_roles). Empty
+	// means unrestricted.
+	//
+	// The policy lives in the contract rather than in a list in the host so
+	// that adding an RPC and forgetting to restrict it is hard. See ForRole.
+	Roles []string `json:"roles,omitempty"`
+}
+
+// AllowsRole reports whether role may use this capability. A capability with no
+// roles is unrestricted.
+func (capability Capability) AllowsRole(role string) bool {
+	if len(capability.Roles) == 0 {
+		return true
+	}
+	return slices.Contains(capability.Roles, role)
 }
 
 // EmbeddingText returns the contract content used for semantic indexing.

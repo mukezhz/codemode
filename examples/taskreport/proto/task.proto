@@ -61,17 +61,22 @@ service TaskService {
     option (codemode.description) = "Finds tasks whose title contains the given text, case-insensitively.";
   }
 
-  // Administrators only. These are the two capabilities that reach across
-  // owners, so they are kept apart from the ones above rather than added as an
-  // owner field on them: a capability a caller must not have is easier to
-  // withhold than a field they must not set.
+  // The two capabilities that reach across owners. They are kept apart from the
+  // ones above rather than added as an owner field on them: a capability a
+  // caller must not have is easier to withhold than a field they must not set.
+  //
+  // (codemode.roles) is the policy. It travels with the contract, so the host
+  // has no list to keep in step and a new privileged RPC cannot arrive
+  // unguarded because somebody edited one file and not the other.
   rpc ListFor(ListForRequest) returns (TaskListResponse) {
     option (codemode.description) =
       "Lists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.";
+    option (codemode.roles) = "admin";
   }
 
   rpc Assign(AssignTaskRequest) returns (TaskResponse) {
     option (codemode.description) = "Moves a task to a different owner. Administrators only.";
+    option (codemode.roles) = "admin";
   }
 }
 
@@ -125,6 +130,7 @@ service ReportService {
   rpc ByOwner(ReportRequest) returns (GroupCountsResponse) {
     option (codemode.description) =
       "Counts open and completed tasks per person across the whole workspace. Administrators only.";
+    option (codemode.roles) = "admin";
   }
 }
 

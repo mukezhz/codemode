@@ -97,18 +97,38 @@ flowchart TB
   execute -->|"scoped query"| data
 ```
 
-**The registry decides which capabilities exist.** It is data, and building
-another is cheap, so build one per caller:
+**The registry decides which capabilities exist.** Declare the policy in the
+contract, beside the RPC it governs:
+
+```protobuf
+rpc Assign(AssignTaskRequest) returns (TaskResponse) {
+  option (codemode.description) = "Moves a task to a different owner.";
+  option (codemode.roles) = "admin";
+}
+```
+
+Then narrowing per request is one call:
 
 ```go
-var adminOnly = capability.Named("users.list", "tasks.assign", "reports.byOwner")
-
-allowed := full
-if !identity.Admin() {
-	allowed = full.Select(func(item capability.Capability) bool { return !adminOnly(item) })
-}
+allowed := full.ForRole(string(identity.Role))
 mode, err := codemode.New(allowed, search.New(allowed), app.Execute)
 ```
+
+Building a registry per request is cheap — a slice and a map.
+
+::: tip Why the contract and not a list in the host
+A list of privileged capability names in Go is fail-open: add a privileged RPC,
+forget the list, and it is exposed to everyone, silently. Nothing fails, no test
+breaks, and the first sign is a member calling it.
+
+With the annotation the RPC and its policy are edited in the same place at the
+same time. `(codemode.default_roles)` on the service sets a default its methods
+inherit, so a new RPC in a privileged service arrives restricted rather than
+open.
+
+`Registry.Unrestricted()` returns everything with no roles declared. Asserting
+that list in a test is what catches the one somebody still forgets.
+:::
 
 A member's runtime does not contain `tasks.assign` **at all** — it is missing
 from the map `Execute` resolves against, not merely hidden from the model. And
@@ -149,6 +169,10 @@ package.
 is assembled per request from a role, and a bug in that assembly should fail
 closed rather than quietly widen what a member sees. It is a cheap second lock
 on a door you already locked.
+
+**Fail closed on an unknown role.** `ForRole("Admin")` — wrong case, a typo, a
+role from a system that no longer exists — returns the unrestricted capabilities
+and nothing else. A mistake in a role name must lose access, never gain it.
 
 **Derive ownership, never accept it.** `tasks.create` has no `owner` field; the
 owner is `identity.User`. A program cannot file work under someone else's name
