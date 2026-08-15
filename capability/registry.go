@@ -2,6 +2,7 @@ package capability
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -78,6 +79,41 @@ func (registry Registry) Select(keep func(Capability) bool) Registry {
 // caller may see.
 func (registry Registry) ForRole(role string) Registry {
 	return registry.Select(func(item Capability) bool { return item.AllowsRole(role) })
+}
+
+// Require returns a copy in which every capability matching keep also requires
+// role.
+//
+// The contract is the right home for a policy that is part of the design —
+// (codemode.roles) beside the RPC, edited when the RPC is. Require is for the
+// policy that is not: a plan a customer is on, a feature flag, a rule in a
+// database, or an experiment tightening one capability to watch what happens.
+//
+//	// Everything destructive needs the admin role on this deployment.
+//	full = full.Require("admin", func(item capability.Capability) bool {
+//		return strings.HasSuffix(item.Name, ".delete")
+//	})
+//
+// It only ever narrows. A capability that already required a role gains this
+// one as an additional acceptable role, and one that required nothing now
+// requires this. There is no call that widens a registry, because a mistake
+// that widens is the one nobody notices.
+func (registry Registry) Require(role string, keep func(Capability) bool) Registry {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return registry
+	}
+	required := Registry{Capabilities: make([]Capability, 0, len(registry.Capabilities))}
+	for _, item := range registry.Capabilities {
+		if keep(item) && !slices.Contains(item.Roles, role) {
+			// Copy the slice: two registries derived from one must not share
+			// backing storage, or narrowing one narrows the other.
+			item.Roles = append(append([]string{}, item.Roles...), role)
+			sort.Strings(item.Roles)
+		}
+		required.Capabilities = append(required.Capabilities, item)
+	}
+	return required
 }
 
 // Unrestricted returns the capabilities that declare no roles.

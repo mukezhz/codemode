@@ -44,7 +44,22 @@ const (
 // Document is what a program returns and the browser renders.
 type Document struct {
 	Title  string  `json:"title,omitempty"`
-	Blocks []Block `json:"blocks"`
+	Blocks []Block `json:"blocks,omitempty"`
+
+	// Unavailable explains, in one sentence, why the request cannot be
+	// answered with the capabilities this caller has. A document that sets it
+	// carries no blocks.
+	//
+	// Without somewhere to say "I cannot", a model answers anyway. Asked for a
+	// colleague's tasks it will call the capabilities it does have, get its own
+	// rows, and title them with the colleague's name. Asked for every task when
+	// it has only a search, it will call search thirty-six times, once per
+	// letter and digit, and reassemble the list.
+	//
+	// Both produce a plausible report. Neither answers the question. A refusal
+	// is the honest output and it has to be reachable, or the model will find a
+	// worse way to fill the silence.
+	Unavailable string `json:"unavailable,omitempty"`
 }
 
 // Block is one element of a document. Which fields matter depends on Type,
@@ -120,10 +135,22 @@ func Parse(value any) (Document, error) {
 	return document, nil
 }
 
+// Refused reports whether the document is a refusal rather than an answer.
+func (document Document) Refused() bool { return strings.TrimSpace(document.Unavailable) != "" }
+
 // Validate reports the first problem with a document.
 func (document Document) Validate() error {
+	if document.Refused() {
+		// A refusal with blocks is the failure worth catching: it means the
+		// model both declined and answered, and the reader gets whichever the
+		// renderer happens to show.
+		if len(document.Blocks) > 0 {
+			return fmt.Errorf("a document may say it is unavailable or carry blocks, not both")
+		}
+		return nil
+	}
 	if len(document.Blocks) == 0 {
-		return fmt.Errorf("the document has no blocks")
+		return fmt.Errorf(`the document has no blocks; if you cannot answer, set "unavailable" instead`)
 	}
 	for index, block := range document.Blocks {
 		if err := block.validate(); err != nil {
@@ -203,4 +230,16 @@ Rules for the document:
 - Every table row must have exactly as many cells as there are columns, and every cell must be a string.
 - Add a short text block explaining what the figures mean. Do not narrate what you called.
 - Use tone to draw the eye: bad for overdue, warn for at risk, good for finished work.
-- No other block types and no other fields exist. An unknown one is rejected.`
+- No other block types and no other fields exist. An unknown one is rejected.
+
+If the capabilities above cannot answer the request as asked, return this instead, and nothing else:
+
+{"unavailable":"one sentence saying what you cannot do"}
+
+Refuse rather than approximate. In particular:
+- Never answer a question about another person, project, or period using data that is not about it. Returning your own figures under their name is worse than refusing.
+- Never call one capability many times with different inputs to rebuild what a capability you were not given would have returned. Searching every letter of the alphabet to reconstruct a list is not a substitute for a list.
+- Never title a document as being about something the figures are not about.
+- A capability call that fails is not something to work around. Let it fail, or refuse.
+
+Refusing is a correct answer. Guessing is not.`

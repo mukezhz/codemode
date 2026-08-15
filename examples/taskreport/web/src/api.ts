@@ -13,7 +13,13 @@ export type Block =
   | { type: "table"; heading?: string; columns: string[]; rows: string[][] }
   | { type: "text"; heading?: string; text: string };
 
-export type ViewDocument = { title?: string; blocks: Block[] };
+export type ViewDocument = {
+  title?: string;
+  blocks?: Block[];
+  // Set when the model could not answer with the capabilities this caller has.
+  // A refusal carries no blocks: it is an answer, not a broken one.
+  unavailable?: string;
+};
 
 export type Task = {
   id: number;

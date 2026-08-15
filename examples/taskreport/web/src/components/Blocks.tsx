@@ -12,10 +12,21 @@
 import type { Block, ViewDocument } from "../api";
 
 export function DocumentView({ document }: { document: ViewDocument }) {
+  // A refusal is an answer, and it has to look unlike one. Rendering it as a
+  // lone text block among stat cards is how "I cannot see that" gets read as a
+  // finding.
+  if (document.unavailable) {
+    return (
+      <article className="doc refusal">
+        <p className="refusal-text">{document.unavailable}</p>
+      </article>
+    );
+  }
+
   return (
     <article className="doc">
       {document.title && <h2 className="doc-title">{document.title}</h2>}
-      {document.blocks.map((block, index) => (
+      {(document.blocks ?? []).map((block, index) => (
         <BlockView key={index} block={block} />
       ))}
     </article>

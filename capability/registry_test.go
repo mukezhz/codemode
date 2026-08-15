@@ -1,6 +1,7 @@
 package capability_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,5 +128,51 @@ func TestUnrestrictedAndRoles(t *testing.T) {
 	}
 	if got := strings.Join(full.Roles(), ","); got != "admin,finance" {
 		t.Errorf("Roles() = %q, want them deduplicated and sorted", got)
+	}
+}
+
+// Require is for policy that is not part of the contract: a plan, a flag, a
+// rule in a database, or an experiment tightening one capability to watch what
+// happens.
+func TestRequireNarrowsAndNeverWidens(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{
+		withRoles("tasks.list"),
+		withRoles("tasks.delete"),
+		withRoles("billing.refund", "finance"),
+	}}
+
+	tightened := full.Require("admin", func(item capability.Capability) bool {
+		return item.Name != "tasks.list"
+	})
+
+	if got := strings.Join(tightened.ForRole("member").Names(), ","); got != "tasks.list" {
+		t.Errorf("a member sees %q, want only the untouched capability", got)
+	}
+	// An existing role is kept, not replaced: finance still reaches its own.
+	if got := strings.Join(tightened.ForRole("finance").Names(), ","); got != "tasks.list,billing.refund" {
+		t.Errorf("finance sees %q", got)
+	}
+	if got := strings.Join(tightened.ForRole("admin").Names(), ","); got != "tasks.list,tasks.delete,billing.refund" {
+		t.Errorf("an admin sees %q", got)
+	}
+
+	// The source registry is untouched, or narrowing one request would narrow
+	// every later one.
+	if got := len(full.Unrestricted().Capabilities); got != 2 {
+		t.Fatalf("Require mutated the source registry: %d unrestricted", got)
+	}
+}
+
+// Deriving twice from one registry must not let the two share backing storage.
+func TestRequireDoesNotAliasRoles(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{withRoles("tasks.delete", "finance")}}
+	first := full.Require("admin", func(capability.Capability) bool { return true })
+	_ = full.Require("auditor", func(capability.Capability) bool { return true })
+
+	if slices.Contains(first.Capabilities[0].Roles, "auditor") {
+		t.Fatalf("the first registry gained the second's role: %v", first.Capabilities[0].Roles)
+	}
+	if len(full.Capabilities[0].Roles) != 1 {
+		t.Fatalf("the source gained a role: %v", full.Capabilities[0].Roles)
 	}
 }

@@ -94,3 +94,59 @@ func TestParseRejectsNothing(t *testing.T) {
 		t.Fatal("Parse accepted a program that returned nothing")
 	}
 }
+
+// A model with no way to say "I cannot" answers anyway. It reaches for the
+// capabilities it does have, gets its own data, and titles it with someone
+// else's name — or calls a search capability once per letter of the alphabet to
+// rebuild a list it was not given. Both look like answers.
+func TestParseAcceptsARefusal(t *testing.T) {
+	document, err := view.Parse(decoded(t, `{"unavailable":"I can only see your own tasks."}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !document.Refused() {
+		t.Fatal("a document with unavailable set does not report itself as a refusal")
+	}
+	if len(document.Blocks) != 0 {
+		t.Fatalf("a refusal carries blocks: %+v", document.Blocks)
+	}
+}
+
+// Declining and answering at once is the failure worth catching: the reader
+// gets whichever the renderer happens to show.
+func TestParseRejectsARefusalWithBlocks(t *testing.T) {
+	_, err := view.Parse(decoded(t, `{"unavailable":"no","blocks":[{"type":"text","text":"but here is a guess"}]}`))
+	if err == nil {
+		t.Fatal("Parse accepted a document that both refused and answered")
+	}
+	if !strings.Contains(err.Error(), "not both") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+// The error for an empty document points at the refusal, so the repair attempt
+// is told what to do rather than only what went wrong.
+func TestEmptyDocumentSuggestsRefusing(t *testing.T) {
+	_, err := view.Parse(decoded(t, `{"blocks":[]}`))
+	if err == nil {
+		t.Fatal("Parse accepted an empty document")
+	}
+	if !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("error = %v, want it to name the refusal field", err)
+	}
+}
+
+// The instructions have to forbid the two specific improvisations, or the
+// refusal is available and unused.
+func TestInstructionsForbidImprovising(t *testing.T) {
+	for _, want := range []string{
+		`{"unavailable":`,
+		"Never answer a question about another person",
+		"Never call one capability many times with different inputs",
+		"Refusing is a correct answer",
+	} {
+		if !strings.Contains(view.Instructions, want) {
+			t.Errorf("the instructions omit %q", want)
+		}
+	}
+}

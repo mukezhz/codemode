@@ -130,6 +130,19 @@ open.
 that list in a test is what catches the one somebody still forgets.
 :::
 
+Policy that is *not* part of the design — a plan a customer is on, a feature
+flag, a rule in a database — reaches the registry through `Require`:
+
+```go
+// Everything destructive needs the admin role on this deployment.
+full = full.Require("admin", func(item capability.Capability) bool {
+	return strings.HasSuffix(item.Name, ".delete")
+})
+```
+
+It only ever narrows. There is no call that widens a registry, because a mistake
+that widens is the one nobody notices.
+
 A member's runtime does not contain `tasks.assign` **at all** — it is missing
 from the map `Execute` resolves against, not merely hidden from the model. And
 because search is built over the same narrowed registry, the model is never told
@@ -173,6 +186,51 @@ on a door you already locked.
 **Fail closed on an unknown role.** `ForRole("Admin")` — wrong case, a typo, a
 role from a system that no longer exists — returns the unrestricted capabilities
 and nothing else. A mistake in a role name must lose access, never gain it.
+
+**Tell the model what it can see.** Withholding a capability is silent: the
+model does not know it is missing one, so it improvises with what it has. A
+member asking "show me linus's tasks" has no `tasks.listFor`, calls `tasks.list`
+— correctly scoped to their own rows — filters for linus, finds nothing, and
+reports *"Linus has no tasks."*
+
+Every layer held. The answer was false.
+
+```go
+Instructions: view.Instructions + "\n\n" + identity.Instructions(),
+```
+
+```
+You are answering for ada, a member. Every capability returns only ada's own
+tasks — never anyone else's, and never the workspace total.
+If the request asks about someone else, say that it is outside what you can see.
+Do not filter your own tasks by another person's name and report the result as
+theirs: an empty result means you cannot see their work, not that they have none.
+```
+
+The same question then answers honestly: *"Linus's tasks are outside what I can
+see."* An assumption stated as a finding is worse than an error, and this is the
+one place the prompt has to carry a fact the capabilities cannot.
+
+**Give it somewhere to refuse.** Telling a model what it cannot see is only half
+the fix. It also needs a way to say so, or it will find a worse one:
+
+- asked for a colleague's tasks, it returns *its own* figures under their name;
+- asked for a full list with only a search capability, it calls search once per
+  letter of the alphabet and reassembles the list — thirty-six calls, and a
+  correct-looking answer to a question it was not allowed to ask.
+
+So the result schema carries a refusal, the instructions name both patterns
+explicitly, and the sandbox call budget is set close to what a real answer needs
+— low enough that enumeration fails, and the failure reaches the model as
+something it can act on.
+
+```json
+{"unavailable": "I can only see your own tasks, not Linus's."}
+```
+
+Validation rejects a document that both refuses and answers, so a model cannot
+hedge. **Refusing has to be a correct answer, reachable and rewarded, or the
+model will fill the silence.**
 
 **Derive ownership, never accept it.** `tasks.create` has no `owner` field; the
 owner is `identity.User`. A program cannot file work under someone else's name

@@ -15,6 +15,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
+	"github.com/mukezhz/codemode/sandbox/goja"
 
 	"github.com/mukezhz/codemode/examples/taskreport/server"
 	"github.com/mukezhz/codemode/examples/taskreport/store"
@@ -43,7 +44,6 @@ func serve(
 	config config,
 	tasks *store.Store,
 	full capability.Registry,
-	runner sandbox.Runner,
 	model llm.Client,
 ) error {
 	assets, err := web.Assets()
@@ -51,12 +51,19 @@ func serve(
 		fmt.Printf("frontend\n  not built — %v\n", err)
 	}
 
+	// A tighter budget than the command line uses: see server.chatCallBudget.
+	chatRunner, err := goja.New(sandbox.Options{MaxCalls: 25, Timeout: 30 * time.Second})
+	if err != nil {
+		return err
+	}
+	defer chatRunner.Close()
+
 	handler, err := server.New(server.Options{
 		Store:    tasks,
 		Full:     full,
 		Admins:   []string{"grace"},
 		Model:    model,
-		Runner:   runner,
+		Runner:   chatRunner,
 		Limit:    config.limit,
 		Attempts: config.attempts,
 		Assets:   assets,

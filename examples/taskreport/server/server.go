@@ -276,6 +276,18 @@ type chatResponse struct {
 	Took     string             `json:"took"`
 }
 
+// chatCallBudget bounds one answer.
+//
+// It is deliberately close to what a report needs. A model that cannot answer
+// directly will otherwise find a way around: asked for every task with only a
+// search capability, one wrote a loop calling search once per letter of the
+// alphabet and reassembled the list from the results. Thirty-six calls, a
+// correct-looking answer, and a pattern nobody wants in production.
+//
+// A budget this size makes that fail, and the failure reaches the model as
+// something it can act on: the repair attempt is told the budget was exhausted.
+const chatCallBudget = 25
+
 func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	if server.options.Model == nil {
 		fail(writer, http.StatusServiceUnavailable,
@@ -293,6 +305,11 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
+	identity, err := auth.From(request.Context())
+	if err != nil {
+		fail(writer, http.StatusUnauthorized, err)
+		return
+	}
 	mode, _, err := server.scoped(request.Context())
 	if err != nil {
 		fail(writer, http.StatusUnauthorized, err)
@@ -307,10 +324,12 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	log := server.log.With("request", body.Request)
 	started := time.Now()
 	result, err := agent.Run(ctx, mode, trace.Model(server.options.Model, log), body.Request, agent.Options{
-		Runner:       server.options.Runner,
-		Limit:        server.options.Limit,
-		Attempts:     server.options.Attempts,
-		Instructions: view.Instructions,
+		Runner:   server.options.Runner,
+		Limit:    server.options.Limit,
+		Attempts: server.options.Attempts,
+		// Two things the model cannot work out for itself: the shape of the
+		// answer, and the shape of its own access.
+		Instructions: view.Instructions + "\n\n" + identity.Instructions(),
 	})
 	if err != nil {
 		server.log.Error("chat failed", "request", body.Request, "error", err, "program", result.Source)
@@ -328,10 +347,17 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	log.Info("step=answer",
-		"blocks", len(document.Blocks),
-		"attempts", result.Attempts,
-		"took", time.Since(started).Round(time.Millisecond))
+	if document.Refused() {
+		// A refusal is a successful request with an unhappy answer, not a
+		// server failure, so it comes back as one — the browser renders it
+		// differently, and the program is still attached for inspection.
+		log.Info("step=answer", "refused", document.Unavailable, "attempts", result.Attempts)
+	} else {
+		log.Info("step=answer",
+			"blocks", len(document.Blocks),
+			"attempts", result.Attempts,
+			"took", time.Since(started).Round(time.Millisecond))
+	}
 
 	send(writer, chatResponse{
 		Document: document,

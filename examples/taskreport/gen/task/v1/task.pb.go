@@ -1623,7 +1623,7 @@ const file_task_proto_rawDesc = "" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x1c\n" +
 	"\tcompleted\x18\x02 \x01(\x05R\tcompleted\";\n" +
 	"\x12ThroughputResponse\x12%\n" +
-	"\x04days\x18\x01 \x03(\v2\x11.task.v1.DayCountR\x04days2\xeb\r\n" +
+	"\x04days\x18\x01 \x03(\v2\x11.task.v1.DayCountR\x04days2\xf4\r\n" +
 	"\vTaskService\x12\xb4\x01\n" +
 	"\x06Create\x12\x1a.task.v1.CreateTaskRequest\x1a\x15.task.v1.TaskResponse\"w\x82\xb5\x18sCreates a task. Title is required. Priority is low, medium, or high and defaults to medium. Due date is YYYY-MM-DD.\x12^\n" +
 	"\x03Get\x12\x17.task.v1.GetTaskRequest\x1a\x15.task.v1.TaskResponse\"'\x82\xb5\x18#Returns one task by its numeric ID.\x12\xc4\x01\n" +
@@ -1633,8 +1633,8 @@ const file_task_proto_rawDesc = "" +
 	"\x06Reopen\x12\x16.task.v1.TaskIDRequest\x1a\x15.task.v1.TaskResponse\"E\x82\xb5\x18AMarks a completed task open again and clears its completion date.\x12d\n" +
 	"\x06Delete\x12\x16.task.v1.TaskIDRequest\x1a\x1b.task.v1.DeleteTaskResponse\"%\x82\xb5\x18!Deletes a task permanently by ID.\x12|\n" +
 	"\x06AddTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"F\x82\xb5\x18BAdds a tag to a task. Adding a tag it already has changes nothing.\x12W\n" +
-	"\tRemoveTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"\x1e\x82\xb5\x18\x1aRemoves a tag from a task.\x12\x8a\x01\n" +
-	"\x06Search\x12\x1b.task.v1.SearchTasksRequest\x1a\x19.task.v1.TaskListResponse\"H\x82\xb5\x18DFinds tasks whose title contains the given text, case-insensitively.\x12\xb4\x01\n" +
+	"\tRemoveTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"\x1e\x82\xb5\x18\x1aRemoves a tag from a task.\x12\x93\x01\n" +
+	"\x06Search\x12\x1b.task.v1.SearchTasksRequest\x1a\x19.task.v1.TaskListResponse\"Q\x82\xb5\x18DFinds tasks whose title contains the given text, case-insensitively.\x8a\xb5\x18\x05admin\x12\xb4\x01\n" +
 	"\aListFor\x12\x17.task.v1.ListForRequest\x1a\x19.task.v1.TaskListResponse\"u\x82\xb5\x18hLists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.\x8a\xb5\x18\x05admin\x12\x81\x01\n" +
 	"\x06Assign\x12\x1a.task.v1.AssignTaskRequest\x1a\x15.task.v1.TaskResponse\"D\x82\xb5\x187Moves a task to a different owner. Administrators only.\x8a\xb5\x18\x05admin\x1a\t\x82\xb5\x18\x05tasks2\xc6\x02\n" +
 	"\x0eProjectService\x12\x9d\x01\n" +

@@ -238,6 +238,11 @@ func TestChatRendersAViewDocument(t *testing.T) {
 	if !strings.Contains(author.system, `{"type":"bar"`) {
 		t.Fatalf("system prompt is missing the view schema:\n%s", author.system)
 	}
+	// And so do the caller's, or a withheld capability produces a confident
+	// wrong answer instead of an honest refusal.
+	if !strings.Contains(author.system, "You are answering for ada, a member") {
+		t.Fatalf("system prompt does not tell the model whose data this is:\n%s", author.system)
+	}
 	// And the engine's own rules must survive alongside them.
 	if !strings.Contains(author.system, "codemode.execute") {
 		t.Fatalf("the view instructions displaced the engine's rules:\n%s", author.system)
@@ -290,5 +295,28 @@ func TestChatIsUnavailableWithoutAModel(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), "no model is configured") {
 		t.Fatalf("body = %s", response.Body)
+	}
+}
+
+// The two instruction sets are per role, so a member and an administrator are
+// told different things about their own reach.
+func TestSystemPromptDescribesTheCallersReach(t *testing.T) {
+	program := `return { blocks: [{ type: "text", text: "ok" }] };`
+
+	for _, test := range []struct{ user, role, want, notWant string }{
+		{"ada", "member", "only ada's own tasks", "whole workspace"},
+		{"grace", "admin", "whole workspace", "outside what you can see"},
+	} {
+		author := &model{program: program}
+		handler := newServer(t, author)
+		if code := do(t, handler, "POST", "/api/chat", `{"request":"anything"}`, test.user, test.role).Code; code != http.StatusOK {
+			t.Fatalf("%s got %d", test.user, code)
+		}
+		if !strings.Contains(author.system, test.want) {
+			t.Errorf("%s's prompt is missing %q", test.user, test.want)
+		}
+		if strings.Contains(author.system, test.notWant) {
+			t.Errorf("%s's prompt wrongly contains %q", test.user, test.notWant)
+		}
 	}
 }

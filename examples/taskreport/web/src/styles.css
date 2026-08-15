@@ -148,6 +148,12 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: flex; flex-direction: column; gap: 20px;
 }
 .doc-title { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+
+/* A refusal is an answer, so it keeps the card — but it must not read as a
+   report. Muted, no heading, one sentence. */
+.doc.refusal { border-left: 3px solid var(--warn); background: var(--bg); box-shadow: none; }
+.refusal-text { margin: 0; color: var(--muted); }
+.refusal-text::before { content: "⚠  "; color: var(--warn); }
 .block { display: flex; flex-direction: column; gap: 10px; }
 .block-heading { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
 .prose { margin: 0; }

@@ -90,3 +90,29 @@ func ParseRole(role string) (Role, error) {
 		return "", fmt.Errorf("role %q is not member or admin", role)
 	}
 }
+
+// Instructions tell the model who it is acting for and what it may see.
+//
+// This exists because withholding a capability is silent. A member asking
+// "show me linus's tasks" has no tasks.listFor, so the model improvises with
+// tasks.list — which returns the member's own rows, scoped correctly — filters
+// for linus, finds nothing, and reports "Linus has no tasks."
+//
+// Every layer worked. The permission held, the scope held, and the answer was
+// false. A model that is not told the shape of its own access will fill the gap
+// with an assumption, and an assumption stated as a finding is worse than an
+// error.
+//
+// So the prompt says plainly whose data this is, and that an empty result is
+// not evidence of absence.
+func (identity Identity) Instructions() string {
+	if identity.Admin() {
+		return "You are answering for " + identity.User + ", an administrator. " +
+			"Capabilities return data for the whole workspace, so totals and reports cover every person unless you filter them."
+	}
+	return "You are answering for " + identity.User + ", a member. " +
+		"Every capability returns only " + identity.User + "'s own tasks — never anyone else's, and never the workspace total. " +
+		"You have no way to read another person's work.\n" +
+		"If the request asks about someone else, say that it is outside what you can see. " +
+		"Do not filter your own tasks by another person's name and report the result as theirs: an empty result means you cannot see their work, not that they have none."
+}

@@ -181,6 +181,37 @@ rm tasks.db     # re-seeds twelve tasks on the next start
 `tasks.db` is written to whatever directory you run from — the repository root,
 if you followed the steps above. `-db :memory:` keeps nothing.
 
+## Testing denial
+
+To watch what a member actually experiences when a capability is withheld,
+without editing a proto and regenerating to find out:
+
+```sh
+go run ./examples/taskreport -serve :8080 -restrict tasks.list,tasks.search
+```
+
+```
+restricted
+  tasks.list, tasks.search now require the admin role
+```
+
+| | member | admin |
+| --- | --- | --- |
+| capabilities offered | 17 | 23 |
+| `GET /api/tasks` | `400 capability "tasks.list" is not registered` | `200`, 12 tasks |
+| "what are my tasks?" | *refused: "I cannot list your individual tasks"* | a full table |
+
+Note the board fails too, and correctly: it goes through the same runtime as the
+programs do, so there is one answer to what a caller may run rather than two.
+
+A name that is not a capability is an error rather than a silent no-op — a typo
+in an experiment about withholding should not quietly withhold nothing.
+
+`-restrict` is `capability.Registry.Require`, which is also how a policy that
+lives outside the contracts reaches the registry: a plan a customer is on, a
+feature flag, a rule in a database. The contract is the right home for a policy
+that is part of the design; `Require` is for the rest.
+
 ## Seeing what happened
 
 When an answer looks wrong, the useful question is *which step* went wrong.
@@ -240,6 +271,8 @@ so observing them needs no change to the thing observed.
 | `tasks.db` keeps reappearing | It is created on first run; `rm` it to reseed |
 | Board is empty after switching user | Correct — you are seeing that person's tasks |
 | `reports.byOwner is not registered` | You are a member; switch to grace |
+| Answer says someone "has no tasks" | Stale build — the caller's reach is now in the prompt |
+| "no capability returns the full task list" | A capability is restricted that should not be; check `(codemode.roles)` |
 | An answer is wrong or zero | Run with `-log debug`, or click **Show the program** |
 
 ---
@@ -274,6 +307,17 @@ programs return a small **document** instead, and the browser renders it:
   {"type": "text",  "text": "Three tasks are past their due date."}
 ]}
 ```
+
+A sixth shape is a refusal:
+
+```json
+{"unavailable": "I can only see your own tasks, not Linus's."}
+```
+
+It renders as a muted card rather than a report, and a document may refuse or
+answer, never both. Without it the model improvises: it returns its own figures
+under someone else's name, or calls `tasks.search` once per letter of the
+alphabet to rebuild a list it was not given.
 
 Five block types, one React component each. The schema lives in
 [`view/`](view) and is enforced server-side before anything reaches the browser
@@ -338,6 +382,7 @@ what to do first — stays in the program the model writes. There is no
 | `-v` | off | also print the system prompt |
 | `-serve` | — | serve the web app, e.g. `:8080` |
 | `-log` | `info` | `debug` adds the system prompt and every capability call |
+| `-restrict` | — | make named capabilities admin-only at runtime, for testing denial |
 | `-user` | `ada` | who is asking (command line only; the UI has a dropdown) |
 | `-role` | `member` | `member` or `admin` |
 | `-seed` | on | seed a sample backlog when the database is empty |

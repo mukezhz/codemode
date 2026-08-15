@@ -72,6 +72,8 @@ func main() {
 	flag.BoolVar(&config.seed, "seed", true, "seed a sample backlog when the database is empty")
 	flag.BoolVar(&config.verbose, "v", false, "print the system prompt as well as the program")
 	flag.StringVar(&config.serve, "serve", "", "serve the web app on this address, e.g. :8080")
+	flag.StringVar(&config.restrict, "restrict", "",
+		"comma-separated capability names to make admin-only at runtime, for testing denial without editing the protos")
 	flag.StringVar(&config.logLevel, "log", "info", "debug, info, warn, or error; debug shows the prompt, the program, and every capability call")
 	flag.Parse()
 
@@ -97,6 +99,7 @@ type config struct {
 	verbose      bool
 	serve        string
 	logLevel     string
+	restrict     string
 }
 
 func run(ctx context.Context, config config) error {
@@ -131,6 +134,10 @@ func run(ctx context.Context, config config) error {
 	// This is how a larger surface is assembled — a CRM would list contacts,
 	// deals, and billing the same way, each owning its own namespace.
 	full, err := capabilities()
+	if err != nil {
+		return err
+	}
+	full, err = restrict(full, config.restrict)
 	if err != nil {
 		return err
 	}
@@ -174,7 +181,7 @@ func run(ctx context.Context, config config) error {
 	if config.apiKey == "" && config.baseURL == "" {
 		if config.serve != "" {
 			// The board works without a model; only the chat needs one.
-			return serve(ctx, config, tasks, full, runner, nil)
+			return serve(ctx, config, tasks, full, nil)
 		}
 		return offline(ctx, mode, runner, config)
 	}
@@ -191,14 +198,14 @@ func run(ctx context.Context, config config) error {
 	fmt.Printf("model\n  %s at %s\n\n", model.Name(), endpointLabel(config.baseURL))
 
 	if config.serve != "" {
-		return serve(ctx, config, tasks, full, runner, model)
+		return serve(ctx, config, tasks, full, model)
 	}
 
 	result, err := agent.Run(ctx, mode, model, config.request, agent.Options{
 		Runner:       runner,
 		Limit:        config.limit,
 		Attempts:     config.attempts,
-		Instructions: config.instructions,
+		Instructions: strings.TrimSpace(identity.Instructions() + "\n" + config.instructions),
 	})
 	report(result, config.verbose, runner)
 	if err != nil {
@@ -230,6 +237,41 @@ func capabilities() (capability.Registry, error) {
 		return capability.Registry{}, err
 	}
 	return capability.Merge(tasks, users)
+}
+
+// restrict makes the named capabilities admin-only at runtime.
+//
+// The contract is the right home for a policy that is part of the design. This
+// is for the other kind: checking what a member actually experiences when a
+// capability is withheld, without editing a proto and regenerating to find out.
+//
+//	go run ./examples/taskreport -serve :8080 -restrict tasks.list,tasks.search
+func restrict(full capability.Registry, names string) (capability.Registry, error) {
+	names = strings.TrimSpace(names)
+	if names == "" {
+		return full, nil
+	}
+	wanted := strings.Split(names, ",")
+	for index, name := range wanted {
+		wanted[index] = strings.TrimSpace(name)
+	}
+
+	// A typo would silently restrict nothing, which is the opposite of what an
+	// experiment in withholding wants to find out.
+	known := map[string]bool{}
+	for _, item := range full.Capabilities {
+		known[item.Name] = true
+	}
+	for _, name := range wanted {
+		if !known[name] {
+			return capability.Registry{}, fmt.Errorf("-restrict names %q, which is not a capability; try one of %s",
+				name, strings.Join(full.Names(), ", "))
+		}
+	}
+
+	restricted := full.Require(string(auth.RoleAdmin), capability.Named(wanted...))
+	fmt.Printf("restricted\n  %s now require the admin role\n\n", strings.Join(wanted, ", "))
+	return restricted, nil
 }
 
 // forRole returns the registry this caller may execute against.

@@ -366,3 +366,93 @@ func TestCreatedTasksBelongToTheCaller(t *testing.T) {
 		t.Fatal("tasks.create accepted an owner field")
 	}
 }
+
+// Withholding a capability is silent, and silence is the danger.
+//
+// A member asking about a colleague has no tasks.listFor, so the model reaches
+// for tasks.list — which returns the member's own rows, correctly scoped —
+// filters for the colleague, finds nothing, and reports that they have no work.
+// Every layer held and the answer was false.
+//
+// The prompt has to say what the caller can see, so an empty result is not read
+// as evidence of absence.
+func TestIdentityInstructionsDescribeTheCallersReach(t *testing.T) {
+	member := auth.Identity{User: "ada", Role: auth.RoleMember}.Instructions()
+
+	for _, want := range []string{"ada", "member", "own tasks", "outside what you can see"} {
+		if !strings.Contains(member, want) {
+			t.Errorf("a member's instructions omit %q:\n%s", want, member)
+		}
+	}
+	// The specific trap: filtering your own rows by someone else's name.
+	if !strings.Contains(member, "empty result means you cannot see their work") {
+		t.Errorf("a member's instructions do not warn against reading an empty result as absence:\n%s", member)
+	}
+
+	admin := auth.Identity{User: "grace", Role: auth.RoleAdmin}.Instructions()
+	if !strings.Contains(admin, "whole workspace") {
+		t.Errorf("an administrator's instructions do not say their reach is the workspace:\n%s", admin)
+	}
+	if strings.Contains(admin, "outside what you can see") {
+		t.Errorf("an administrator was told they cannot see the workspace:\n%s", admin)
+	}
+}
+
+// The sandbox is handed no capability list, only one binding — so a program
+// cannot enumerate what exists, and a name it invents or remembers is resolved
+// on the host side of the bridge or not at all.
+func TestSandboxHoldsOnlyTheBridge(t *testing.T) {
+	mode, _, ctx := member(t, "ada")
+
+	if got := run(t, ctx, mode, `return Object.keys(codemode).join(",");`); got != "execute" {
+		t.Fatalf("the sandbox global holds %q, want only execute", got)
+	}
+	for _, probe := range []string{"list", "capabilities", "search", "registry"} {
+		got := run(t, ctx, mode, `return typeof codemode.`+probe+`;`)
+		if got != "undefined" {
+			t.Errorf("codemode.%s is %v; the sandbox can enumerate the surface", probe, got)
+		}
+	}
+}
+
+// Naming a withheld capability from inside the sandbox must fail, whether the
+// program asks politely, asks twice, or swallows the error.
+//
+// This is the property the whole design rests on: authorization happens on the
+// host side of the bridge, against the registry built for this caller, so no
+// program — however written — can reach past it.
+func TestSandboxCannotReachWithheldCapabilities(t *testing.T) {
+	mode, tasks, ctx := member(t, "ada")
+	if _, err := tasks.Create("linus", "Linus's task", "docs", "high", "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second, MaxCalls: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runner.Close()
+
+	for _, program := range []string{
+		`return codemode.execute("tasks.listFor", { owner: "linus" });`,
+		`return codemode.execute("reports.byOwner", {});`,
+		`return codemode.execute("users.list", {});`,
+		`return codemode.execute("tasks.assign", { id: 1, owner: "ada" });`,
+	} {
+		if _, err := runner.Run(ctx, mode, program); err == nil {
+			t.Fatalf("the sandbox executed a withheld capability: %s", program)
+		}
+	}
+
+	// Swallowing the error changes nothing: there is no data behind it to leak.
+	value := run(t, ctx, mode, `
+		try {
+			return "leaked: " + JSON.stringify(codemode.execute("tasks.listFor", { owner: "linus" }));
+		} catch (failure) {
+			return "refused";
+		}
+	`)
+	if got, ok := value.(string); !ok || !strings.HasPrefix(got, "refused") {
+		t.Fatalf("a caught rejection yielded %#v", value)
+	}
+}
