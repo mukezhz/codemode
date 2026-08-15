@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -147,7 +148,12 @@ type runner struct {
 	closed  bool
 }
 
-func (runner *runner) Name() string { return "test/runner" }
+func (runner *runner) Name() string     { return "test/runner" }
+func (runner *runner) Language() string { return "test" }
+
+func (runner *runner) Prompt(matches []capability.Match) string {
+	return fmt.Sprintf("test prompt with %d capabilities", len(matches))
+}
 
 func (runner *runner) Run(_ context.Context, _ codemode.CodeMode, source string) (any, error) {
 	runner.sources = append(runner.sources, source)

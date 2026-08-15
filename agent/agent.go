@@ -100,7 +100,9 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 		return Result{}, errors.New("search matched no capabilities")
 	}
 
-	system := SystemPrompt(matches)
+	// The engine that will evaluate the program writes the instructions for
+	// producing it, so switching engines switches dialects with no other change.
+	system := runner.Prompt(matches)
 	prompt := request
 	result := Result{Matches: matches}
 
@@ -125,27 +127,6 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 		prompt = repairPrompt(request, result.Source, err)
 	}
 	return result, fmt.Errorf("gave up after %d attempts: %w", options.Attempts, lastErr)
-}
-
-// SystemPrompt renders the rules and the selected capabilities. It is stable
-// for a given match set so providers can cache it.
-func SystemPrompt(matches []capability.Match) string {
-	return `You write short JavaScript programs that answer a user's request by calling application capabilities.
-
-Rules:
-- Reply with the body of a function: statements only, no wrapper, no imports, no exports.
-- Call capabilities as codemode.execute(name, input). It is synchronous and returns the decoded response object. Never use async, await, promises, or callbacks.
-- Only the capabilities declared below exist. Any other name is rejected.
-- Do the filtering, looping, and composing yourself rather than asking for one result at a time.
-- If a capability call throws, let it throw; do not swallow errors.
-- End with a return statement whose value answers the request. Prefer a short human-readable string.
-- There is no console, filesystem, network, or module loader. codemode.execute is the only host binding.
-
-Reply with the program only. No prose, no markdown fences.
-
-Declared capabilities:
-
-` + sandbox.Declarations(matches)
 }
 
 // Program extracts a program from a model response, tolerating the markdown

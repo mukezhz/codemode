@@ -1,0 +1,1065 @@
+<title>Anatomy of a Code Mode Request</title>
+
+<style>
+  :root {
+    --ground: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #edeff3;
+    --ink: #161a21;
+    --ink-2: #545c69;
+    --line: #d8dce3;
+    --flow: #23607f;
+    --gate: #a8392f;
+
+    --serif: ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10141a;
+      --surface: #171c24;
+      --surface-2: #1e242e;
+      --ink: #e4e8ee;
+      --ink-2: #97a0ad;
+      --line: #2a313c;
+      --flow: #6fb3d2;
+      --gate: #e0796c;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #10141a;
+    --surface: #171c24;
+    --surface-2: #1e242e;
+    --ink: #e4e8ee;
+    --ink-2: #97a0ad;
+    --line: #2a313c;
+    --flow: #6fb3d2;
+    --gate: #e0796c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* Text column sits inside the wider figure column. */
+  .col {
+    max-width: 68ch;
+  }
+
+  /* ---- masthead ---- */
+
+  header {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 56px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin: 0 0 20px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(38px, 6vw, 60px);
+    line-height: 1.06;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    margin: 0 0 24px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 21px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 60ch;
+  }
+
+  /* ---- sections ---- */
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 30px;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+    margin: 72px 0 8px;
+    text-wrap: balance;
+  }
+
+  h2 + .section-note {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin: 0 0 28px;
+  }
+
+  h3 {
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.3;
+    font-weight: 600;
+    margin: 40px 0 10px;
+  }
+
+  p { margin: 0 0 20px; }
+
+  a { color: var(--flow); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, .step:focus-visible { outline: 2px solid var(--flow); outline-offset: 3px; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.08em 0.34em;
+  }
+
+  strong { font-weight: 650; }
+
+  /* ---- numbered steps ---- */
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .step-n {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+    border-top: 2px solid var(--flow);
+    padding-top: 8px;
+  }
+
+  .step h3 { margin: 0 0 8px; }
+  .step p:last-child { margin-bottom: 0; }
+
+  /* ---- figures ---- */
+
+  figure {
+    margin: 44px 0;
+    padding: 0;
+  }
+
+  .fig-frame {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+
+  figure svg {
+    display: block;
+    width: 100%;
+    min-width: 560px;
+    max-width: 100%;
+    height: auto;
+    color: var(--ink);
+  }
+
+  figcaption {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    margin-top: 14px;
+    max-width: 68ch;
+  }
+
+  /* diagram primitives */
+  .d-box { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
+  .d-box-flow { fill: var(--surface-2); stroke: var(--flow); stroke-width: 1.5; }
+  .d-box-gate { fill: var(--surface-2); stroke: var(--gate); stroke-width: 1.5; }
+  .d-zone { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+  .d-line { stroke: var(--ink-2); stroke-width: 1.4; fill: none; }
+  .d-line-flow { stroke: var(--flow); stroke-width: 1.6; fill: none; }
+  .d-line-gate { stroke: var(--gate); stroke-width: 1.6; fill: none; }
+  .d-dash { stroke: var(--ink-2); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; }
+  .d-head { fill: var(--ink-2); }
+  .d-head-flow { fill: var(--flow); }
+  .d-head-gate { fill: var(--gate); }
+  .d-t { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .d-t-sub { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-2); }
+  .d-t-lab { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-2); }
+  .d-t-zone { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-2); letter-spacing: 0.09em; }
+  .d-t-gate { font-family: var(--mono); font-size: 10.5px; fill: var(--gate); }
+
+  /* ---- tables ---- */
+
+  .table-wrap { overflow-x: auto; margin: 28px 0 32px; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 520px;
+    font-size: 15px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 11px 16px 11px 0;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    font-weight: 400;
+    border-bottom-color: var(--ink-2);
+  }
+
+  td code { background: none; border: none; padding: 0; }
+
+  /* ---- callout ---- */
+
+  .note {
+    border-left: 2px solid var(--gate);
+    padding: 2px 0 2px 20px;
+    margin: 32px 0;
+    color: var(--ink-2);
+    font-size: 17px;
+  }
+
+  .note strong { color: var(--ink); }
+
+  /* ---- code block ---- */
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 24px 0;
+  }
+
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+
+  footer {
+    margin-top: 88px;
+    padding-top: 28px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+
+  @media (max-width: 640px) {
+    body { font-size: 17px; }
+    .step { grid-template-columns: 40px 1fr; gap: 14px; }
+    .fig-frame { padding: 14px; }
+  }
+</style>
+
+<div class="page">
+
+<header>
+  <p class="eyebrow">Code Mode / Go</p>
+  <h1>Anatomy of a Code&nbsp;Mode Request</h1>
+  <p class="standfirst">
+    A model writes a small program. The program runs in a sandbox. Every time it
+    wants something real, it calls back to Go, and Go decides whether to allow it.
+    Here is that trip, one step at a time.
+  </p>
+</header>
+
+<div class="col">
+  <h2>The short version</h2>
+  <p class="section-note">If you read nothing else</p>
+
+  <p>
+    Ordinary tool use makes the model do the work one call at a time. Ask it to
+    finish fifty tasks and you get fifty round trips, with every intermediate
+    result passing through the model.
+  </p>
+  <p>
+    Code mode flips that. The model writes a <strong>program</strong> instead of
+    a call. The program loops, filters, and chains at machine speed inside a
+    sandbox, and only the final answer comes back. The model is asked once.
+  </p>
+  <p>
+    The sandbox can't reach your database, your network, or your secrets. It gets
+    exactly one function, and that function goes back to Go, which checks a
+    registry before letting anything run.
+  </p>
+</div>
+
+<figure>
+  <div class="fig-frame">
+    <svg viewBox="0 0 880 400" role="img" aria-label="A request moves through twelve stages: user request, search, declarations, model, program, sandbox, execute call, allowlist check, RPC path, gRPC to the application, JSON result, and finally the answer. The JSON result also loops back into the sandbox so the program can keep running.">
+      <defs>
+        <marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head" />
+        </marker>
+        <marker id="a1f" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head-flow" />
+        </marker>
+        <marker id="a1g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head-gate" />
+        </marker>
+      </defs>
+
+      <!-- row 1 -->
+      <rect class="d-box" x="40" y="42" width="170" height="46" rx="3" />
+      <text class="d-t" x="125" y="63" text-anchor="middle">user request</text>
+      <text class="d-t-sub" x="125" y="78" text-anchor="middle">plain English</text>
+
+      <rect class="d-box" x="250" y="42" width="170" height="46" rx="3" />
+      <text class="d-t" x="335" y="63" text-anchor="middle">search</text>
+      <text class="d-t-sub" x="335" y="78" text-anchor="middle">mode.Search</text>
+
+      <rect class="d-box" x="460" y="42" width="170" height="46" rx="3" />
+      <text class="d-t" x="545" y="63" text-anchor="middle">declarations</text>
+      <text class="d-t-sub" x="545" y="78" text-anchor="middle">the prompt</text>
+
+      <rect class="d-box" x="670" y="42" width="170" height="46" rx="3" />
+      <text class="d-t" x="755" y="63" text-anchor="middle">model</text>
+      <text class="d-t-sub" x="755" y="78" text-anchor="middle">llm.Client</text>
+
+      <line class="d-line" x1="214" y1="65" x2="244" y2="65" marker-end="url(#a1)" />
+      <line class="d-line" x1="424" y1="65" x2="454" y2="65" marker-end="url(#a1)" />
+      <line class="d-line" x1="634" y1="65" x2="664" y2="65" marker-end="url(#a1)" />
+
+      <!-- fold right -->
+      <path class="d-line" d="M755 92 L755 156" marker-end="url(#a1)" />
+      <text class="d-t-lab" x="765" y="128">writes JS</text>
+
+      <!-- row 2, right to left -->
+      <rect class="d-box" x="670" y="162" width="170" height="46" rx="3" />
+      <text class="d-t" x="755" y="183" text-anchor="middle">program</text>
+      <text class="d-t-sub" x="755" y="198" text-anchor="middle">untrusted source</text>
+
+      <rect class="d-box-flow" x="460" y="162" width="170" height="46" rx="3" />
+      <text class="d-t" x="545" y="183" text-anchor="middle">sandbox</text>
+      <text class="d-t-sub" x="545" y="198" text-anchor="middle">sandbox.Runner</text>
+
+      <rect class="d-box-flow" x="250" y="162" width="170" height="46" rx="3" />
+      <text class="d-t" x="335" y="183" text-anchor="middle">execute(name, in)</text>
+      <text class="d-t-sub" x="335" y="198" text-anchor="middle">the one binding</text>
+
+      <rect class="d-box-gate" x="40" y="162" width="170" height="46" rx="3" />
+      <text class="d-t" x="125" y="183" text-anchor="middle">allowlist check</text>
+      <text class="d-t-sub" x="125" y="198" text-anchor="middle">registry lookup</text>
+
+      <line class="d-line" x1="666" y1="185" x2="636" y2="185" marker-end="url(#a1)" />
+      <line class="d-line-flow" x1="456" y1="185" x2="426" y2="185" marker-end="url(#a1f)" />
+      <line class="d-line-gate" x1="246" y1="185" x2="216" y2="185" marker-end="url(#a1g)" />
+
+      <!-- fold left -->
+      <path class="d-line" d="M125 212 L125 276" marker-end="url(#a1)" />
+      <text class="d-t-gate" x="135" y="248">name is registered</text>
+
+      <!-- row 3, left to right -->
+      <rect class="d-box" x="40" y="282" width="170" height="46" rx="3" />
+      <text class="d-t" x="125" y="303" text-anchor="middle">RPC path</text>
+      <text class="d-t-sub" x="125" y="318" text-anchor="middle">resolved by host</text>
+
+      <rect class="d-box" x="250" y="282" width="170" height="46" rx="3" />
+      <text class="d-t" x="335" y="303" text-anchor="middle">gRPC → app</text>
+      <text class="d-t-sub" x="335" y="318" text-anchor="middle">real business code</text>
+
+      <rect class="d-box" x="460" y="282" width="170" height="46" rx="3" />
+      <text class="d-t" x="545" y="303" text-anchor="middle">JSON result</text>
+      <text class="d-t-sub" x="545" y="318" text-anchor="middle">back over the bridge</text>
+
+      <rect class="d-box" x="670" y="282" width="170" height="46" rx="3" />
+      <text class="d-t" x="755" y="303" text-anchor="middle">answer</text>
+      <text class="d-t-sub" x="755" y="318" text-anchor="middle">one value, to the user</text>
+
+      <line class="d-line" x1="214" y1="305" x2="244" y2="305" marker-end="url(#a1)" />
+      <line class="d-line" x1="424" y1="305" x2="454" y2="305" marker-end="url(#a1)" />
+      <line class="d-line" x1="634" y1="305" x2="664" y2="305" marker-end="url(#a1)" />
+
+      <!-- the loop: JSON result back up into the sandbox -->
+      <path class="d-dash" d="M545 278 L545 212" marker-end="url(#a1)" />
+      <text class="d-t-lab" x="556" y="248">loops, ×N</text>
+
+      <!-- row labels -->
+      <text class="d-t-zone" x="40" y="26">1 — HOST PREPARES</text>
+      <text class="d-t-zone" x="40" y="146">2 — PROGRAM RUNS</text>
+      <text class="d-t-zone" x="40" y="266">3 — HOST EXECUTES</text>
+    </svg>
+  </div>
+  <figcaption>
+    The full path of one request, read left-to-right then back again. The dashed
+    arrow is the part that matters: a result returns <em>into the running
+    program</em>, not into the model, so the program can call again and again
+    before anyone asks the model a second question.
+  </figcaption>
+</figure>
+
+<div class="col">
+  <h2>Before any request: build time</h2>
+  <p class="section-note">Runs once, when contracts change</p>
+
+  <p>
+    Two things happen long before a user types anything. They turn your service
+    definitions into a catalogue the system can search and check against.
+  </p>
+</div>
+
+<ol class="steps col">
+  <li class="step">
+    <div class="step-n">B1</div>
+    <div>
+      <h3>Protobuf files describe your services</h3>
+      <p>
+        You write <code>proto/todo.proto</code> as normal, with two extra
+        annotations: a namespace on the service and a description on each method.
+        The description is what a model will read later, so write it for a reader,
+        not a compiler.
+      </p>
+    </div>
+  </li>
+  <li class="step">
+    <div class="step-n">B2</div>
+    <div>
+      <h3>The generator turns them into a registry</h3>
+      <p>
+        <code>make generate</code> asks Buf for a descriptor set, then
+        <code>registry/main.go</code> walks it and writes
+        <code>registry/registry.json</code>. Each entry has a friendly
+        <code>name</code> like <code>todos.complete</code>, the real
+        <code>rpc</code> path <code>todo.v1.TodoService/Complete</code>, the
+        description, and the input and output field types.
+      </p>
+      <p>
+        Those field types come out as TypeScript — <code>string</code>,
+        <code>number[]</code>, <code>Record&lt;string, string&gt;</code> — because
+        that is what the model will be shown.
+      </p>
+    </div>
+  </li>
+</ol>
+
+<div class="col">
+  <h2>The eight steps of a request</h2>
+  <p class="section-note">Runs every time someone asks for something</p>
+</div>
+
+<ol class="steps col">
+  <li class="step">
+    <div class="step-n">01</div>
+    <div>
+      <h3>A request arrives</h3>
+      <p>
+        Someone says <em>"add two todos and finish the first one."</em> Go takes
+        it from here. Nothing has been sent to a model yet.
+      </p>
+    </div>
+  </li>
+
+  <li class="step">
+    <div class="step-n">02</div>
+    <div>
+      <h3>Search picks the relevant capabilities</h3>
+      <p>
+        <code>mode.Search</code> ranks the registry against the request and
+        returns the best few matches. With a database configured this is real
+        semantic search — the request is embedded into a vector and compared by
+        cosine distance. Without one, the demo falls back to counting keywords.
+      </p>
+      <p>
+        Search runs <strong>on the host, before the model exists in the
+        picture</strong>. That ordering is deliberate, and step 4 explains why.
+      </p>
+    </div>
+  </li>
+
+  <li class="step">
+    <div class="step-n">03</div>
+    <div>
+      <h3>Matches become a prompt</h3>
+      <p>
+        Each match is rendered as a TypeScript signature with its description
+        above it. Add the house rules — write a function body, no async, no
+        imports, return the answer — and that is the entire system prompt.
+      </p>
+      <pre><code>/** Marks a todo item as completed by ID. */
+codemode.execute(name: "todos.complete", input: { id: number }): { todo: Todo };</code></pre>
+      <p>
+        Field order is sorted, so the same match set always produces the same
+        bytes and the prompt stays cacheable.
+      </p>
+    </div>
+  </li>
+
+  <li class="step">
+    <div class="step-n">04</div>
+    <div>
+      <h3>The model writes a program</h3>
+      <p>
+        The prompt and the request go to whichever provider is configured. Back
+        comes a few lines of code. It is ordinary code — no magic, no framework:
+      </p>
+      <pre><code>const { todos } = codemode.execute("todos.list", {});
+const pending = todos.filter(todo =&gt; !todo.completed);
+const done = codemode.execute("todos.complete", { id: pending[0].id });
+return "completed " + done.todo.title;</code></pre>
+      <p>
+        That is JavaScript because the JavaScript engine is configured. The
+        engine writes its own prompt, so with <code>SANDBOX_ENGINE=lua</code>
+        the model is asked for Lua instead and the same job comes back as
+        <code>ipairs</code> and <code>..</code>. Steps 1 through 3 and 6 through
+        8 do not change.
+      </p>
+      <p>
+        Note what the model was <em>told</em> versus what it can <em>run</em>.
+        Those are two different lists, and keeping them apart is the whole
+        security story.
+      </p>
+    </div>
+  </li>
+</ol>
+
+<figure>
+  <div class="fig-frame">
+    <svg viewBox="0 0 780 300" role="img" aria-label="The registry feeds two separate destinations. Search results go only to the model prompt, deciding what the model knows. The full registry becomes the executable allowlist, deciding what may actually run.">
+      <defs>
+        <marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head" />
+        </marker>
+        <marker id="a2g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head-gate" />
+        </marker>
+      </defs>
+
+      <rect class="d-box" x="290" y="26" width="200" height="46" rx="3" />
+      <text class="d-t" x="390" y="47" text-anchor="middle">registry.json</text>
+      <text class="d-t-sub" x="390" y="62" text-anchor="middle">every capability</text>
+
+      <path class="d-line" d="M340 76 L200 76 L200 126" marker-end="url(#a2)" />
+      <path class="d-line-gate" d="M440 76 L580 76 L580 126" marker-end="url(#a2g)" />
+
+      <text class="d-t-lab" x="212" y="106">top few</text>
+      <text class="d-t-gate" x="592" y="106">all of them</text>
+
+      <!-- knowledge branch -->
+      <rect class="d-box" x="80" y="132" width="240" height="46" rx="3" />
+      <text class="d-t" x="200" y="153" text-anchor="middle">search results</text>
+      <text class="d-t-sub" x="200" y="168" text-anchor="middle">ranked matches</text>
+
+      <path class="d-line" d="M200 182 L200 216" marker-end="url(#a2)" />
+
+      <rect class="d-box" x="80" y="222" width="240" height="46" rx="3" />
+      <text class="d-t" x="200" y="243" text-anchor="middle">the prompt</text>
+      <text class="d-t-sub" x="200" y="258" text-anchor="middle">what the model KNOWS</text>
+
+      <!-- permission branch -->
+      <rect class="d-box-gate" x="460" y="132" width="240" height="46" rx="3" />
+      <text class="d-t" x="580" y="153" text-anchor="middle">codemode allowlist</text>
+      <text class="d-t-sub" x="580" y="168" text-anchor="middle">map[name]Capability</text>
+
+      <path class="d-line-gate" d="M580 182 L580 216" marker-end="url(#a2g)" />
+
+      <rect class="d-box-gate" x="460" y="222" width="240" height="46" rx="3" />
+      <text class="d-t" x="580" y="243" text-anchor="middle">Execute</text>
+      <text class="d-t-sub" x="580" y="258" text-anchor="middle">what MAY RUN</text>
+
+      <line class="d-zone" x1="390" y1="120" x2="390" y2="284" />
+      <text class="d-t-zone" x="390" y="292" text-anchor="middle">TWO SEPARATE LISTS</text>
+    </svg>
+  </div>
+  <figcaption>
+    Search shapes the prompt; the registry shapes permission. Because they are
+    separate, a program can succeed at calling something search never surfaced —
+    and a program that invents <code>todos.purge</code> is rejected by the map
+    lookup no matter how convincing the prompt was.
+  </figcaption>
+</figure>
+
+<ol class="steps col" start="5">
+  <li class="step">
+    <div class="step-n">05</div>
+    <div>
+      <h3>The sandbox runs the program</h3>
+      <p>
+        A fresh JavaScript interpreter is created for this one run. Its global
+        scope contains exactly what Go put there and nothing else: no
+        <code>require</code>, no <code>fetch</code>, no filesystem, no
+        <code>process</code>. There is one object, <code>codemode</code>, with one
+        method, <code>execute</code>.
+      </p>
+      <p>
+        Two bounds are enforced from outside the program: a wall-clock timeout and
+        a cap on how many capability calls it may make. A program that loops
+        forever is interrupted; a program that tries a thousand calls is stopped
+        at the budget.
+      </p>
+    </div>
+  </li>
+
+  <li class="step">
+    <div class="step-n">06</div>
+    <div>
+      <h3>Each call crosses back into Go</h3>
+      <p>
+        <code>codemode.execute</code> is not JavaScript. It is a Go function
+        bound into the interpreter. When the program calls it, the interpreter
+        blocks, Go takes over, and the program resumes only when Go returns a
+        value.
+      </p>
+      <p>
+        This is the only channel. Whatever the program computes, the only way it
+        affects the outside world is by putting a name and some JSON through this
+        one function.
+      </p>
+    </div>
+  </li>
+</ol>
+
+<figure>
+  <div class="fig-frame">
+    <svg viewBox="0 0 780 320" role="img" aria-label="A trust boundary splits the diagram. On the untrusted side, the model-written program calls an execute stub. Only a name and JSON input cross the boundary. On the trusted side, Go checks the allowlist, resolves the RPC path, calls the application over gRPC, and sends JSON back across.">
+      <defs>
+        <marker id="a3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head" />
+        </marker>
+        <marker id="a3f" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head-flow" />
+        </marker>
+      </defs>
+
+      <!-- boundary -->
+      <line class="d-zone" x1="390" y1="16" x2="390" y2="304" />
+      <text class="d-t-zone" x="382" y="30" text-anchor="end">UNTRUSTED</text>
+      <text class="d-t-zone" x="398" y="30">TRUSTED</text>
+
+      <!-- left column -->
+      <rect class="d-box" x="40" y="52" width="300" height="46" rx="3" />
+      <text class="d-t" x="190" y="73" text-anchor="middle">model-written program</text>
+      <text class="d-t-sub" x="190" y="88" text-anchor="middle">loops, filters, chains</text>
+
+      <path class="d-line" d="M190 102 L190 136" marker-end="url(#a3)" />
+
+      <rect class="d-box-flow" x="40" y="142" width="300" height="46" rx="3" />
+      <text class="d-t" x="190" y="163" text-anchor="middle">codemode.execute</text>
+      <text class="d-t-sub" x="190" y="178" text-anchor="middle">the only global it has</text>
+
+      <text class="d-t-lab" x="190" y="222" text-anchor="middle">no filesystem · no network</text>
+      <text class="d-t-lab" x="190" y="240" text-anchor="middle">no modules · no credentials</text>
+
+      <!-- crossings -->
+      <path class="d-line-flow" d="M344 158 L436 158" marker-end="url(#a3f)" />
+      <text class="d-t-lab" x="390" y="150" text-anchor="middle">{ name, input }</text>
+
+      <path class="d-line-flow" d="M436 196 L344 196" marker-end="url(#a3f)" />
+      <text class="d-t-lab" x="390" y="214" text-anchor="middle">JSON out</text>
+
+      <!-- right column -->
+      <rect class="d-box-gate" x="440" y="52" width="300" height="46" rx="3" />
+      <text class="d-t" x="590" y="73" text-anchor="middle">allowlist check</text>
+      <text class="d-t-sub" x="590" y="88" text-anchor="middle">is this name registered?</text>
+
+      <rect class="d-box" x="440" y="136" width="300" height="46" rx="3" />
+      <text class="d-t" x="590" y="157" text-anchor="middle">resolve to RPC path</text>
+      <text class="d-t-sub" x="590" y="172" text-anchor="middle">name → todo.v1.TodoService/…</text>
+
+      <rect class="d-box" x="440" y="220" width="300" height="46" rx="3" />
+      <text class="d-t" x="590" y="241" text-anchor="middle">gRPC → your application</text>
+      <text class="d-t-sub" x="590" y="256" text-anchor="middle">auth, validation, database</text>
+
+      <path class="d-line" d="M590 102 L590 130" marker-end="url(#a3)" />
+      <path class="d-line" d="M590 186 L590 214" marker-end="url(#a3)" />
+    </svg>
+  </div>
+  <figcaption>
+    Everything that could hurt you lives on the right. The program never sees an
+    RPC path, a connection string, or a token — it passes a friendly name, and Go
+    decides what that name means.
+  </figcaption>
+</figure>
+
+<ol class="steps col" start="7">
+  <li class="step">
+    <div class="step-n">07</div>
+    <div>
+      <h3>Go checks, resolves, and calls</h3>
+      <p>
+        Three things happen in order, and the order matters.
+        <strong>Check</strong> the name against the registry map — an unknown
+        name is an error and the program never reaches the network.
+        <strong>Resolve</strong> it to the real protobuf path.
+        <strong>Call</strong> the trusted transport with that path and the JSON.
+      </p>
+      <p>
+        Your application is untouched by any of this. It validates its own input,
+        enforces its own permissions, and owns what "complete" actually means.
+        Per-user authorization belongs here, in the transport, not in the prompt.
+      </p>
+    </div>
+  </li>
+
+  <li class="step">
+    <div class="step-n">08</div>
+    <div>
+      <h3>The answer comes back</h3>
+      <p>
+        The response is decoded and handed to the waiting program as a plain
+        JavaScript object. The program keeps going — filtering it, looping over
+        it, calling again. When it finally returns, that single value is the
+        answer to the user.
+      </p>
+      <p>
+        If the program throws, the error is fed back to the model along with the
+        source that failed, and it gets another attempt. Three by default.
+        Transport errors are not retried this way — only mistakes the model can
+        actually fix.
+      </p>
+    </div>
+  </li>
+</ol>
+
+<div class="col">
+  <h2>Why bother with a sandbox at all</h2>
+  <p class="section-note">Go makes the call either way</p>
+
+  <p>
+    A fair question: if Go performs the gRPC call regardless, what is the sandbox
+    buying? The answer is not security — it is arithmetic.
+  </p>
+  <p>
+    Without a sandbox, every intermediate result travels back through the model's
+    context. Fifty todos means fifty round trips, fifty times the tokens, fifty
+    times the latency. With a sandbox, the loop runs at machine speed and the
+    model is asked exactly once.
+  </p>
+  <p>
+    The isolation is the <em>price</em> of letting model-written code run at all.
+    The round-trip collapse is the point.
+  </p>
+</div>
+
+<figure>
+  <div class="fig-frame">
+    <svg viewBox="0 0 780 300" role="img" aria-label="Comparison of two approaches. Without a sandbox, four capability calls each require a separate model round trip, so the model is invoked four times. With a sandbox, the model is invoked once, the program makes all four calls locally, and one answer returns.">
+      <defs>
+        <marker id="a4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head" />
+        </marker>
+        <marker id="a4f" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head-flow" />
+        </marker>
+      </defs>
+
+      <!-- lane A -->
+      <text class="d-t-zone" x="40" y="28">WITHOUT A SANDBOX — 4 CALLS, 4 MODEL TURNS</text>
+
+      <rect class="d-box" x="40" y="42" width="90" height="82" rx="3" />
+      <text class="d-t" x="85" y="80" text-anchor="middle">model</text>
+      <text class="d-t-sub" x="85" y="95" text-anchor="middle">×4</text>
+
+      <rect class="d-box" x="640" y="42" width="100" height="82" rx="3" />
+      <text class="d-t" x="690" y="80" text-anchor="middle">host</text>
+      <text class="d-t-sub" x="690" y="95" text-anchor="middle">+ app</text>
+
+      <path class="d-line" d="M134 54 L636 54" marker-end="url(#a4)" />
+      <path class="d-line" d="M636 72 L134 72" marker-end="url(#a4)" />
+      <path class="d-line" d="M134 94 L636 94" marker-end="url(#a4)" />
+      <path class="d-line" d="M636 112 L134 112" marker-end="url(#a4)" />
+      <text class="d-t-lab" x="385" y="46" text-anchor="middle">every result re-enters the context</text>
+
+      <line class="d-zone" x1="40" y1="152" x2="740" y2="152" />
+
+      <!-- lane B -->
+      <text class="d-t-zone" x="40" y="184">WITH A SANDBOX — 4 CALLS, 1 MODEL TURN</text>
+
+      <rect class="d-box" x="40" y="198" width="90" height="82" rx="3" />
+      <text class="d-t" x="85" y="236" text-anchor="middle">model</text>
+      <text class="d-t-sub" x="85" y="251" text-anchor="middle">×1</text>
+
+      <rect class="d-box-flow" x="230" y="198" width="180" height="82" rx="3" />
+      <text class="d-t" x="320" y="230" text-anchor="middle">sandbox</text>
+      <text class="d-t-sub" x="320" y="245" text-anchor="middle">program loops here</text>
+
+      <rect class="d-box" x="640" y="198" width="100" height="82" rx="3" />
+      <text class="d-t" x="690" y="236" text-anchor="middle">host</text>
+      <text class="d-t-sub" x="690" y="251" text-anchor="middle">+ app</text>
+
+      <path class="d-line-flow" d="M134 218 L226 218" marker-end="url(#a4f)" />
+      <text class="d-t-lab" x="180" y="211" text-anchor="middle">program</text>
+
+      <path class="d-line" d="M414 210 L636 210" marker-end="url(#a4)" />
+      <path class="d-line" d="M636 226 L414 226" marker-end="url(#a4)" />
+      <path class="d-line" d="M414 242 L636 242" marker-end="url(#a4)" />
+      <path class="d-line" d="M636 258 L414 258" marker-end="url(#a4)" />
+      <text class="d-t-lab" x="525" y="276" text-anchor="middle">4 calls, no model involved</text>
+
+      <path class="d-line-flow" d="M226 268 L134 268" marker-end="url(#a4f)" />
+      <text class="d-t-lab" x="180" y="284" text-anchor="middle">1 answer</text>
+    </svg>
+  </div>
+  <figcaption>
+    The same four capability calls, twice. The host does identical work in both
+    lanes; what changes is how many times the model is paid to read the middle of
+    the job.
+  </figcaption>
+</figure>
+
+<div class="col">
+  <h2>Who enforces what</h2>
+  <p class="section-note">Where each guarantee actually lives</p>
+
+  <p>
+    A useful habit when reasoning about this system: for any rule you care about,
+    name the component that enforces it. If the answer is "the prompt", it is not
+    enforced.
+  </p>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Guarantee</th>
+        <th>Enforced by</th>
+        <th>Not by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Only registered capabilities run</td>
+        <td>The registry map in <code>codemode.Execute</code></td>
+        <td>The prompt</td>
+      </tr>
+      <tr>
+        <td>No filesystem, network, or modules</td>
+        <td>The sandbox's empty global scope</td>
+        <td>Instructions to the model</td>
+      </tr>
+      <tr>
+        <td>Programs terminate</td>
+        <td>Timeout and call budget on the runner</td>
+        <td>Well-behaved generated code</td>
+      </tr>
+      <tr>
+        <td>Input matches the schema</td>
+        <td>Your application, at the RPC boundary</td>
+        <td>The TypeScript in the prompt</td>
+      </tr>
+      <tr>
+        <td>This user may do this thing</td>
+        <td>Your transport or a bridge in front of it</td>
+        <td>Anything described here</td>
+      </tr>
+      <tr>
+        <td>Secrets stay secret</td>
+        <td>They live host-side and never enter the sandbox</td>
+        <td>The program choosing not to look</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="col note">
+  <strong>One honest caveat.</strong> The default sandbox is an in-process
+  interpreter. It denies ambient capabilities and bounds time and calls, which is
+  right for code your own host asked a model to write. It is not a defence
+  against a determined attacker sharing your process. Before running programs
+  authored for untrusted end users, swap in a runner backed by a separate process
+  or a container — the bridge shape does not change, only the transport.
+</div>
+
+<div class="col">
+  <h2>The three swappable parts</h2>
+  <p class="section-note">Chosen by environment, not by code</p>
+
+  <p>
+    Three pieces of this pipeline are interfaces with more than one
+    implementation, each selected by an environment variable. Nothing else in the
+    system knows or cares which one is in play.
+  </p>
+</div>
+
+<figure>
+  <div class="fig-frame">
+    <svg viewBox="0 0 780 260" role="img" aria-label="Three interfaces sit in the pipeline, each with alternative implementations chosen by an environment variable: capability.Store for search, llm.Client for writing the program, and sandbox.Runner for running it.">
+      <defs>
+        <marker id="a5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 8,4 0,8" class="d-head" />
+        </marker>
+      </defs>
+
+      <text class="d-t-zone" x="40" y="24">STEP 02</text>
+      <text class="d-t-zone" x="290" y="24">STEP 04</text>
+      <text class="d-t-zone" x="540" y="24">STEP 05</text>
+
+      <rect class="d-box-flow" x="40" y="36" width="200" height="42" rx="3" />
+      <text class="d-t" x="140" y="62" text-anchor="middle">capability.Store</text>
+
+      <rect class="d-box-flow" x="290" y="36" width="200" height="42" rx="3" />
+      <text class="d-t" x="390" y="62" text-anchor="middle">llm.Client</text>
+
+      <rect class="d-box-flow" x="540" y="36" width="200" height="42" rx="3" />
+      <text class="d-t" x="640" y="62" text-anchor="middle">sandbox.Runner</text>
+
+      <path class="d-line" d="M140 82 L140 106" marker-end="url(#a5)" />
+      <path class="d-line" d="M390 82 L390 106" marker-end="url(#a5)" />
+      <path class="d-line" d="M640 82 L640 106" marker-end="url(#a5)" />
+
+      <rect class="d-box" x="40" y="112" width="200" height="34" rx="3" />
+      <text class="d-t" x="140" y="134" text-anchor="middle">sqlite + sqlite-vector</text>
+      <rect class="d-box" x="40" y="152" width="200" height="34" rx="3" />
+      <text class="d-t" x="140" y="174" text-anchor="middle">postgres + pgvector</text>
+
+      <rect class="d-box" x="290" y="112" width="200" height="34" rx="3" />
+      <text class="d-t" x="390" y="134" text-anchor="middle">claude</text>
+      <rect class="d-box" x="290" y="152" width="200" height="34" rx="3" />
+      <text class="d-t" x="390" y="174" text-anchor="middle">openai + compatible</text>
+
+      <rect class="d-box" x="540" y="112" width="200" height="26" rx="3" />
+      <text class="d-t" x="640" y="130" text-anchor="middle">goja — JavaScript</text>
+      <rect class="d-box" x="540" y="142" width="200" height="26" rx="3" />
+      <text class="d-t" x="640" y="160" text-anchor="middle">starlark — Python-like</text>
+      <rect class="d-box" x="540" y="172" width="200" height="26" rx="3" />
+      <text class="d-t" x="640" y="190" text-anchor="middle">lua — Lua 5.1</text>
+
+      <text class="d-t-lab" x="140" y="212" text-anchor="middle">CAPABILITY_DB</text>
+      <text class="d-t-lab" x="390" y="212" text-anchor="middle">LLM_PROVIDER</text>
+      <text class="d-t-lab" x="640" y="212" text-anchor="middle">SANDBOX_ENGINE</text>
+
+      <line class="d-zone" x1="40" y1="232" x2="740" y2="232" />
+      <text class="d-t-zone" x="390" y="252" text-anchor="middle">SAME BRIDGE SHAPE FOR EVERY COMBINATION</text>
+    </svg>
+  </div>
+  <figcaption>
+    The sandbox engine also writes the prompt, so choosing one chooses the
+    language the model is asked to write in — and nothing else in the pipeline
+    knows which. Adding a fourth is a new file, not a change to anything above.
+  </figcaption>
+</figure>
+
+<div class="col">
+  <h3>Environment reference</h3>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Variable</th>
+        <th>Values</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>LLM_PROVIDER</code></td>
+        <td><code>claude</code> · <code>openai</code></td>
+        <td>whichever key is set</td>
+      </tr>
+      <tr>
+        <td><code>LLM_BASE_URL</code></td>
+        <td>any compatible endpoint</td>
+        <td>the vendor's</td>
+      </tr>
+      <tr>
+        <td><code>CAPABILITY_DB</code></td>
+        <td><code>sqlite</code> · <code>postgres</code></td>
+        <td><code>sqlite</code></td>
+      </tr>
+      <tr>
+        <td><code>CAPABILITY_DB_DSN</code></td>
+        <td>file path or connection URL</td>
+        <td>unset — keyword search</td>
+      </tr>
+      <tr>
+        <td><code>EMBEDDING_MODEL</code></td>
+        <td>any embeddings model</td>
+        <td><code>text-embedding-3-small</code></td>
+      </tr>
+      <tr>
+        <td><code>SANDBOX_ENGINE</code></td>
+        <td><code>goja</code> · <code>starlark</code> · <code>lua</code></td>
+        <td><code>goja</code></td>
+      </tr>
+      <tr>
+        <td><code>SANDBOX_TIMEOUT</code></td>
+        <td>Go duration</td>
+        <td><code>30s</code></td>
+      </tr>
+      <tr>
+        <td><code>SANDBOX_MAX_CALLS</code></td>
+        <td>integer</td>
+        <td><code>50</code></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="col">
+  <h2>Run it</h2>
+  <p class="section-note">Two commands</p>
+
+  <p>
+    With no keys and no database, everything still runs — search falls back to
+    keywords and a fixed program stands in for the model, so you can watch the
+    path without credentials.
+  </p>
+
+  <pre><code>make demo-todo
+
+# or, with a model actually writing the program:
+export ANTHROPIC_API_KEY=...
+go run ./examples/todo -request "finish anything about docs"</code></pre>
+
+  <p>
+    The output prints each swappable piece as it is chosen, then the generated
+    program, then the answer — which is the same eight steps above, on one
+    screen.
+  </p>
+</div>
+
+<footer>
+  Code Mode · Go · search decides what the model knows, the registry decides what runs
+</footer>
+
+</div>

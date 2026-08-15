@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
 )
 
@@ -32,6 +33,16 @@ type Runner interface {
 	// the program's final value decoded into Go types. Ctx carries
 	// cancellation; source is untrusted.
 	Run(ctx context.Context, mode codemode.CodeMode, source string) (any, error)
+
+	// Language names the dialect programs must be written in, such as
+	// "javascript".
+	Language() string
+
+	// Prompt renders the system prompt for this engine: how to write a program
+	// it can evaluate, followed by the declarations for matches. The engine
+	// that runs the program owns the instructions for writing it, so a caller
+	// never has to know which dialect is configured.
+	Prompt(matches []capability.Match) string
 
 	// Name identifies the engine and its isolation level, for logs and for
 	// telling an operator what is actually enforcing the boundary.
@@ -74,13 +85,30 @@ func (options Options) checked() (Options, error) {
 	return options, nil
 }
 
-// New builds the runner named by SANDBOX_ENGINE. Only "goja" is implemented;
-// it is the default. Options given here win over the environment, so a caller
-// that sets a field explicitly is not overridden by deployment configuration.
+// Engines are the dialects a program may be written in. All three are pure Go
+// interpreters with no ambient I/O, and all three expose the same single
+// binding, so a capability call looks the same in each.
+const (
+	// EngineGoja evaluates JavaScript. The most familiar dialect to a model,
+	// and the largest language surface.
+	EngineGoja = "goja"
+	// EngineStarlark evaluates Starlark, a small Python dialect that is
+	// deterministic and has no unbounded recursion or ambient state.
+	EngineStarlark = "starlark"
+	// EngineLua evaluates Lua 5.1, the smallest and fastest of the three.
+	EngineLua = "lua"
+)
+
+// DefaultEngine is used when SANDBOX_ENGINE is unset.
+const DefaultEngine = EngineGoja
+
+// New builds the runner named by SANDBOX_ENGINE. Options given here win over
+// the environment, so a caller that sets a field explicitly is not overridden
+// by deployment configuration.
 //
 // Environment:
 //
-//	SANDBOX_ENGINE     goja                      (default goja)
+//	SANDBOX_ENGINE     goja | starlark | lua     (default goja)
 //	SANDBOX_TIMEOUT    Go duration, e.g. 10s     (default 30s)
 //	SANDBOX_MAX_CALLS  capability call budget    (default 50)
 func New(options Options) (Runner, error) {
@@ -89,11 +117,18 @@ func New(options Options) (Runner, error) {
 		return nil, err
 	}
 	engine := strings.ToLower(strings.TrimSpace(os.Getenv("SANDBOX_ENGINE")))
+	if engine == "" {
+		engine = DefaultEngine
+	}
 	switch engine {
-	case "goja", "":
+	case EngineGoja, "javascript", "js":
 		return NewGoja(options)
+	case EngineStarlark, "python", "py":
+		return NewStarlark(options)
+	case EngineLua:
+		return NewLua(options)
 	default:
-		return nil, fmt.Errorf("SANDBOX_ENGINE %q is not supported: use goja", engine)
+		return nil, fmt.Errorf("SANDBOX_ENGINE %q is not supported: use goja, starlark, or lua", engine)
 	}
 }
 

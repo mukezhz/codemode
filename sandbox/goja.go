@@ -8,6 +8,7 @@ import (
 
 	"github.com/dop251/goja"
 
+	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
 )
 
@@ -31,8 +32,42 @@ func NewGoja(options Options) (Runner, error) {
 	return &gojaRunner{options: options}, nil
 }
 
+// javascript is the dialect goja evaluates.
+var javascript = dialect{
+	id:    "javascript",
+	prose: "JavaScript",
+	rules: []string{
+		"Reply with the body of a function: statements only, no wrapper, no imports, no exports.",
+		"Call capabilities as codemode.execute(name, input). It is synchronous and returns the decoded response object. Never use async, await, promises, or callbacks.",
+		"End with a return statement whose value answers the request. Prefer a short human-readable string.",
+	},
+	example: `const { todos } = codemode.execute("todos.list", {});
+const pending = todos.filter(todo => !todo.completed);
+if (pending.length === 0) {
+	return "nothing to do";
+}
+codemode.execute("todos.complete", { id: pending[0].id });
+return "completed " + pending[0].title;`,
+	comment: func(description string) string { return "/** " + description + " */" },
+	signature: func(item capability.Capability) string {
+		object := func(schema capability.TypeSchema) string {
+			return fields(schema, func(name, fieldType string) string {
+				return name + ": " + fieldType
+			}, "{}", "{ ", " }")
+		}
+		return fmt.Sprintf("codemode.execute(name: %q, input: %s): %s;",
+			item.Name, object(item.Input), object(item.Output))
+	},
+}
+
+func (runner *gojaRunner) Language() string { return javascript.id }
+
+func (runner *gojaRunner) Prompt(matches []capability.Match) string {
+	return javascript.prompt(matches)
+}
+
 func (runner *gojaRunner) Name() string {
-	return fmt.Sprintf("goja (in-process, %s timeout, %d call budget)",
+	return fmt.Sprintf("goja / JavaScript (in-process, %s timeout, %d call budget)",
 		runner.options.Timeout, runner.options.MaxCalls)
 }
 

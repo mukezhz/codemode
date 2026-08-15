@@ -144,10 +144,15 @@ func offline(ctx context.Context, mode codemode.CodeMode, request string) error 
 	for _, match := range matches {
 		fmt.Printf("  %s -> %s\n", match.Capability.Name, match.Capability.RPC)
 	}
-	fmt.Printf("\nprompt\n%s\n", indent(agent.SystemPrompt(matches)))
-	fmt.Printf("\nprogram (fixed)\n%s\n", indent(fixedProgram))
+	fmt.Printf("\nprompt\n%s\n", indent(runner.Prompt(matches)))
 
-	value, err := runner.Run(ctx, mode, fixedProgram)
+	program, ok := fixedPrograms[runner.Language()]
+	if !ok {
+		return fmt.Errorf("no fixed demo program for %s; set an API key to have one written", runner.Language())
+	}
+	fmt.Printf("\nprogram (fixed, %s)\n%s\n", runner.Language(), indent(program))
+
+	value, err := runner.Run(ctx, mode, program)
 	if err != nil {
 		return err
 	}
@@ -155,11 +160,13 @@ func offline(ctx context.Context, mode codemode.CodeMode, request string) error 
 	return nil
 }
 
-// fixedProgram stands in for model-authored code when no provider is
-// configured. It sees only codemode.execute; the loop and the filtering run
-// inside the sandbox, so the host and the model exchange one request and one
-// answer rather than one round trip per call.
-const fixedProgram = `
+// fixedPrograms stand in for model-authored code when no provider is
+// configured, one per sandbox dialect. They do the same job three ways: each
+// sees only codemode.execute, and each does its looping and filtering inside
+// the sandbox, so the host and the model exchange one request and one answer
+// rather than one round trip per call.
+var fixedPrograms = map[string]string{
+	"javascript": `
 codemode.execute("todos.create", { title: "Document code mode" });
 codemode.execute("todos.create", { title: "Run the Todo demo" });
 
@@ -171,7 +178,40 @@ if (pending.length === 0) {
 
 const done = codemode.execute("todos.complete", { id: pending[0].id });
 return "completed " + done.todo.title + ", " + (pending.length - 1) + " left";
-`
+`,
+
+	"starlark": `
+codemode.execute("todos.create", {"title": "Document code mode"})
+codemode.execute("todos.create", {"title": "Run the Todo demo"})
+
+todos = codemode.execute("todos.list", {})["todos"]
+pending = [todo for todo in todos if not todo["completed"]]
+if len(pending) == 0:
+    return "nothing to finish"
+
+done = codemode.execute("todos.complete", {"id": pending[0]["id"]})
+return "completed " + done["todo"]["title"] + ", " + str(len(pending) - 1) + " left"
+`,
+
+	"lua": `
+codemode.execute("todos.create", { title = "Document code mode" })
+codemode.execute("todos.create", { title = "Run the Todo demo" })
+
+local todos = codemode.execute("todos.list", {}).todos
+local pending = {}
+for _, todo in ipairs(todos) do
+  if not todo.completed then
+    pending[#pending + 1] = todo
+  end
+end
+if #pending == 0 then
+  return "nothing to finish"
+end
+
+local done = codemode.execute("todos.complete", { id = pending[1].id })
+return "completed " .. done.todo.title .. ", " .. tostring(#pending - 1) .. " left"
+`,
+}
 
 func indent(text string) string {
 	return "  " + strings.ReplaceAll(strings.TrimSpace(text), "\n", "\n  ")
