@@ -29,8 +29,13 @@ type Options struct {
 	// attempt after the first is told why the previous one failed. Zero
 	// applies DefaultAttempts.
 	Attempts int
-	// Runner isolates and evaluates each generated program. Nil builds the
-	// environment's default runner, and Run closes what it built.
+	// Runner isolates and evaluates each generated program. Required: this
+	// package builds nothing from the environment on your behalf, so the
+	// engine your programs run in is always a decision you made.
+	//
+	// Build one with an engine package directly — goja.New(sandbox.Options{}) —
+	// or with sandbox.NewFromEnv if you want SANDBOX_ENGINE consulted. The
+	// caller closes it.
 	Runner sandbox.Runner
 
 	// Instructions are appended to the system prompt, after the engine's own
@@ -56,6 +61,9 @@ const (
 func (options Options) checked() (Options, error) {
 	if options.Limit < 0 || options.Attempts < 0 {
 		return options, errors.New("limit and attempts must not be negative")
+	}
+	if options.Runner == nil {
+		return options, errors.New("Options.Runner is required: build one with an engine package, or with sandbox.NewFromEnv")
 	}
 	if options.Limit == 0 {
 		options.Limit = DefaultLimit
@@ -94,15 +102,6 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	}
 
 	runner := options.Runner
-	if runner == nil {
-		// Built here rather than in checked so the caller's runner is never
-		// closed by us, and ours always is.
-		runner, err = sandbox.New(sandbox.Options{})
-		if err != nil {
-			return Result{}, err
-		}
-		defer runner.Close()
-	}
 
 	matches, err := mode.Search(ctx, request, options.Limit)
 	if err != nil {

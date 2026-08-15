@@ -26,7 +26,8 @@ func init() {
 		Name:    capability.BackendPostgres,
 		Aliases: []string{"postgresql", "pgx"},
 		DSN:     "the Postgres connection URL",
-		Open:    func(ctx context.Context, dsn string) (capability.Store, error) { return Open(ctx, dsn) },
+		// Open needs nothing but the DSN, so there is no separate env path.
+		OpenFromEnv: func(ctx context.Context, dsn string) (capability.Store, error) { return Open(ctx, dsn) },
 	})
 }
 
@@ -39,7 +40,7 @@ type pgStore struct {
 
 // Open connects to the Postgres index named by dsn, a libpq connection string
 // or URL such as postgres://user:pass@host:5432/db. Ctx carries cancellation.
-// The caller closes the store.
+// The caller closes the store. It reads no environment variable.
 func Open(ctx context.Context, dsn string) (capability.Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {

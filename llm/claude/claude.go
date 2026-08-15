@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -23,14 +22,10 @@ import (
 
 func init() {
 	llm.RegisterProvider(llm.Provider{
-		Name:    llm.ProviderClaude,
-		Aliases: []string{"anthropic"},
-		New:     func(options llm.Options) (llm.Client, error) { return New(Options{Options: options}) },
-		// LLM_BASE_URL names no provider, so it must not select this one;
-		// only Anthropic's own variables count as configuration.
-		Configured: func() bool {
-			return os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != ""
-		},
+		Name:     llm.ProviderClaude,
+		Aliases:  []string{"anthropic"},
+		New:      func(options llm.Options) (llm.Client, error) { return New(Options{Options: options}) },
+		FromEnv:  OptionsFromEnv,
 		Priority: 1,
 	})
 }
@@ -89,19 +84,15 @@ type client struct {
 	thinking  anthropic.BetaThinkingConfigParamUnion
 }
 
-// New builds a Claude client. Options left zero fall back to the environment,
-// then to this package's defaults. Blank-import this package instead to have
-// llm.New select it from LLM_PROVIDER.
+// New builds a Claude client from options. It reads no environment variable;
+// Model and MaxTokens fall back to this package's defaults, and everything else
+// is exactly what you passed.
 //
-// Environment: ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_BASE_URL, plus the
-// shared LLM_* variables documented on llm.Options.
+// Use OptionsFromEnv to read ANTHROPIC_* from the environment first.
 func New(options Options) (llm.Client, error) {
-	resolved, err := options.Options.Resolve(llm.Defaults{
-		Model:      DefaultModel,
-		MaxTokens:  DefaultMaxTokens,
-		ModelEnv:   "ANTHROPIC_MODEL",
-		APIKeyEnv:  "ANTHROPIC_API_KEY",
-		BaseURLEnv: "ANTHROPIC_BASE_URL",
+	resolved, err := options.Options.WithDefaults(llm.Defaults{
+		Model:     DefaultModel,
+		MaxTokens: DefaultMaxTokens,
 	})
 	if err != nil {
 		return nil, err
@@ -109,7 +100,7 @@ func New(options Options) (llm.Client, error) {
 	options.Options = resolved
 
 	if resolved.APIKey == "" && resolved.BaseURL == "" {
-		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY or a base URL", llm.ErrNoProvider)
+		return nil, fmt.Errorf("%w: set Options.APIKey or Options.BaseURL", llm.ErrNoProvider)
 	}
 
 	requestOptions := append([]option.RequestOption{option.WithAPIKey(resolved.APIKey)}, options.Request...)

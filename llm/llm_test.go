@@ -17,17 +17,17 @@ func (stub *stub) Name() string                                             { re
 
 func init() {
 	RegisterProvider(Provider{
-		Name:       "first",
-		Aliases:    []string{"primero"},
-		New:        func(Options) (Client, error) { return &stub{name: "first"}, nil },
-		Configured: func() bool { return os.Getenv("STUB_FIRST") != "" },
-		Priority:   1,
+		Name:     "first",
+		Aliases:  []string{"primero"},
+		New:      func(Options) (Client, error) { return &stub{name: "first"}, nil },
+		FromEnv:  func() (Options, bool, error) { return Options{Model: "from-env"}, os.Getenv("STUB_FIRST") != "", nil },
+		Priority: 1,
 	})
 	RegisterProvider(Provider{
-		Name:       "second",
-		New:        func(Options) (Client, error) { return &stub{name: "second"}, nil },
-		Configured: func() bool { return os.Getenv("STUB_SECOND") != "" },
-		Priority:   2,
+		Name:     "second",
+		New:      func(Options) (Client, error) { return &stub{name: "second"}, nil },
+		FromEnv:  func() (Options, bool, error) { return Options{}, os.Getenv("STUB_SECOND") != "", nil },
+		Priority: 2,
 	})
 	// No Configured func: selectable by name, never self-selected.
 	RegisterProvider(Provider{
@@ -39,8 +39,7 @@ func init() {
 func TestNewSelectsARegisteredProvider(t *testing.T) {
 	for _, name := range []string{"first", "primero", "manual"} {
 		clearEnv(t)
-		t.Setenv("LLM_PROVIDER", name)
-		client, err := New(Options{})
+		client, err := New(Options{Provider: name})
 		if err != nil {
 			t.Fatalf("New(%q) returned error: %v", name, err)
 		}
@@ -54,26 +53,82 @@ func TestNewSelectsARegisteredProvider(t *testing.T) {
 	}
 }
 
-// Priority, not import order, decides which configured provider wins.
-func TestNewPrefersTheLowestPriorityConfiguredProvider(t *testing.T) {
+// New must not fall back to the environment. A caller who passed no provider
+// gets an error, not whatever happens to be set in the process.
+func TestNewDoesNotConsultTheEnvironment(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("LLM_PROVIDER", "first")
 	t.Setenv("STUB_FIRST", "yes")
-	t.Setenv("STUB_SECOND", "yes")
-	client, err := New(Options{})
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	if client.Name() != "first" {
-		t.Fatalf("Name() = %q, want the lower-priority provider", client.Name())
+
+	if _, err := New(Options{}); !errors.Is(err, ErrNoProvider) {
+		t.Fatalf("error = %v, want ErrNoProvider — New read LLM_PROVIDER", err)
 	}
 }
 
-// A provider with no Configured func must never be picked implicitly, or
-// registering one would change which provider an existing deployment uses.
-func TestNewNeverSelfSelectsAProviderWithoutDetection(t *testing.T) {
+// Priority, not import order, decides which configured provider wins.
+func TestOptionsFromEnvPrefersTheLowestPriorityConfiguredProvider(t *testing.T) {
 	clearEnv(t)
-	if _, err := New(Options{}); !errors.Is(err, ErrNoProvider) {
+	t.Setenv("STUB_FIRST", "yes")
+	t.Setenv("STUB_SECOND", "yes")
+	options, err := OptionsFromEnv()
+	if err != nil {
+		t.Fatalf("OptionsFromEnv returned error: %v", err)
+	}
+	if options.Provider != "first" {
+		t.Fatalf("Provider = %q, want the lower-priority provider", options.Provider)
+	}
+}
+
+// A provider with no FromEnv func must never be picked implicitly, or
+// registering one would change which provider an existing deployment uses.
+func TestOptionsFromEnvNeverSelfSelectsAProviderWithoutDetection(t *testing.T) {
+	clearEnv(t)
+	if _, err := OptionsFromEnv(); !errors.Is(err, ErrNoProvider) {
 		t.Fatalf("error = %v, want ErrNoProvider", err)
+	}
+}
+
+// The whole point of returning Options rather than a Client: the caller sees
+// what the environment said and can override it.
+func TestOptionsFromEnvReturnsAnOverridableValue(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("STUB_FIRST", "yes")
+	t.Setenv("LLM_MAX_TOKENS", "4321")
+
+	options, err := OptionsFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Model != "from-env" || options.MaxTokens != 4321 {
+		t.Fatalf("options = %+v, want the environment values", options)
+	}
+
+	options.Model = "mine"
+	client, err := New(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Name() != "first" {
+		t.Fatalf("Name() = %q", client.Name())
+	}
+}
+
+// A typo in a deployment variable should fail at startup, not be ignored.
+func TestOptionsFromEnvRejectsUnparseableValues(t *testing.T) {
+	for name, value := range map[string]string{
+		"LLM_MAX_TOKENS":  "lots",
+		"LLM_TEMPERATURE": "warm",
+		"LLM_TOP_P":       "most",
+		"LLM_TIMEOUT":     "soon",
+	} {
+		t.Run(name, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("STUB_FIRST", "yes")
+			t.Setenv(name, value)
+			if _, err := OptionsFromEnv(); err == nil {
+				t.Fatalf("OptionsFromEnv accepted %s=%q", name, value)
+			}
+		})
 	}
 }
 
@@ -86,8 +141,7 @@ func TestNewNamesTheMissingImportForAShippedProvider(t *testing.T) {
 	} {
 		t.Run(provider, func(t *testing.T) {
 			clearEnv(t)
-			t.Setenv("LLM_PROVIDER", provider)
-			_, err := New(Options{})
+			_, err := New(Options{Provider: provider})
 			if err == nil {
 				t.Fatal("New unexpectedly succeeded")
 			}
@@ -100,8 +154,7 @@ func TestNewNamesTheMissingImportForAShippedProvider(t *testing.T) {
 
 func TestNewRejectsAnUnknownProvider(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("LLM_PROVIDER", "llama")
-	err := func() error { _, err := New(Options{}); return err }()
+	_, err := New(Options{Provider: "llama"})
 	if err == nil {
 		t.Fatal("New returned no error for an unknown provider")
 	}
@@ -113,15 +166,19 @@ func TestNewRejectsAnUnknownProvider(t *testing.T) {
 	}
 }
 
-func TestBaseURLFallsBackToTheSharedVariable(t *testing.T) {
+// LLM_BASE_URL applies to whichever provider is chosen, so it must fill in
+// only where the provider's own variable did not.
+func TestOptionsFromEnvLayersTheSharedBaseURL(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("STUB_FIRST", "yes")
 	t.Setenv("LLM_BASE_URL", "http://shared")
-	if got := BaseURL("OPENAI_BASE_URL"); got != "http://shared" {
-		t.Fatalf("BaseURL() = %q, want the shared fallback", got)
+
+	options, err := OptionsFromEnv()
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("OPENAI_BASE_URL", "http://specific")
-	if got := BaseURL("OPENAI_BASE_URL"); got != "http://specific" {
-		t.Fatalf("BaseURL() = %q, want the specific value to win", got)
+	if options.BaseURL != "http://shared" {
+		t.Fatalf("BaseURL = %q, want the shared value", options.BaseURL)
 	}
 }
 

@@ -51,9 +51,9 @@ func TestBackendRegistersItself(t *testing.T) {
 	t.Setenv("CAPABILITY_DB_DSN", filepath.Join(t.TempDir(), "capabilities.db"))
 	t.Setenv("SQLITE_VECTOR_EXTENSION", "")
 
-	_, err := capability.OpenStore(context.Background())
+	_, err := capability.OpenStoreFromEnv(context.Background())
 	if err == nil {
-		t.Fatal("OpenStore succeeded without the vector extension")
+		t.Fatal("OpenStoreFromEnv succeeded without the vector extension")
 	}
 	// Reaching the extension check proves the backend was selected, rather
 	// than the import being missing.

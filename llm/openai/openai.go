@@ -13,7 +13,6 @@ package openai
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	openaisdk "github.com/openai/openai-go/v3"
@@ -25,15 +24,9 @@ import (
 
 func init() {
 	llm.RegisterProvider(llm.Provider{
-		Name: llm.ProviderOpenAI,
-		New:  func(options llm.Options) (llm.Client, error) { return New(Options{Options: options}) },
-		Configured: func() bool {
-			// LLM_BASE_URL alone lands here: most self-hosted and third-party
-			// endpoints speak this protocol, so it is the safer default.
-			return os.Getenv("OPENAI_API_KEY") != "" ||
-				os.Getenv("OPENAI_BASE_URL") != "" ||
-				llm.BaseURL("") != ""
-		},
+		Name:     llm.ProviderOpenAI,
+		New:      func(options llm.Options) (llm.Client, error) { return New(Options{Options: options}) },
+		FromEnv:  OptionsFromEnv,
 		Priority: 2,
 	})
 }
@@ -70,19 +63,15 @@ type client struct {
 	params Options
 }
 
-// New builds an OpenAI client. Options left zero fall back to the environment,
-// then to this package's defaults. Blank-import this package instead to have
-// llm.New select it from LLM_PROVIDER.
+// New builds an OpenAI client from options. It reads no environment variable;
+// Model and MaxTokens fall back to this package's defaults, and everything else
+// is exactly what you passed.
 //
-// Environment: OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, plus the shared
-// LLM_* variables documented on llm.Options.
+// Use OptionsFromEnv to read OPENAI_* from the environment first.
 func New(options Options) (llm.Client, error) {
-	resolved, err := options.Options.Resolve(llm.Defaults{
-		Model:      DefaultModel,
-		MaxTokens:  DefaultMaxTokens,
-		ModelEnv:   "OPENAI_MODEL",
-		APIKeyEnv:  "OPENAI_API_KEY",
-		BaseURLEnv: "OPENAI_BASE_URL",
+	resolved, err := options.Options.WithDefaults(llm.Defaults{
+		Model:     DefaultModel,
+		MaxTokens: DefaultMaxTokens,
 	})
 	if err != nil {
 		return nil, err
@@ -90,7 +79,7 @@ func New(options Options) (llm.Client, error) {
 	options.Options = resolved
 
 	if resolved.APIKey == "" && resolved.BaseURL == "" {
-		return nil, fmt.Errorf("%w: set OPENAI_API_KEY or a base URL", llm.ErrNoProvider)
+		return nil, fmt.Errorf("%w: set Options.APIKey or Options.BaseURL", llm.ErrNoProvider)
 	}
 
 	requestOptions := append([]option.RequestOption{option.WithAPIKey(resolved.APIKey)}, options.Request...)

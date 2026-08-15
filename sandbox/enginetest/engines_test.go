@@ -298,8 +298,7 @@ func TestNewBuildsEveryEngine(t *testing.T) {
 		"":           "javascript", // the default
 	} {
 		t.Run("alias="+alias, func(t *testing.T) {
-			t.Setenv("SANDBOX_ENGINE", alias)
-			runner, err := sandbox.New(sandbox.Options{})
+			runner, err := sandbox.New(sandbox.Options{Engine: alias})
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}

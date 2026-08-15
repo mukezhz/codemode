@@ -17,7 +17,7 @@ func init() {
 		Name:    "stub",
 		Aliases: []string{"stubby"},
 		DSN:     "anything at all",
-		Open: func(context.Context, string) (capability.Store, error) {
+		OpenFromEnv: func(context.Context, string) (capability.Store, error) {
 			return &fixture.Memory{}, nil
 		},
 	})
@@ -86,13 +86,13 @@ func TestRebuildRejectsRaggedVectors(t *testing.T) {
 	}
 }
 
-func TestOpenStoreSelectsARegisteredBackend(t *testing.T) {
+func TestOpenStoreFromEnvSelectsARegisteredBackend(t *testing.T) {
 	for _, name := range []string{"stub", "stubby"} {
 		t.Setenv("CAPABILITY_DB", name)
 		t.Setenv("CAPABILITY_DB_DSN", "anything")
-		store, err := capability.OpenStore(context.Background())
+		store, err := capability.OpenStoreFromEnv(context.Background())
 		if err != nil {
-			t.Fatalf("OpenStore(%q) returned error: %v", name, err)
+			t.Fatalf("OpenStoreFromEnv(%q) returned error: %v", name, err)
 		}
 		store.Close()
 	}
@@ -100,7 +100,7 @@ func TestOpenStoreSelectsARegisteredBackend(t *testing.T) {
 
 // A missing blank import is the common failure of this design, so the error
 // has to name the package rather than say "unsupported".
-func TestOpenStoreNamesTheMissingImportForAShippedBackend(t *testing.T) {
+func TestOpenStoreFromEnvNamesTheMissingImportForAShippedBackend(t *testing.T) {
 	for backend, want := range map[string]string{
 		capability.BackendSQLite:   "capability/sqlitestore",
 		capability.BackendPostgres: "capability/pgstore",
@@ -108,9 +108,9 @@ func TestOpenStoreNamesTheMissingImportForAShippedBackend(t *testing.T) {
 		t.Run(backend, func(t *testing.T) {
 			t.Setenv("CAPABILITY_DB", backend)
 			t.Setenv("CAPABILITY_DB_DSN", "anything")
-			_, err := capability.OpenStore(context.Background())
+			_, err := capability.OpenStoreFromEnv(context.Background())
 			if err == nil {
-				t.Fatal("OpenStore unexpectedly succeeded")
+				t.Fatal("OpenStoreFromEnv unexpectedly succeeded")
 			}
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("error = %v, want it to name %q", err, want)
@@ -119,7 +119,7 @@ func TestOpenStoreNamesTheMissingImportForAShippedBackend(t *testing.T) {
 	}
 }
 
-func TestOpenStoreReportsMissingConfiguration(t *testing.T) {
+func TestOpenStoreFromEnvReportsMissingConfiguration(t *testing.T) {
 	for name, test := range map[string]struct {
 		env  map[string]string
 		want string
@@ -141,10 +141,10 @@ func TestOpenStoreReportsMissingConfiguration(t *testing.T) {
 			for _, key := range []string{"CAPABILITY_DB", "CAPABILITY_DB_DSN"} {
 				t.Setenv(key, test.env[key])
 			}
-			store, err := capability.OpenStore(context.Background())
+			store, err := capability.OpenStoreFromEnv(context.Background())
 			if err == nil {
 				store.Close()
-				t.Fatal("OpenStore unexpectedly succeeded")
+				t.Fatal("OpenStoreFromEnv unexpectedly succeeded")
 			}
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want it to contain %q", err, test.want)
@@ -155,10 +155,10 @@ func TestOpenStoreReportsMissingConfiguration(t *testing.T) {
 
 // ErrNoStore is the signal a caller treats as "semantic search is off", so it
 // must survive the wrapping OpenStore does.
-func TestOpenStoreReportsErrNoStoreWhenUnconfigured(t *testing.T) {
+func TestOpenStoreFromEnvReportsErrNoStoreWhenUnconfigured(t *testing.T) {
 	t.Setenv("CAPABILITY_DB", "")
 	t.Setenv("CAPABILITY_DB_DSN", "")
-	if _, err := capability.OpenStore(context.Background()); !errors.Is(err, capability.ErrNoStore) {
+	if _, err := capability.OpenStoreFromEnv(context.Background()); !errors.Is(err, capability.ErrNoStore) {
 		t.Fatalf("error = %v, want ErrNoStore", err)
 	}
 }

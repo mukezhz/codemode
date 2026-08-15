@@ -18,23 +18,11 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
 
 	"github.com/mattn/go-sqlite3"
 
 	"github.com/mukezhz/code-mode/capability"
 )
-
-func init() {
-	capability.RegisterBackend(capability.Backend{
-		Name:    capability.BackendSQLite,
-		Aliases: []string{"sqlite3"},
-		DSN:     "the SQLite database path",
-		Open: func(ctx context.Context, dsn string) (capability.Store, error) {
-			return Open(ctx, dsn, strings.TrimSpace(os.Getenv("SQLITE_VECTOR_EXTENSION")))
-		},
-	})
-}
 
 // sqliteStore indexes capabilities in SQLite using the sqlite-vector extension.
 type sqliteStore struct {
@@ -44,7 +32,9 @@ type sqliteStore struct {
 // Open opens the SQLite index at path, loading the sqlite-vector library from
 // extensionPath. Ctx carries cancellation. The caller closes the store.
 //
-// capability.OpenStore calls this with SQLITE_VECTOR_EXTENSION.
+// It reads no environment variable. capability.OpenStoreFromEnv reaches this
+// through OpenFromEnv, which supplies extensionPath from
+// SQLITE_VECTOR_EXTENSION.
 func Open(ctx context.Context, path, extensionPath string) (capability.Store, error) {
 	if extensionPath == "" {
 		return nil, errors.New("sqlite-vector extension path is required (SQLITE_VECTOR_EXTENSION)")

@@ -13,8 +13,7 @@ import (
 	"github.com/mukezhz/code-mode/llm"
 	"github.com/mukezhz/code-mode/sandbox"
 
-	// Run builds an engine from the environment when Options.Runner is nil.
-	_ "github.com/mukezhz/code-mode/sandbox/goja"
+	"github.com/mukezhz/code-mode/sandbox/goja"
 )
 
 // mode answers searches and capability calls from a fixed script.
@@ -69,7 +68,7 @@ func TestRunReturnsTheProgramsAnswer(t *testing.T) {
 	runtime := &mode{}
 	author := &model{responses: []string{workingProgram}}
 
-	result, err := Run(context.Background(), runtime, author, "list my todos", Options{})
+	result, err := Run(context.Background(), runtime, author, "list my todos", Options{Runner: newRunner(t)})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -91,7 +90,7 @@ func TestRunRepairsAFailedProgram(t *testing.T) {
 		workingProgram,
 	}}
 
-	result, err := Run(context.Background(), runtime, author, "list my todos", Options{})
+	result, err := Run(context.Background(), runtime, author, "list my todos", Options{Runner: newRunner(t)})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -112,7 +111,7 @@ func TestRunGivesUpAfterAttempts(t *testing.T) {
 	broken := `return codemode.execute("todos.purge", {});`
 	author := &model{responses: []string{broken, broken}}
 
-	result, err := Run(context.Background(), runtime, author, "list my todos", Options{Attempts: 2})
+	result, err := Run(context.Background(), runtime, author, "list my todos", Options{Attempts: 2, Runner: newRunner(t)})
 	if err == nil {
 		t.Fatal("Run returned no error for a program that never succeeds")
 	}
@@ -204,6 +203,7 @@ func TestInstructionsAreAppendedToTheEnginePrompt(t *testing.T) {
 	author := &model{responses: []string{workingProgram}}
 
 	_, err := Run(context.Background(), runtime, author, "list my todos", Options{
+		Runner:       newRunner(t),
 		Instructions: "Always answer in French.",
 	})
 	if err != nil {
@@ -228,14 +228,37 @@ func TestInstructionsAreAppendedToTheEnginePrompt(t *testing.T) {
 // Blank instructions must not add an empty section to a cached prompt.
 func TestBlankInstructionsLeaveThePromptUnchanged(t *testing.T) {
 	plain := &model{responses: []string{workingProgram}}
-	if _, err := Run(context.Background(), &mode{}, plain, "list my todos", Options{}); err != nil {
+	if _, err := Run(context.Background(), &mode{}, plain, "list my todos", Options{Runner: newRunner(t)}); err != nil {
 		t.Fatal(err)
 	}
 	spaced := &model{responses: []string{workingProgram}}
-	if _, err := Run(context.Background(), &mode{}, spaced, "list my todos", Options{Instructions: "  \n "}); err != nil {
+	if _, err := Run(context.Background(), &mode{}, spaced, "list my todos", Options{Runner: newRunner(t), Instructions: "  \n "}); err != nil {
 		t.Fatal(err)
 	}
 	if plain.systems[0] != spaced.systems[0] {
 		t.Fatal("blank instructions changed the system prompt")
+	}
+}
+
+// newRunner builds the JavaScript engine for tests. Run requires an explicit
+// Runner: the library builds nothing from the environment on a caller's behalf.
+func newRunner(t *testing.T) sandbox.Runner {
+	t.Helper()
+	runner, err := goja.New(sandbox.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { runner.Close() })
+	return runner
+}
+
+// The requirement is part of the contract, so it has its own test.
+func TestRunRequiresARunner(t *testing.T) {
+	_, err := Run(context.Background(), &mode{}, &model{}, "list my todos", Options{})
+	if err == nil {
+		t.Fatal("Run accepted a nil Runner")
+	}
+	if !strings.Contains(err.Error(), "Runner is required") {
+		t.Fatalf("error = %v, want it to name the missing option", err)
 	}
 }

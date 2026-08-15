@@ -11,8 +11,11 @@ import (
 	"github.com/mukezhz/code-mode/agent"
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
+	coderegistry "github.com/mukezhz/code-mode/registry"
+
 	"github.com/mukezhz/code-mode/examples/todo/app"
 	demosearch "github.com/mukezhz/code-mode/examples/todo/search"
+	todov1 "github.com/mukezhz/code-mode/gen/todo/v1"
 	"github.com/mukezhz/code-mode/llm"
 	"github.com/mukezhz/code-mode/sandbox"
 
@@ -36,7 +39,18 @@ func main() {
 	instructions := flag.String("instructions", "", "extra guidance appended to the system prompt")
 	flag.Parse()
 
-	options := llm.Options{Model: *model}
+	// A command-line application configures itself from flags and the
+	// environment. The library reads neither: it is handed this Options.
+	options, err := llm.OptionsFromEnv()
+	if errors.Is(err, llm.ErrNoProvider) {
+		options = llm.Options{}
+	} else if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if *model != "" {
+		options.Model = *model
+	}
 	if *temperature >= 0 {
 		options.Temperature = llm.Float(*temperature)
 	}
@@ -48,9 +62,13 @@ func main() {
 }
 
 func run(ctx context.Context, request string, options llm.Options, instructions string) error {
-	registry, err := capability.LoadFile("registry/registry.json")
+	// The registry is derived from the contracts at startup: the generated
+	// package carries its own descriptors, so there is no file to build, embed,
+	// or keep in step. codemode-registry is there for projects that would
+	// rather review registry.json in a pull request.
+	registry, err := coderegistry.FromFiles(todov1.File_todo_proto)
 	if err != nil {
-		return fmt.Errorf("run from the repository root: %w", err)
+		return err
 	}
 	search, closeSearch, err := newSearch(ctx, registry)
 	if err != nil {
@@ -73,7 +91,7 @@ func run(ctx context.Context, request string, options llm.Options, instructions 
 		return err
 	}
 
-	runner, err := sandbox.New(sandbox.Options{})
+	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
 		return err
 	}
@@ -96,7 +114,7 @@ func run(ctx context.Context, request string, options llm.Options, instructions 
 // index when CAPABILITY_DB_DSN and an embedding endpoint are configured, and
 // falls back to the demo's keyword ranker otherwise.
 func newSearch(ctx context.Context, registry capability.Registry) (codemode.SearchFunc, func(), error) {
-	store, err := capability.OpenStore(ctx)
+	store, err := capability.OpenStoreFromEnv(ctx)
 	if errors.Is(err, capability.ErrNoStore) {
 		fmt.Println("search\n  keyword ranker (set CAPABILITY_DB_DSN for semantic search)")
 		return demosearch.New(registry), func() {}, nil
@@ -105,7 +123,7 @@ func newSearch(ctx context.Context, registry capability.Registry) (codemode.Sear
 		return nil, nil, err
 	}
 
-	embedder, err := openaiprovider.NewEmbedder(openaiprovider.EmbedOptions{})
+	embedder, err := openaiprovider.NewEmbedderFromEnv(openaiprovider.EmbedOptions{})
 	if err != nil {
 		store.Close()
 		return nil, nil, fmt.Errorf("capability store is configured but embeddings are not: %w", err)
@@ -144,7 +162,7 @@ func report(result agent.Result) {
 // credentials. Everything except the program's authorship is unchanged: search
 // still selects the capabilities, and the sandbox still calls the host.
 func offline(ctx context.Context, mode codemode.CodeMode, request string) error {
-	runner, err := sandbox.New(sandbox.Options{})
+	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
 		return err
 	}

@@ -60,6 +60,9 @@ jobs:
       - name: A minimal consumer links no third-party dependency
         run: ./scripts/check-consumer.sh
 
+      - name: No library package reads the environment outside env.go
+        run: ./scripts/check-no-env.sh
+
   proto:
     runs-on: ubuntu-latest
     steps:
@@ -76,11 +79,12 @@ jobs:
 
       # A registry that no longer matches the protos is a silent failure: the
       # model is offered capabilities the host will reject.
-      - name: Registry is up to date
+      - name: Generated code and registry are up to date
         run: |
+          buf generate
           buf build --as-file-descriptor-set -o registry/protoset.pb
-          go run ./cmd/codemode-registry
-          git diff --exit-code registry/registry.json
+          go run ./cmd/codemode-registry -out registry/registry.json
+          git diff --exit-code gen registry/registry.json
 
   docs:
     runs-on: ubuntu-latest

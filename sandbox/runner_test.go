@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
@@ -31,8 +32,7 @@ func init() {
 
 func TestNewSelectsARegisteredEngine(t *testing.T) {
 	for _, name := range []string{"stub", "stubby"} {
-		t.Setenv("SANDBOX_ENGINE", name)
-		runner, err := New(Options{})
+		runner, err := New(Options{Engine: name})
 		if err != nil {
 			t.Fatalf("New(%q) returned error: %v", name, err)
 		}
@@ -45,8 +45,7 @@ func TestNewSelectsARegisteredEngine(t *testing.T) {
 // A missing blank import is the common failure of this design, so the error
 // has to name the package rather than say "unsupported".
 func TestNewNamesTheMissingImportForAShippedEngine(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", EngineLua)
-	_, err := New(Options{})
+	_, err := New(Options{Engine: EngineLua})
 	if err == nil {
 		t.Fatal("New returned no error for an unregistered engine")
 	}
@@ -56,8 +55,7 @@ func TestNewNamesTheMissingImportForAShippedEngine(t *testing.T) {
 }
 
 func TestNewRejectsAnUnknownEngine(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", "wasm")
-	_, err := New(Options{})
+	_, err := New(Options{Engine: "wasm"})
 	if err == nil {
 		t.Fatal("New returned no error for an unknown engine")
 	}
@@ -66,33 +64,52 @@ func TestNewRejectsAnUnknownEngine(t *testing.T) {
 	}
 }
 
-func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", "stub")
-	t.Setenv("SANDBOX_TIMEOUT", "7s")
+// New must not consult the environment; only NewFromEnv does.
+func TestNewIgnoresTheEnvironment(t *testing.T) {
+	t.Setenv(EnvEngine, "stub")
+	t.Setenv(EnvTimeout, "7s")
 
-	runner, err := New(Options{})
+	// SANDBOX_ENGINE says stub, but an unset Options.Engine means the default.
+	if _, err := New(Options{}); err == nil {
+		t.Fatal("New succeeded — it read SANDBOX_ENGINE instead of defaulting")
+	}
+
+	runner, err := New(Options{Engine: "stub"})
 	if err != nil {
-		t.Fatalf("New returned error: %v", err)
+		t.Fatal(err)
+	}
+	if strings.Contains(runner.Name(), "7s") {
+		t.Fatalf("Name() = %q — New read SANDBOX_TIMEOUT", runner.Name())
+	}
+}
+
+func TestNewFromEnvFillsOnlyZeroFields(t *testing.T) {
+	t.Setenv(EnvEngine, "stub")
+	t.Setenv(EnvTimeout, "7s")
+
+	runner, err := NewFromEnv(Options{})
+	if err != nil {
+		t.Fatalf("NewFromEnv returned error: %v", err)
 	}
 	if !strings.Contains(runner.Name(), "7s") {
 		t.Fatalf("Name() = %q, want the environment timeout", runner.Name())
 	}
 
 	// An explicitly set field wins over the environment.
-	explicit, err := New(Options{Timeout: 3 * 1e9})
+	explicit, err := NewFromEnv(Options{Timeout: 3 * time.Second})
 	if err != nil {
-		t.Fatalf("New returned error: %v", err)
+		t.Fatalf("NewFromEnv returned error: %v", err)
 	}
 	if !strings.Contains(explicit.Name(), "3s") {
 		t.Fatalf("Name() = %q, want the explicit timeout to win", explicit.Name())
 	}
 }
 
-func TestNewRejectsUnparseableBounds(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", "stub")
-	t.Setenv("SANDBOX_TIMEOUT", "soon")
-	if _, err := New(Options{}); err == nil {
-		t.Fatal("New returned no error for an unparseable SANDBOX_TIMEOUT")
+func TestNewFromEnvRejectsUnparseableBounds(t *testing.T) {
+	t.Setenv(EnvEngine, "stub")
+	t.Setenv(EnvTimeout, "soon")
+	if _, err := NewFromEnv(Options{}); err == nil {
+		t.Fatalf("NewFromEnv returned no error for an unparseable %s", EnvTimeout)
 	}
 }
 

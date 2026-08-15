@@ -58,9 +58,9 @@ func TestPostgresSearch(t *testing.T) {
 func TestBackendRegistersItself(t *testing.T) {
 	t.Setenv("CAPABILITY_DB", capability.BackendPostgres)
 	t.Setenv("CAPABILITY_DB_DSN", "")
-	_, err := capability.OpenStore(context.Background())
+	_, err := capability.OpenStoreFromEnv(context.Background())
 	if err == nil {
-		t.Fatal("OpenStore succeeded without a DSN")
+		t.Fatal("OpenStoreFromEnv succeeded without a DSN")
 	}
 	if !strings.Contains(err.Error(), "the Postgres connection URL") {
 		t.Fatalf("error = %v, want the backend's own DSN description", err)

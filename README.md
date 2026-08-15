@@ -54,7 +54,8 @@ make docs-build  # build the static site
 | Path | What it is |
 | --- | --- |
 | `proto/` | Capability contracts, annotated with a namespace and descriptions |
-| `registry/` | Turns a Buf descriptor set into a registry; CLI in `cmd/codemode-registry/` |
+| `registry/` | Builds a registry from linked descriptors or a Buf descriptor set; CLI in `cmd/codemode-registry/` |
+| `gen/` | Generated Go for the example protos. Committed, so `go get` needs no buf |
 | `capability/` | Registry types and the vector index; backends in `sqlitestore/` and `pgstore/` |
 | `codemode/` | The two-method public interface: `Search` and `Execute` |
 | `llm/` | The `Client` interface; providers in `claude/` and `openai/` |
@@ -68,10 +69,11 @@ make docs-build  # build the static site
 
 | Command | What it does |
 | --- | --- |
-| `make generate` | Rebuild descriptors and `registry/registry.json` |
+| `make generate` | Regenerate Go from the protos and rebuild `registry/registry.json` |
 | `make test` | Buf lint plus all Go tests |
 | `make test-vector` | SQLite vector search; needs `SQLITE_VECTOR_EXTENSION` |
 | `make test-consumer` | Checks a consumer links only what it blank-imports |
+| `make test-env` | Checks no library package reads the environment outside `env.go` |
 | `make test-postgres` | pgvector search against a throwaway container |
 | `make docs` | Serve the documentation site |
 

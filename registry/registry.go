@@ -17,6 +17,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/mukezhz/code-mode/capability"
@@ -133,9 +134,21 @@ func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee st
 	return 0, fmt.Errorf("custom option %s is not defined", name)
 }
 
+// stringOption reads the custom option with the given field number.
+//
+// It has to handle the option arriving two ways. When the descriptors come from
+// a Buf descriptor set, code_mode.proto's extensions are not linked into this
+// binary, so the option sits in the message's unknown fields as raw wire bytes.
+// When the descriptors come from generated Go — the registry.FromFiles path —
+// the consumer's generated code_mode package registered the extension, so the
+// option is resolved and the unknown fields are empty. Reading only one way
+// silently produces an empty namespace for half of all callers.
 func stringOption(options proto.Message, number protowire.Number) (string, error) {
 	if options == nil {
 		return "", nil
+	}
+	if value := resolvedOption(options, number); value != "" {
+		return value, nil
 	}
 	data := options.ProtoReflect().GetUnknown()
 	value := ""
@@ -164,6 +177,22 @@ func stringOption(options proto.Message, number protowire.Number) (string, error
 		data = data[length:]
 	}
 	return value, nil
+}
+
+// resolvedOption reads an extension the runtime already knows how to decode.
+func resolvedOption(options proto.Message, number protowire.Number) string {
+	value := ""
+	proto.RangeExtensions(options, func(extension protoreflect.ExtensionType, current any) bool {
+		if extension.TypeDescriptor().Number() != protoreflect.FieldNumber(number) {
+			return true
+		}
+		if text, ok := current.(string); ok {
+			value = text
+			return false
+		}
+		return true
+	})
+	return value
 }
 
 func indexMessages(files *descriptorpb.FileDescriptorSet) map[string]*descriptorpb.DescriptorProto {

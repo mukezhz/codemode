@@ -5,3 +5,6 @@ registry.json
 docs/node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# gen/ is committed on purpose: `go get` must work without buf installed,
+# and registry.FromFiles reads descriptors out of the generated packages.

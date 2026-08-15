@@ -43,46 +43,77 @@ func TestExplicitThinkingWinsOverInference(t *testing.T) {
 	}
 }
 
-func TestNewAppliesDefaultsAndOverrides(t *testing.T) {
-	for _, name := range []string{"ANTHROPIC_MODEL", "ANTHROPIC_BASE_URL", "LLM_BASE_URL", "LLM_MAX_TOKENS"} {
-		t.Setenv(name, "")
-	}
-	t.Setenv("ANTHROPIC_API_KEY", "test")
+// New must ignore the environment entirely: a caller who passed a Model has
+// decided, and one who passed none gets the package default, never whatever
+// ANTHROPIC_MODEL happens to be.
+func TestNewIgnoresTheEnvironment(t *testing.T) {
+	t.Setenv(EnvModel, "claude-from-env")
+	t.Setenv(EnvAPIKey, "key-from-env")
 
-	client, err := New(Options{})
+	if _, err := New(Options{}); err == nil {
+		t.Fatal("New succeeded with no APIKey — it read ANTHROPIC_API_KEY")
+	}
+
+	client, err := New(Options{Options: llm.Options{APIKey: "test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if client.Name() != "claude/"+DefaultModel {
-		t.Fatalf("Name() = %q, want the package default model", client.Name())
+		t.Fatalf("Name() = %q, want the package default, not the environment", client.Name())
 	}
 
-	t.Setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-	client, err = New(Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if client.Name() != "claude/claude-sonnet-5" {
-		t.Fatalf("Name() = %q, want the environment model", client.Name())
-	}
-
-	client, err = New(Options{Options: llm.Options{Model: "claude-opus-4-8"}})
+	client, err = New(Options{Options: llm.Options{APIKey: "test", Model: "claude-opus-4-8"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if client.Name() != "claude/claude-opus-4-8" {
-		t.Fatalf("Name() = %q, want the explicit model to win", client.Name())
+		t.Fatalf("Name() = %q, want the explicit model", client.Name())
+	}
+}
+
+// OptionsFromEnv is where ANTHROPIC_* is read, and the caller still wins.
+func TestOptionsFromEnvReadsAnthropicVariables(t *testing.T) {
+	t.Setenv(EnvAPIKey, "key-from-env")
+	t.Setenv(EnvModel, "claude-sonnet-5")
+	t.Setenv(EnvBaseURL, "")
+
+	options, configured, err := OptionsFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured {
+		t.Fatal("configured = false with ANTHROPIC_API_KEY set")
+	}
+	if options.APIKey != "key-from-env" || options.Model != "claude-sonnet-5" {
+		t.Fatalf("options = %+v", options)
+	}
+
+	client, err := NewFromEnv(Options{Options: llm.Options{Model: "mine"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Name() != "claude/mine" {
+		t.Fatalf("Name() = %q, want the caller's model to win over the environment", client.Name())
+	}
+}
+
+// LLM_BASE_URL names no provider, so it must not make Claude look configured.
+func TestOptionsFromEnvIgnoresTheSharedBaseURL(t *testing.T) {
+	t.Setenv(EnvAPIKey, "")
+	t.Setenv(EnvBaseURL, "")
+	t.Setenv(llm.EnvBaseURL, "http://localhost:11434/v1")
+
+	if _, configured, err := OptionsFromEnv(); err != nil {
+		t.Fatal(err)
+	} else if configured {
+		t.Fatal("configured = true from LLM_BASE_URL alone")
 	}
 }
 
 // Fallbacks are an api.anthropic.com beta; a custom endpoint may not implement
 // them, so they default off there and stay overridable.
 func TestFallbacksDefaultOffAgainstACustomEndpoint(t *testing.T) {
-	t.Setenv("ANTHROPIC_API_KEY", "test")
-	t.Setenv("ANTHROPIC_BASE_URL", "")
-	t.Setenv("LLM_BASE_URL", "")
-
-	direct, err := New(Options{})
+	direct, err := New(Options{Options: llm.Options{APIKey: "test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +121,7 @@ func TestFallbacksDefaultOffAgainstACustomEndpoint(t *testing.T) {
 		t.Fatal("fallbacks are off against api.anthropic.com")
 	}
 
-	custom, err := New(Options{Options: llm.Options{BaseURL: "http://localhost:8000"}})
+	custom, err := New(Options{Options: llm.Options{APIKey: "test", BaseURL: "http://localhost:8000"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +131,7 @@ func TestFallbacksDefaultOffAgainstACustomEndpoint(t *testing.T) {
 
 	forced := true
 	overridden, err := New(Options{
-		Options:   llm.Options{BaseURL: "http://localhost:8000"},
+		Options:   llm.Options{APIKey: "test", BaseURL: "http://localhost:8000"},
 		Fallbacks: &forced,
 	})
 	if err != nil {

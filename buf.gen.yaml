@@ -1,0 +1,8 @@
+version: v2
+# Generated Go carries its own descriptors, which is what lets a consumer build
+# a registry with registry.FromFiles and skip the descriptor-set step entirely.
+# The go_package option in each proto decides the import path.
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    out: .
+    opt: module=github.com/mukezhz/code-mode

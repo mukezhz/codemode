@@ -24,7 +24,7 @@ nobody can write for you.
 
 | You supply | How | Effort |
 | --- | --- | --- |
-| A registry | `codemode-registry` over annotated protos | Generated |
+| A registry | one call to `registry.FromFiles` | One line |
 | A search function | `capability.Index.Search`, or a keyword loop | A few lines |
 | An execute function | Dispatch an RPC path to your code | **Yours** |
 | A model and a sandbox | `llm.New()` and `sandbox.New()`, plus a blank import each | Two calls |
@@ -60,39 +60,78 @@ one response, because that is what a synchronous call inside a sandbox can be.
 
 See [Capabilities](/capabilities) for the field-type rules.
 
-## 2. Generate the registry
+## 2. Get the registry
+
+The registry is the allowlist: capability name → RPC path, plus the schemas and
+descriptions the model reads. There are two ways to get one, and the short one
+is usually right.
+
+### Derive it at startup (recommended)
+
+`protoc-gen-go` puts the file descriptors into the package it generates. You
+already import that package to implement the service, so everything needed to
+describe it is linked into your binary:
+
+```go
+import (
+	"github.com/mukezhz/code-mode/registry"
+	todov1 "myapp/gen/todo/v1"
+)
+
+capabilities, err := registry.FromFiles(todov1.File_todo_proto)
+```
+
+That is the whole step. **No descriptor set, no JSON file, no `go:embed`, no
+extra build tool** — and the registry cannot drift from your contracts, because
+it is derived from them every time the process starts.
+
+`registry.FromGlobalFiles()` scans every protobuf file linked into the binary
+instead. Only services carrying `(code_mode.namespace)` contribute, so an
+unrelated dependency cannot widen the registry — but naming the files is the
+safer habit, because it says in code exactly which contracts are exposed.
+
+### Generate a file (when you want it reviewable)
+
+A checked-in `registry.json` makes a change to the capability surface show up as
+a diff in a pull request. That is a real benefit for a surface a model calls, so
+the command stays supported:
 
 ```sh
-# Once: write the options file your protos import.
-go run github.com/mukezhz/code-mode/cmd/codemode-registry@latest \
-  -print-proto > proto/code_mode.proto
-
-# Every build:
 buf build --as-file-descriptor-set -o build/protoset.pb
 go run github.com/mukezhz/code-mode/cmd/codemode-registry@latest \
   -descriptor build/protoset.pb -out internal/capabilities/registry.json
 ```
 
-That writes `registry.json`: every capability, its RPC path, its
-description, and its input and output schemas. Load it at startup — `go:embed`
-is the usual choice, so the binary carries its own allowlist:
+Then load it — embedded, so the binary carries its own allowlist:
 
 ```go
 //go:embed registry.json
 var registryFS embed.FS
 
-registry, err := capability.LoadFS(registryFS, "registry.json")
-if err != nil {
-	log.Fatal(err)
-}
+capabilities, err := capability.LoadFS(registryFS, "registry.json")
 ```
 
-`capability.Load`, `LoadFile`, and `LoadFS` all reject unknown fields and an
-empty capability list, so a hand-edited or truncated registry fails at startup
-rather than per request.
+`Load`, `LoadFile`, and `LoadFS` reject unknown fields and an empty capability
+list, so a hand-edited or truncated registry fails at startup rather than per
+request.
 
-Regenerate whenever the protos change. A stale registry means a capability the
-model is told about but that `Execute` will reject.
+::: tip Both paths produce identical registries
+A test in this repository asserts the two are byte-identical, so a project can
+start with `FromFiles` and add the generated file later — or run both, with CI
+diffing the file against what reflection produces.
+:::
+
+### Which one
+
+| | `registry.FromFiles` | `codemode-registry` |
+| --- | --- | --- |
+| Build steps | none | buf build, then generate |
+| Can drift from protos | no | yes, until regenerated |
+| Capability surface visible in review | no | yes, as a JSON diff |
+| Needs generated Go | yes | no |
+
+If you already run `buf generate`, start with `FromFiles`. Add the file when
+someone wants the surface in code review.
 
 ## 3. Write ExecuteFunc
 
@@ -194,10 +233,10 @@ see [the two lists](/flow#_4-the-model-writes-a-program).
 a placeholder:
 
 ```go
-func keywordSearch(registry capability.Registry) codemode.SearchFunc {
+func keywordSearch(capabilities capability.Registry) codemode.SearchFunc {
 	return func(ctx context.Context, query string, limit int) ([]capability.Match, error) {
 		matches := []capability.Match{}
-		for _, item := range registry.Capabilities {
+		for _, item := range capabilities.Capabilities {
 			if strings.Contains(strings.ToLower(item.Description), strings.ToLower(query)) {
 				matches = append(matches, capability.Match{Capability: item})
 			}
@@ -259,14 +298,13 @@ instruction.
 
 ## 6. Run a request
 
-```go
-import (
-	_ "github.com/mukezhz/code-mode/llm/claude"    // registers LLM_PROVIDER=claude
-	_ "github.com/mukezhz/code-mode/sandbox/goja"  // registers SANDBOX_ENGINE=goja
-)
+Importing an engine and a provider directly is the most explicit form and needs
+no registration at all. Blank-import them instead if you want the choice made by
+configuration — see [what your binary links](/dependencies).
 
-model, err := llm.New(llm.Options{})           // all env-driven
-runner, err := sandbox.New(sandbox.Options{})  // SANDBOX_ENGINE
+```go
+model, err := claude.New(claude.Options{Options: llm.Options{APIKey: config.Key}})
+runner, err := goja.New(sandbox.Options{})
 defer runner.Close()
 
 result, err := agent.Run(ctx, mode, model, "finish anything about docs", agent.Options{
@@ -288,7 +326,11 @@ what you log when something goes wrong.
 To pin the model, bound the response, or add domain guidance:
 
 ```go
-model, err := llm.New(llm.Options{Model: "claude-sonnet-5", MaxTokens: 8000})
+model, err := claude.New(claude.Options{Options: llm.Options{
+	APIKey:    config.Key,
+	Model:     "claude-sonnet-5",
+	MaxTokens: 8000,
+}})
 
 result, err := agent.Run(ctx, mode, model, request, agent.Options{
 	Runner:       runner,
@@ -298,6 +340,14 @@ result, err := agent.Run(ctx, mode, model, request, agent.Options{
 
 `Instructions` is appended to the engine's system prompt, not a replacement for
 it — see [configuring the model](/models#configuring-the-model).
+
+::: tip The library never reads the environment
+Every constructor takes explicit options, so your application's own
+configuration — flags, a config file, a mounted secret — is the only source of
+truth. If you *want* the environment read, ask for it by name:
+`llm.OptionsFromEnv()`, `sandbox.NewFromEnv()`, `capability.OpenStoreFromEnv()`.
+Only a name containing `FromEnv` touches it, and a check in CI enforces that.
+:::
 
 ::: tip Pass your own runner
 `agent.Options{Runner: nil}` builds a runner per request and closes it. Building
@@ -321,38 +371,41 @@ import (
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
 	"github.com/mukezhz/code-mode/llm"
-	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/code-mode/llm/claude"
+	"github.com/mukezhz/code-mode/registry"
+	"github.com/mukezhz/code-mode/sandbox/goja"
 
-	// Exactly what this binary links. Swap either line to swap the backend.
-	_ "github.com/mukezhz/code-mode/llm/claude"
-	_ "github.com/mukezhz/code-mode/sandbox/goja"
+	todov1 "myapp/gen/todo/v1"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// 1. The registry: what may run.
-	registry, err := capability.LoadFile("registry/registry.json")
+	// 1. The registry: what may run. Derived from the contracts, so there is
+	// no file to build, embed, or keep in step.
+	capabilities, err := registry.FromFiles(todov1.File_todo_proto)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// 2. Search: what the model gets told about.
-	search := keywordSearch(registry)
+	search := keywordSearch(capabilities)
 
 	// 3. The runtime: name -> RPC, then your transport.
-	mode, err := codemode.New(registry, search, execute)
+	mode, err := codemode.New(capabilities, search, execute)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 4. Model and sandbox. A zero Options is entirely environment-driven;
-	// set a field to pin it in code instead.
-	model, err := llm.New(llm.Options{})
+	// 4. Model and sandbox, configured by your application. Nothing here
+	// reads the environment.
+	model, err := claude.New(claude.Options{
+		Options: llm.Options{APIKey: config.AnthropicKey},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	runner, err := sandbox.New(sandbox.Options{})
+	runner, err := goja.New(sandbox.Options{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -375,10 +428,10 @@ func execute(ctx context.Context, rpc string, input json.RawMessage) (json.RawMe
 	}
 }
 
-func keywordSearch(registry capability.Registry) codemode.SearchFunc {
+func keywordSearch(capabilities capability.Registry) codemode.SearchFunc {
 	return func(ctx context.Context, query string, limit int) ([]capability.Match, error) {
 		matches := []capability.Match{}
-		for _, item := range registry.Capabilities {
+		for _, item := range capabilities.Capabilities {
 			if strings.Contains(strings.ToLower(item.Description), strings.ToLower(query)) {
 				matches = append(matches, capability.Match{Capability: item})
 			}

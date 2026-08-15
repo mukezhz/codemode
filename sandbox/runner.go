@@ -8,6 +8,12 @@
 // level is a deployment choice rather than a code change. The bridge shape is
 // the same for every engine: one (name, input) -> output call back to the host.
 //
+// # Configuration
+//
+// Everything is configured through sandbox.Options. This package reads no
+// environment variable of its own; OptionsFromEnv and NewFromEnv do, and only
+// when you call them.
+//
 // # Choosing an engine
 //
 // This package holds the interface, not the interpreters. Blank-import the
@@ -19,19 +25,17 @@
 //		_ "github.com/mukezhz/code-mode/sandbox/goja"
 //	)
 //
-//	runner, err := sandbox.New(sandbox.Options{})  // SANDBOX_ENGINE picks one
+//	runner, err := sandbox.New(sandbox.Options{Engine: sandbox.EngineGoja})
 //
-// Importing an engine directly works too, and skips the environment entirely:
-// goja.New(sandbox.Options{}) returns a Runner.
+// Importing an engine directly and calling its own New is the most explicit
+// form, and needs no registration at all.
 package sandbox
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,8 +74,12 @@ type Runner interface {
 	Close() error
 }
 
-// Options bounds a single program run.
+// Options selects an engine and bounds a single program run.
 type Options struct {
+	// Engine names the interpreter: goja, starlark, or lua. Empty applies
+	// DefaultEngine.
+	Engine string
+
 	// Timeout stops the program once it has run this long. Zero applies
 	// DefaultTimeout.
 	Timeout time.Duration
@@ -106,7 +114,7 @@ func (options Options) Checked() (Options, error) {
 
 // Engine describes one registered interpreter.
 type Engine struct {
-	// Name is the canonical value of SANDBOX_ENGINE that selects it.
+	// Name is the canonical name that selects it, such as "goja".
 	Name string
 	// Aliases are other accepted spellings, such as "javascript" for goja.
 	Aliases []string
@@ -131,7 +139,7 @@ const (
 	EngineLua = "lua"
 )
 
-// DefaultEngine is used when SANDBOX_ENGINE is unset.
+// DefaultEngine is used when Options.Engine is empty.
 const DefaultEngine = EngineGoja
 
 // shipped maps an engine this module provides to the package that registers it,
@@ -182,21 +190,11 @@ func RegisteredEngines() []string {
 	return names
 }
 
-// New builds the runner named by SANDBOX_ENGINE from the registered engines.
-// Options given here win over the environment, so a caller that sets a field
-// explicitly is not overridden by deployment configuration.
-//
-// Environment:
-//
-//	SANDBOX_ENGINE     goja | starlark | lua     (default goja)
-//	SANDBOX_TIMEOUT    Go duration, e.g. 10s     (default 30s)
-//	SANDBOX_MAX_CALLS  capability call budget    (default 50)
+// New builds the runner named by options.Engine from the registered engines.
+// It reads no environment variable; use OptionsFromEnv first if you want one
+// consulted.
 func New(options Options) (Runner, error) {
-	options, err := options.fromEnv()
-	if err != nil {
-		return nil, err
-	}
-	name := strings.ToLower(strings.TrimSpace(os.Getenv("SANDBOX_ENGINE")))
+	name := strings.ToLower(strings.TrimSpace(options.Engine))
 	if name == "" {
 		name = DefaultEngine
 	}
@@ -232,29 +230,6 @@ func values(paths map[string]string) []string {
 	}
 	sort.Strings(list)
 	return list
-}
-
-// fromEnv fills zero fields from the environment, leaving set fields alone.
-func (options Options) fromEnv() (Options, error) {
-	if options.Timeout == 0 {
-		if value := strings.TrimSpace(os.Getenv("SANDBOX_TIMEOUT")); value != "" {
-			timeout, err := time.ParseDuration(value)
-			if err != nil {
-				return options, fmt.Errorf("SANDBOX_TIMEOUT: %w", err)
-			}
-			options.Timeout = timeout
-		}
-	}
-	if options.MaxCalls == 0 {
-		if value := strings.TrimSpace(os.Getenv("SANDBOX_MAX_CALLS")); value != "" {
-			maxCalls, err := strconv.Atoi(value)
-			if err != nil {
-				return options, fmt.Errorf("SANDBOX_MAX_CALLS: %w", err)
-			}
-			options.MaxCalls = maxCalls
-		}
-	}
-	return options, nil
 }
 
 // Run evaluates source on a runner built from options. It is the one-shot form

@@ -1,29 +1,43 @@
 // Package llm turns a code mode prompt into a model-authored program.
 //
-// The provider is selected by LLM_PROVIDER so the rest of the system depends on
-// the Client interface rather than on a vendor SDK.
+// The provider sits behind the Client interface, so the rest of the system
+// depends on it rather than on a vendor SDK.
+//
+// # Configuration
+//
+// Everything is configured through llm.Options. This package reads no
+// environment variable of its own: your application already has a way to
+// configure itself, and a library that reaches into os.Getenv fights it.
+//
+//	model, err := llm.New(llm.Options{
+//		Provider: llm.ProviderClaude,
+//		APIKey:   config.AnthropicKey,
+//	})
+//
+// If you do want the environment consulted, ask for it: OptionsFromEnv returns
+// an Options you can inspect and override, and NewFromEnv is the one-liner. The
+// rule holds across the whole library — only a name containing FromEnv reads
+// the environment.
 //
 // # Choosing a provider
 //
 // This package holds the interface, not the SDKs. Blank-import the providers
-// you want and they register themselves, so a binary links only the SDKs it
-// can actually call:
+// you want and they register themselves, so a binary links only the SDKs it can
+// actually call:
 //
 //	import (
 //		"github.com/mukezhz/code-mode/llm"
 //		_ "github.com/mukezhz/code-mode/llm/claude"
 //	)
 //
-//	model, err := llm.New()  // LLM_PROVIDER picks one
-//
-// Importing a provider directly works too, and skips the environment entirely.
+// Importing a provider directly and calling its own New skips this package's
+// selection entirely, and is the most explicit form.
 package llm
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -46,17 +60,17 @@ var ErrNoProvider = errors.New("no LLM provider configured")
 
 // Provider describes one registered model backend.
 type Provider struct {
-	// Name is the canonical value of LLM_PROVIDER that selects it.
+	// Name is the canonical name that selects it, such as "claude".
 	Name string
-	// Aliases are other accepted spellings, such as "anthropic" for claude.
+	// Aliases are other accepted spellings, such as "anthropic".
 	Aliases []string
-	// New builds a Client. Options given by the caller win over the
-	// environment; a zero Options is entirely environment-driven.
+	// New builds a Client from options.
 	New func(Options) (Client, error)
-	// Configured reports whether this provider's own environment variables are
-	// set, so New can pick one when LLM_PROVIDER is unset.
-	Configured func() bool
-	// Priority orders detection when more than one provider is configured.
+	// FromEnv reads this provider's own environment variables and reports
+	// whether any were set. Only OptionsFromEnv calls it; a provider that
+	// leaves it nil is selectable by name but never found by env detection.
+	FromEnv func() (Options, bool, error)
+	// Priority orders env detection when more than one provider is configured.
 	// Lower wins. It is explicit rather than registration order, because
 	// import order is not something a caller should have to reason about.
 	Priority int
@@ -114,101 +128,62 @@ func RegisteredProviders() []string {
 	return names
 }
 
-// New builds a client from options, falling back to the environment for every
-// field left zero. Options.Provider, then LLM_PROVIDER, names the provider.
-// Any endpoint speaking either wire protocol works by setting a base URL, so
-// self-hosted and third-party models are reached through the same providers.
-// It returns ErrNoProvider when nothing is configured.
-//
-// Environment:
-//
-//	LLM_PROVIDER       claude | openai
-//	LLM_BASE_URL       base URL for whichever provider is selected
-//	ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_BASE_URL
-//	OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL
-//
-// The provider-specific base URL wins over LLM_BASE_URL. A base URL with no API
-// key is allowed, for local endpoints that do not authenticate.
+// New builds the client named by options.Provider. It reads no environment
+// variable; every value comes from options. Use OptionsFromEnv first if you
+// want the environment consulted.
 func New(options Options) (Client, error) {
 	name := strings.ToLower(strings.TrimSpace(options.Provider))
 	if name == "" {
-		name = strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
-	}
-	if name != "" {
-		providersMutex.RLock()
-		provider, registered := providers[name]
-		providersMutex.RUnlock()
-		if !registered {
-			return nil, unregisteredProvider(name)
-		}
-		return provider.New(options)
+		return nil, fmt.Errorf("%w: set Options.Provider, or read one from the environment with llm.NewFromEnv", ErrNoProvider)
 	}
 
-	// Unset means "whichever provider is configured", so a single variable is
-	// enough to get started.
-	if provider, found := detect(); found {
-		return provider.New(options)
+	provider, found := lookup(name)
+	if !found {
+		return nil, unregisteredProvider(name)
 	}
-	if len(RegisteredProviders()) == 0 {
-		return nil, fmt.Errorf("%w: no providers are registered, blank-import %s or %s",
-			ErrNoProvider, shipped[ProviderClaude], shipped[ProviderOpenAI])
-	}
-	return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY, OPENAI_API_KEY, or LLM_BASE_URL", ErrNoProvider)
+	return provider.New(options)
 }
 
-// detect returns the configured provider with the lowest Priority. A provider
-// with no Configured func never self-selects, so registering one cannot change
-// which provider an existing deployment picks.
-func detect() (Provider, bool) {
+func lookup(name string) (Provider, bool) {
 	providersMutex.RLock()
 	defer providersMutex.RUnlock()
+	provider, found := providers[name]
+	return provider, found
+}
 
-	var best Provider
-	found := false
+// byPriority returns each registered provider once, lowest Priority first.
+func byPriority() []Provider {
+	providersMutex.RLock()
+	defer providersMutex.RUnlock()
+	list := make([]Provider, 0, len(providers))
+	seen := map[string]bool{}
 	for _, provider := range providers {
-		if provider.Configured == nil || !provider.Configured() {
+		if seen[provider.Name] {
 			continue
 		}
-		if !found || provider.Priority < best.Priority {
-			best, found = provider, true
-		}
+		seen[provider.Name] = true
+		list = append(list, provider)
 	}
-	return best, found
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Priority != list[j].Priority {
+			return list[i].Priority < list[j].Priority
+		}
+		return list[i].Name < list[j].Name
+	})
+	return list
 }
 
 func unregisteredProvider(name string) error {
 	if path, ships := shipped[name]; ships {
-		return fmt.Errorf("LLM_PROVIDER %q is not registered: add `_ %q` to your imports", name, path)
+		return fmt.Errorf("LLM provider %q is not registered: add `_ %q` to your imports", name, path)
 	}
-	// "anthropic" is an alias, so a bare name check is not enough to tell an
-	// unregistered shipped provider from a typo.
 	available := RegisteredProviders()
 	if len(available) == 0 {
-		return fmt.Errorf("LLM_PROVIDER %q is unknown and no providers are registered: blank-import %s or %s",
+		return fmt.Errorf("LLM provider %q is unknown and none are registered: blank-import %s or %s",
 			name, shipped[ProviderClaude], shipped[ProviderOpenAI])
 	}
-	return fmt.Errorf("LLM_PROVIDER %q is unknown: registered providers are %s",
+	return fmt.Errorf("LLM provider %q is unknown: registered providers are %s",
 		name, strings.Join(available, ", "))
-}
-
-// Env returns the value of name, or fallback when it is unset or blank.
-// Provider packages use it so every provider reads configuration the same way.
-func Env(name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
-	}
-	return fallback
-}
-
-// BaseURL returns the provider-specific base URL named by name, falling back to
-// LLM_BASE_URL. An empty name consults only LLM_BASE_URL.
-func BaseURL(name string) string {
-	if name != "" {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value
-		}
-	}
-	return strings.TrimSpace(os.Getenv("LLM_BASE_URL"))
 }
 
 // Embedder turns text into a vector for capability search.

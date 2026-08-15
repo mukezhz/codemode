@@ -48,9 +48,9 @@ func newFake() *fake {
 
 const options = time.Second
 
-func TestNewSelectsTheEngineFromTheEnvironment(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", "")
-	runner, err := sandbox.New(sandbox.Options{})
+func TestNewFromEnvSelectsTheEngine(t *testing.T) {
+	t.Setenv(sandbox.EnvEngine, "")
+	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -60,19 +60,19 @@ func TestNewSelectsTheEngineFromTheEnvironment(t *testing.T) {
 	}
 }
 
-func TestNewRejectsAnUnknownEngine(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", "wasm")
-	if _, err := sandbox.New(sandbox.Options{}); err == nil {
+func TestNewFromEnvRejectsAnUnknownEngine(t *testing.T) {
+	t.Setenv(sandbox.EnvEngine, "wasm")
+	if _, err := sandbox.NewFromEnv(sandbox.Options{}); err == nil {
 		t.Fatal("New returned no error for an unknown engine")
 	}
 }
 
-func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
-	t.Setenv("SANDBOX_ENGINE", "")
-	t.Setenv("SANDBOX_TIMEOUT", "7s")
-	t.Setenv("SANDBOX_MAX_CALLS", "9")
+func TestNewFromEnvReadsBounds(t *testing.T) {
+	t.Setenv(sandbox.EnvEngine, "")
+	t.Setenv(sandbox.EnvTimeout, "7s")
+	t.Setenv(sandbox.EnvMaxCalls, "9")
 
-	runner, err := sandbox.New(sandbox.Options{})
+	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
 	}
 
 	// An explicitly set field wins over the environment.
-	explicit, err := sandbox.New(sandbox.Options{MaxCalls: 3})
+	explicit, err := sandbox.NewFromEnv(sandbox.Options{MaxCalls: 3})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -94,10 +94,10 @@ func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
 	}
 }
 
-func TestNewRejectsUnparseableBounds(t *testing.T) {
-	t.Setenv("SANDBOX_TIMEOUT", "soon")
-	if _, err := sandbox.New(sandbox.Options{}); err == nil {
-		t.Fatal("New returned no error for an unparseable SANDBOX_TIMEOUT")
+func TestNewFromEnvRejectsUnparseableBounds(t *testing.T) {
+	t.Setenv(sandbox.EnvTimeout, "soon")
+	if _, err := sandbox.NewFromEnv(sandbox.Options{}); err == nil {
+		t.Fatal("NewFromEnv returned no error for an unparseable SANDBOX_TIMEOUT")
 	}
 }
 
@@ -174,8 +174,7 @@ func TestPromptRendersSelectedCapabilities(t *testing.T) {
 		Output:      capability.TypeSchema{Type: "CompleteResponse", Fields: map[string]string{"todo": "Todo"}},
 	}}}
 
-	t.Setenv("SANDBOX_ENGINE", "goja")
-	runner, err := sandbox.New(sandbox.Options{})
+	runner, err := sandbox.New(sandbox.Options{Engine: sandbox.EngineGoja})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}

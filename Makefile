@@ -1,15 +1,25 @@
-.PHONY: demo-todo generate test test-vector test-postgres test-consumer docs docs-build docs-preview
+.PHONY: demo-todo generate generate-go generate-registry test test-vector \
+	test-postgres test-consumer test-env docs docs-build docs-preview
 
 demo-todo: generate
 	go run ./examples/todo
 
-generate:
+# Generated Go carries its own descriptors, which is what lets a consumer call
+# registry.FromFiles and skip the registry.json step entirely. The registry
+# target still runs, because the two paths must agree and a test asserts it.
+generate: generate-go generate-registry
+
+generate-go:
+	mise exec -- buf generate
+
+generate-registry:
 	mise exec -- buf build --as-file-descriptor-set -o registry/protoset.pb
-	go run ./cmd/codemode-registry
+	go run ./cmd/codemode-registry -out registry/registry.json
 
 test:
 	mise exec -- buf lint
 	go test ./...
+	./scripts/check-no-env.sh
 	./scripts/check-consumer.sh
 
 test-vector:
@@ -20,6 +30,10 @@ test-vector:
 # packages still build without cgo.
 test-consumer:
 	./scripts/check-consumer.sh
+
+# Verify no library package reads the environment outside its env.go.
+test-env:
+	./scripts/check-no-env.sh
 
 # Exercise the pgvector backend against a throwaway database.
 test-postgres:

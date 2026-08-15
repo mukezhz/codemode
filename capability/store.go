@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -42,21 +41,27 @@ var ErrNoStore = errors.New("no capability store configured")
 
 // Backend describes one registered store implementation.
 type Backend struct {
-	// Name is the canonical value of CAPABILITY_DB that selects it.
+	// Name is the canonical name that selects it, such as "postgres".
 	Name string
 	// Aliases are other accepted spellings, such as "postgresql".
 	Aliases []string
-	// Open connects to dsn, the value of CAPABILITY_DB_DSN. A backend that
-	// needs more configuration than a DSN reads its own environment here.
-	Open func(ctx context.Context, dsn string) (Store, error)
-	// DSN describes what CAPABILITY_DB_DSN should hold, for the error raised
-	// when it is empty.
+	// OpenFromEnv connects to dsn using this backend's own environment for
+	// anything else it needs. Only OpenStoreFromEnv calls it; a backend is
+	// otherwise opened by calling its package's Open directly, which takes
+	// typed arguments and reads nothing.
+	OpenFromEnv func(ctx context.Context, dsn string) (Store, error)
+	// DSN describes what the DSN should hold, for the error raised when it is
+	// empty.
 	DSN string
 }
 
 // Backends this module ships, and the package that registers each. Blank-import
 // the one you want; a binary then links only that driver, which is what keeps
 // cgo out of a build that only uses Postgres.
+//
+// Registration exists for OpenStoreFromEnv. To open a store from your own
+// configuration, call the backend package's Open directly — it takes typed
+// arguments and reads no environment.
 const (
 	// BackendSQLite indexes in SQLite with the sqlite-vector extension.
 	// Package capability/sqlitestore. Requires cgo.
@@ -66,7 +71,7 @@ const (
 	BackendPostgres = "postgres"
 )
 
-// DefaultBackend is used when CAPABILITY_DB is unset.
+// DefaultBackend is used when CAPABILITY_DB is unset but a DSN is given.
 const DefaultBackend = BackendSQLite
 
 var shipped = map[string]string{
@@ -79,11 +84,11 @@ var (
 	backends      = map[string]Backend{}
 )
 
-// RegisterBackend makes backend selectable by OpenStore. Store packages call it
+// RegisterBackend makes backend selectable by OpenStoreFromEnv. Store packages call it
 // from init, so blank-importing one is enough. Registering a name twice panics,
 // which catches a duplicate import path at startup rather than in production.
 func RegisterBackend(backend Backend) {
-	if backend.Name == "" || backend.Open == nil {
+	if backend.Name == "" || backend.OpenFromEnv == nil {
 		panic("capability: backend needs a name and an opener")
 	}
 	backendsMutex.Lock()
@@ -111,42 +116,6 @@ func RegisteredBackends() []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-// OpenStore builds the store named by CAPABILITY_DB from the registered
-// backends. Ctx carries cancellation.
-//
-// Environment:
-//
-//	CAPABILITY_DB      sqlite | postgres      (default sqlite)
-//	CAPABILITY_DB_DSN  SQLite file path, or a Postgres connection URL
-//
-// Each backend reads any further configuration it needs; sqlitestore also
-// reads SQLITE_VECTOR_EXTENSION.
-//
-// It returns ErrNoStore when nothing is configured at all, which a caller can
-// treat as "semantic search is off" rather than as a failure. The caller closes
-// the returned store.
-func OpenStore(ctx context.Context) (Store, error) {
-	name := strings.ToLower(strings.TrimSpace(os.Getenv("CAPABILITY_DB")))
-	dsn := strings.TrimSpace(os.Getenv("CAPABILITY_DB_DSN"))
-	if name == "" {
-		if dsn == "" {
-			return nil, fmt.Errorf("%w: set CAPABILITY_DB_DSN", ErrNoStore)
-		}
-		name = DefaultBackend
-	}
-
-	backendsMutex.RLock()
-	backend, registered := backends[name]
-	backendsMutex.RUnlock()
-	if !registered {
-		return nil, unregisteredBackend(name)
-	}
-	if dsn == "" {
-		return nil, fmt.Errorf("CAPABILITY_DB_DSN must be %s", backend.DSN)
-	}
-	return backend.Open(ctx, dsn)
 }
 
 // unregisteredBackend distinguishes "you forgot the import" from "no such
@@ -215,4 +184,12 @@ func DecodeSchemas(item *Capability, input, output []byte) error {
 		return err
 	}
 	return json.Unmarshal(output, &item.Output)
+}
+
+// lookupBackend returns the backend registered under name.
+func lookupBackend(name string) (Backend, bool) {
+	backendsMutex.RLock()
+	defer backendsMutex.RUnlock()
+	backend, found := backends[name]
+	return backend, found
 }
