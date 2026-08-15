@@ -12,11 +12,11 @@ hero:
       text: What code mode is
       link: /overview
     - theme: alt
+      text: Add it to your application
+      link: /using-it
+    - theme: alt
       text: The flow, step by step
       link: /flow
-    - theme: alt
-      text: Configuration
-      link: /configuration
 
 features:
   - title: One turn, not fifty
@@ -85,5 +85,6 @@ export ANTHROPIC_API_KEY=...
 go run ./examples/todo -request "finish anything about docs"
 ```
 
-Start with [what code mode is](/overview), or go straight to
-[the flow](/flow) if you would rather see the mechanism first.
+Start with [what code mode is](/overview), go straight to
+[the flow](/flow) if you would rather see the mechanism first, or skip to
+[adding it to your application](/using-it) if you already know what you want.

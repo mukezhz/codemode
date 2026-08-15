@@ -38,6 +38,7 @@ go run ./examples/todo -request "finish anything about docs"
 Full docs are a VitePress site under [`docs/`](docs/content):
 
 - [What code mode is](docs/content/overview.md)
+- [**Add it to your application**](docs/content/using-it.md) — empty `main.go` to a working request
 - [The flow, step by step](docs/content/flow.md) — one request end to end
 - [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
 - [Configuration](docs/content/configuration.md) · [Troubleshooting](docs/content/troubleshooting.md)

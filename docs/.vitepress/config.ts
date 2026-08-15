@@ -21,7 +21,11 @@ export default withMermaid(
 
     themeConfig: {
       nav: [
-        { text: "Guide", link: "/overview", activeMatch: "^/(overview|flow)" },
+        {
+          text: "Guide",
+          link: "/overview",
+          activeMatch: "^/(overview|flow|using-it)",
+        },
         {
           text: "Reference",
           link: "/configuration",
@@ -36,6 +40,10 @@ export default withMermaid(
             { text: "What code mode is", link: "/overview" },
             { text: "The flow, step by step", link: "/flow" },
           ],
+        },
+        {
+          text: "Using it",
+          items: [{ text: "Add it to your application", link: "/using-it" }],
         },
         {
           text: "The pieces",
