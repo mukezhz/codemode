@@ -1,0 +1,17 @@
+{
+  "name": "code-mode-docs",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for code mode. Self-contained: the Go module needs none of this.",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  },
+  "devDependencies": {
+    "mermaid": "^11.12.0",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
+  },
+  "packageManager": "pnpm@11.1.2"
+}

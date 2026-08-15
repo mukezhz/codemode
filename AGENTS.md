@@ -2,7 +2,9 @@
 
 ## Project Structure & Module Organization
 
-Protobuf contracts live in `proto/`. The `registry/` command converts a Buf descriptor set into generated `registry.json`. Shared registry types and SQLite Vector search live in `capability/`; tests sit beside their Go source. Keep generated descriptor and registry files out of commits. Root configuration includes `buf.yaml`, `mise.toml`, and the `Makefile`.
+Protobuf contracts live in `proto/`. The `registry/` command converts a Buf descriptor set into generated `registry.json`. Shared registry types and vector search live in `capability/`, model providers in `llm/`, program engines in `sandbox/`, and the request pipeline in `agent/`; tests sit beside their Go source. Keep generated descriptor and registry files out of commits. Root configuration includes `buf.yaml`, `mise.toml`, `package.json`, and the `Makefile`.
+
+Written material is split by whether it is published. `docs/` is the VitePress site and is self-contained: its own `package.json`, lockfile, and `node_modules`, with pages under `docs/content/` and the sidebar in `docs/.vitepress/config.ts` — add a page there when you add one. Diagrams are ` ```mermaid ` fences, never hand-authored SVG. `notes/` is internal writing — PRDs, milestones, and decision records — and is never published; see `notes/README.md`. Prose belongs in one of those two, not in package comments duplicated across files.
 
 ## Build, Test, and Development Commands
 
@@ -11,6 +13,8 @@ Install pinned tools with `mise install`, then use:
 - `make generate` — build protobuf descriptors with Buf and regenerate `registry/registry.json`.
 - `make test` — run Buf lint and all Go tests; the native vector test skips without its extension.
 - `SQLITE_VECTOR_EXTENSION=/absolute/path/vector.dylib make test-vector` — exercise real semantic search using sqlite-vector 1.0.0. Use `vector.so` on Linux.
+- `make test-postgres` — exercise the pgvector backend against a throwaway container. Requires Docker.
+- `make docs` / `make docs-build` — serve or build the VitePress documentation site in `docs/`. Node and pnpm are pinned in `mise.toml`; the Go module itself needs neither.
 
 Each command should work from the repository root and fail with a nonzero exit code on errors.
 

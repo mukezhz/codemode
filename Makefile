@@ -1,4 +1,4 @@
-.PHONY: demo-todo generate test test-vector test-postgres
+.PHONY: demo-todo generate test test-vector test-postgres docs docs-build docs-preview
 
 demo-todo: generate
 	go run ./examples/todo
@@ -23,3 +23,18 @@ test-postgres:
 	CAPABILITY_TEST_POSTGRES_DSN=postgres://postgres:test@localhost:55432/codemode?sslmode=disable \
 		go test ./capability -run TestPostgresSearch -count=1; \
 		status=$$?; docker stop codemode-pg >/dev/null; exit $$status
+
+# Documentation site. Self-contained under docs/: its own package.json and
+# lockfile, its own node_modules. The Go module needs none of it.
+docs: docs/node_modules
+	pnpm --dir docs dev
+
+docs-build: docs/node_modules
+	pnpm --dir docs build
+
+docs-preview: docs-build
+	pnpm --dir docs preview
+
+docs/node_modules: docs/package.json docs/pnpm-lock.yaml
+	pnpm --dir docs install --frozen-lockfile
+	@touch docs/node_modules

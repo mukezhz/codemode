@@ -1,0 +1,83 @@
+# Code Mode
+
+Turn protobuf RPCs into capabilities a model can compose inside a sandbox.
+
+Ordinary tool use makes a model work one call at a time: fifty tasks, fifty round
+trips, every intermediate result back through the model. Code mode has the model
+write a **program** instead. The program loops and filters at machine speed
+inside a sandbox, and only the final answer returns.
+
+```js
+const { todos } = codemode.execute("todos.list", {});
+const pending = todos.filter(todo => !todo.completed);
+codemode.execute("todos.complete", { id: pending[0].id });
+return "completed " + pending[0].title;
+```
+
+The sandbox cannot reach your database, network, or secrets. It gets one
+function, and that function goes back to Go, which checks a generated registry
+before anything runs.
+
+## Quick start
+
+```sh
+mise install
+make demo-todo
+```
+
+Runs end to end with no API keys and no database: search falls back to keyword
+ranking, and a fixed program stands in for the model. Then give a model the pen:
+
+```sh
+export ANTHROPIC_API_KEY=...
+go run ./examples/todo -request "finish anything about docs"
+```
+
+## Documentation
+
+Full docs are a VitePress site under [`docs/`](docs/content):
+
+- [What code mode is](docs/content/overview.md)
+- [The flow, step by step](docs/content/flow.md) — one request end to end
+- [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
+- [Configuration](docs/content/configuration.md) · [Troubleshooting](docs/content/troubleshooting.md)
+
+```sh
+make docs        # serve locally with hot reload
+make docs-build  # build the static site
+```
+
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `proto/` | Capability contracts, annotated with a namespace and descriptions |
+| `registry/` | Generates `registry.json` from a Buf descriptor set |
+| `capability/` | Registry types, the vector index, and its sqlite / postgres backends |
+| `codemode/` | The two-method public interface: `Search` and `Execute` |
+| `llm/` | Model providers behind one `Client` interface |
+| `sandbox/` | Program engines behind one `Runner` interface: JavaScript, Starlark, Lua |
+| `agent/` | Search → prompt → model → sandbox, with a repair loop |
+| `examples/todo/` | A runnable end-to-end example |
+| `docs/` | The published documentation site |
+| `notes/` | Internal writing: PRDs, milestones, decisions. Never published. |
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `make generate` | Rebuild descriptors and `registry/registry.json` |
+| `make test` | Buf lint plus all Go tests |
+| `make test-vector` | SQLite vector search; needs `SQLITE_VECTOR_EXTENSION` |
+| `make test-postgres` | pgvector search against a throwaway container |
+| `make docs` | Serve the documentation site |
+
+Configuration is entirely environment-driven and entirely optional — see
+[`.env.example`](.env.example).
+
+> [!WARNING]
+> All three sandbox engines run in-process. They deny ambient capabilities and
+> bound time and call count, which is right for code your own host asked a model
+> to write. They are not a defence against a determined attacker. Before running
+> programs authored for untrusted end users, implement `Runner` over a separate
+> process or a container — see [the isolation ladder](docs/content/sandbox.md#the-isolation-ladder).
