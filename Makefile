@@ -1,19 +1,25 @@
-.PHONY: demo-todo generate test test-vector test-postgres docs docs-build docs-preview
+.PHONY: demo-todo generate test test-vector test-postgres test-consumer docs docs-build docs-preview
 
 demo-todo: generate
 	go run ./examples/todo
 
 generate:
 	mise exec -- buf build --as-file-descriptor-set -o registry/protoset.pb
-	go run ./registry
+	go run ./cmd/codemode-registry
 
 test:
 	mise exec -- buf lint
 	go test ./...
+	./scripts/check-consumer.sh
 
 test-vector:
 	test -n "$(SQLITE_VECTOR_EXTENSION)"
-	go test ./capability -run TestVectorSearch -count=1
+	go test ./capability/sqlitestore -run TestVectorSearch -count=1
+
+# Verify a consumer links only what it blank-imports, and that the core
+# packages still build without cgo.
+test-consumer:
+	./scripts/check-consumer.sh
 
 # Exercise the pgvector backend against a throwaway database.
 test-postgres:
@@ -21,7 +27,7 @@ test-postgres:
 		-e POSTGRES_DB=codemode -p 55432:5432 pgvector/pgvector:pg17
 	sleep 4
 	CAPABILITY_TEST_POSTGRES_DSN=postgres://postgres:test@localhost:55432/codemode?sslmode=disable \
-		go test ./capability -run TestPostgresSearch -count=1; \
+		go test ./capability/pgstore -run TestPostgresSearch -count=1; \
 		status=$$?; docker stop codemode-pg >/dev/null; exit $$status
 
 # Documentation site. Self-contained under docs/: its own package.json and

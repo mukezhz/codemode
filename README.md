@@ -39,6 +39,7 @@ Full docs are a VitePress site under [`docs/`](docs/content):
 
 - [What code mode is](docs/content/overview.md)
 - [**Add it to your application**](docs/content/using-it.md) — empty `main.go` to a working request
+- [What your binary links](docs/content/dependencies.md) — the blank imports, and why
 - [The flow, step by step](docs/content/flow.md) — one request end to end
 - [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
 - [Configuration](docs/content/configuration.md) · [Troubleshooting](docs/content/troubleshooting.md)
@@ -53,11 +54,11 @@ make docs-build  # build the static site
 | Path | What it is |
 | --- | --- |
 | `proto/` | Capability contracts, annotated with a namespace and descriptions |
-| `registry/` | Generates `registry.json` from a Buf descriptor set |
-| `capability/` | Registry types, the vector index, and its sqlite / postgres backends |
+| `registry/` | Turns a Buf descriptor set into a registry; CLI in `cmd/codemode-registry/` |
+| `capability/` | Registry types and the vector index; backends in `sqlitestore/` and `pgstore/` |
 | `codemode/` | The two-method public interface: `Search` and `Execute` |
-| `llm/` | Model providers behind one `Client` interface |
-| `sandbox/` | Program engines behind one `Runner` interface: JavaScript, Starlark, Lua |
+| `llm/` | The `Client` interface; providers in `claude/` and `openai/` |
+| `sandbox/` | The `Runner` interface; engines in `goja/`, `starlark/`, `lua/` |
 | `agent/` | Search → prompt → model → sandbox, with a repair loop |
 | `examples/todo/` | A runnable end-to-end example |
 | `docs/` | The published documentation site |
@@ -70,6 +71,7 @@ make docs-build  # build the static site
 | `make generate` | Rebuild descriptors and `registry/registry.json` |
 | `make test` | Buf lint plus all Go tests |
 | `make test-vector` | SQLite vector search; needs `SQLITE_VECTOR_EXTENSION` |
+| `make test-consumer` | Checks a consumer links only what it blank-imports |
 | `make test-postgres` | pgvector search against a throwaway container |
 | `make docs` | Serve the documentation site |
 

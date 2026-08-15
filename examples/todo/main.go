@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +15,18 @@ import (
 	demosearch "github.com/mukezhz/code-mode/examples/todo/search"
 	"github.com/mukezhz/code-mode/llm"
 	"github.com/mukezhz/code-mode/sandbox"
+
+	// The demo links every backend so one binary can show all of them. A real
+	// application blank-imports only what it runs, which is the point of the
+	// split: no cgo unless you asked for SQLite, no goja unless you asked for
+	// JavaScript.
+	_ "github.com/mukezhz/code-mode/capability/pgstore"
+	_ "github.com/mukezhz/code-mode/capability/sqlitestore"
+	_ "github.com/mukezhz/code-mode/llm/claude"
+	openaiprovider "github.com/mukezhz/code-mode/llm/openai"
+	_ "github.com/mukezhz/code-mode/sandbox/goja"
+	_ "github.com/mukezhz/code-mode/sandbox/lua"
+	_ "github.com/mukezhz/code-mode/sandbox/starlark"
 )
 
 func main() {
@@ -29,13 +40,9 @@ func main() {
 }
 
 func run(ctx context.Context, request string) error {
-	data, err := os.ReadFile("registry/registry.json")
+	registry, err := capability.LoadFile("registry/registry.json")
 	if err != nil {
-		return fmt.Errorf("read registry (run from the repository root): %w", err)
-	}
-	var registry capability.Registry
-	if err := json.Unmarshal(data, &registry); err != nil {
-		return fmt.Errorf("decode registry: %w", err)
+		return fmt.Errorf("run from the repository root: %w", err)
 	}
 	search, closeSearch, err := newSearch(ctx, registry)
 	if err != nil {
@@ -87,7 +94,7 @@ func newSearch(ctx context.Context, registry capability.Registry) (codemode.Sear
 		return nil, nil, err
 	}
 
-	embedder, err := llm.NewEmbedder()
+	embedder, err := openaiprovider.NewEmbedder()
 	if err != nil {
 		store.Close()
 		return nil, nil, fmt.Errorf("capability store is configured but embeddings are not: %w", err)

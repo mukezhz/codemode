@@ -7,6 +7,22 @@
 // The engine that isolates the program sits behind Runner, so the isolation
 // level is a deployment choice rather than a code change. The bridge shape is
 // the same for every engine: one (name, input) -> output call back to the host.
+//
+// # Choosing an engine
+//
+// This package holds the interface, not the interpreters. Blank-import the
+// engines you want and they register themselves, so a binary links only the
+// interpreters it can actually run:
+//
+//	import (
+//		"github.com/mukezhz/code-mode/sandbox"
+//		_ "github.com/mukezhz/code-mode/sandbox/goja"
+//	)
+//
+//	runner, err := sandbox.New(sandbox.Options{})  // SANDBOX_ENGINE picks one
+//
+// Importing an engine directly works too, and skips the environment entirely:
+// goja.New(sandbox.Options{}) returns a Runner.
 package sandbox
 
 import (
@@ -14,8 +30,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mukezhz/code-mode/capability"
@@ -68,8 +86,9 @@ const (
 	DefaultTimeout  = 30 * time.Second
 )
 
-// checked validates options and applies defaults.
-func (options Options) checked() (Options, error) {
+// Checked validates options and applies defaults. Engine constructors call it
+// so every engine bounds a run the same way.
+func (options Options) Checked() (Options, error) {
 	if options.Timeout < 0 {
 		return options, errors.New("timeout must not be negative")
 	}
@@ -85,26 +104,87 @@ func (options Options) checked() (Options, error) {
 	return options, nil
 }
 
-// Engines are the dialects a program may be written in. All three are pure Go
-// interpreters with no ambient I/O, and all three expose the same single
-// binding, so a capability call looks the same in each.
+// Engine describes one registered interpreter.
+type Engine struct {
+	// Name is the canonical value of SANDBOX_ENGINE that selects it.
+	Name string
+	// Aliases are other accepted spellings, such as "javascript" for goja.
+	Aliases []string
+	// New builds a Runner bounded by options.
+	New func(Options) (Runner, error)
+}
+
+// Engines are the dialects this module ships. Each is a pure Go interpreter
+// with no ambient I/O, and each exposes the same single binding, so a capability
+// call looks the same in all of them. Blank-import the matching package to make
+// one available.
 const (
 	// EngineGoja evaluates JavaScript. The most familiar dialect to a model,
-	// and the largest language surface.
+	// and the largest language surface. Package sandbox/goja.
 	EngineGoja = "goja"
 	// EngineStarlark evaluates Starlark, a small Python dialect that is
 	// deterministic and has no unbounded recursion or ambient state.
+	// Package sandbox/starlark.
 	EngineStarlark = "starlark"
 	// EngineLua evaluates Lua 5.1, the smallest and fastest of the three.
+	// Package sandbox/lua.
 	EngineLua = "lua"
 )
 
 // DefaultEngine is used when SANDBOX_ENGINE is unset.
 const DefaultEngine = EngineGoja
 
-// New builds the runner named by SANDBOX_ENGINE. Options given here win over
-// the environment, so a caller that sets a field explicitly is not overridden
-// by deployment configuration.
+// shipped maps an engine this module provides to the package that registers it,
+// so an unregistered name produces an error naming the missing import rather
+// than a bare "unsupported".
+var shipped = map[string]string{
+	EngineGoja:     "github.com/mukezhz/code-mode/sandbox/goja",
+	EngineStarlark: "github.com/mukezhz/code-mode/sandbox/starlark",
+	EngineLua:      "github.com/mukezhz/code-mode/sandbox/lua",
+}
+
+var (
+	enginesMutex sync.RWMutex
+	engines      = map[string]Engine{}
+)
+
+// RegisterEngine makes engine selectable by New. Engine packages call it from
+// init, so blank-importing one is enough. Registering a name twice panics,
+// which catches a duplicate import path at startup rather than in production.
+func RegisterEngine(engine Engine) {
+	if engine.Name == "" || engine.New == nil {
+		panic("sandbox: engine needs a name and a constructor")
+	}
+	enginesMutex.Lock()
+	defer enginesMutex.Unlock()
+	for _, name := range append([]string{engine.Name}, engine.Aliases...) {
+		if _, exists := engines[name]; exists {
+			panic("sandbox: engine " + name + " is already registered")
+		}
+		engines[name] = engine
+	}
+}
+
+// RegisteredEngines lists the canonical names of every registered engine,
+// sorted. Useful in diagnostics and startup logs.
+func RegisteredEngines() []string {
+	enginesMutex.RLock()
+	defer enginesMutex.RUnlock()
+	unique := map[string]bool{}
+	for _, engine := range engines {
+		unique[engine.Name] = true
+	}
+	names := make([]string, 0, len(unique))
+	for name := range unique {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// New builds the runner named by SANDBOX_ENGINE from the registered engines.
+// Options given here win over the environment, so a caller that sets a field
+// explicitly is not overridden by deployment configuration.
 //
 // Environment:
 //
@@ -116,20 +196,42 @@ func New(options Options) (Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := strings.ToLower(strings.TrimSpace(os.Getenv("SANDBOX_ENGINE")))
-	if engine == "" {
-		engine = DefaultEngine
+	name := strings.ToLower(strings.TrimSpace(os.Getenv("SANDBOX_ENGINE")))
+	if name == "" {
+		name = DefaultEngine
 	}
-	switch engine {
-	case EngineGoja, "javascript", "js":
-		return NewGoja(options)
-	case EngineStarlark, "python", "py":
-		return NewStarlark(options)
-	case EngineLua:
-		return NewLua(options)
-	default:
-		return nil, fmt.Errorf("SANDBOX_ENGINE %q is not supported: use goja, starlark, or lua", engine)
+
+	enginesMutex.RLock()
+	engine, registered := engines[name]
+	enginesMutex.RUnlock()
+	if !registered {
+		return nil, unregisteredEngine(name)
 	}
+	return engine.New(options)
+}
+
+// unregisteredEngine distinguishes "you forgot the import" from "no such
+// engine", because the fix is different and the first is far more common.
+func unregisteredEngine(name string) error {
+	if path, ships := shipped[name]; ships {
+		return fmt.Errorf("sandbox engine %q is not registered: add `_ %q` to your imports", name, path)
+	}
+	available := RegisteredEngines()
+	if len(available) == 0 {
+		return fmt.Errorf("sandbox engine %q is unknown and no engines are registered: blank-import one of %s",
+			name, strings.Join(values(shipped), ", "))
+	}
+	return fmt.Errorf("sandbox engine %q is unknown: registered engines are %s",
+		name, strings.Join(available, ", "))
+}
+
+func values(paths map[string]string) []string {
+	list := make([]string, 0, len(paths))
+	for _, path := range paths {
+		list = append(list, path)
+	}
+	sort.Strings(list)
+	return list
 }
 
 // fromEnv fills zero fields from the environment, leaving set fields alone.

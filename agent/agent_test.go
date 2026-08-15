@@ -12,6 +12,9 @@ import (
 	"github.com/mukezhz/code-mode/codemode"
 	"github.com/mukezhz/code-mode/llm"
 	"github.com/mukezhz/code-mode/sandbox"
+
+	// Run builds an engine from the environment when Options.Runner is nil.
+	_ "github.com/mukezhz/code-mode/sandbox/goja"
 )
 
 // mode answers searches and capability calls from a fixed script.

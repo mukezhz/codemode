@@ -9,8 +9,13 @@ here compiles against the module as it stands.
 go get github.com/mukezhz/code-mode
 ```
 
-The library pulls in the sandbox interpreters and the model SDKs. It does not
-pull in gRPC — you own the transport, so you choose whether there is one.
+Your binary links only what you blank-import. Importing `codemode` alone pulls
+in **no third-party dependency at all**; each interpreter, model SDK, and
+database driver arrives only when you ask for it. See
+[what your binary links](/dependencies).
+
+Nothing here pulls in gRPC — you own the transport, so you choose whether there
+is one.
 
 ## What you supply
 
@@ -19,19 +24,19 @@ nobody can write for you.
 
 | You supply | How | Effort |
 | --- | --- | --- |
-| A registry | `make generate` from annotated protos | Generated |
+| A registry | `codemode-registry` over annotated protos | Generated |
 | A search function | `capability.Index.Search`, or a keyword loop | A few lines |
 | An execute function | Dispatch an RPC path to your code | **Yours** |
-| A model and a sandbox | `llm.New()` and `sandbox.New()` from the environment | Two calls |
+| A model and a sandbox | `llm.New()` and `sandbox.New()`, plus a blank import each | Two calls |
 
 `ExecuteFunc` is the one that matters. Everything else has a default; this is
 where your application actually lives.
 
 ## 1. Annotate the contract
 
-Two custom options mark a service as a capability surface. Copy
-[`proto/code_mode.proto`](https://github.com/mukezhz/code-mode/blob/main/proto/code_mode.proto)
-into your project and import it:
+Two custom options mark a service as a capability surface. Write the options
+file into your own buf module — `codemode-registry -print-proto` emits the
+copy that matches your library version — and import it:
 
 ```protobuf
 service TodoService {
@@ -58,23 +63,33 @@ See [Capabilities](/capabilities) for the field-type rules.
 ## 2. Generate the registry
 
 ```sh
-buf build --as-file-descriptor-set -o registry/protoset.pb
-go run github.com/mukezhz/code-mode/registry
+# Once: write the options file your protos import.
+go run github.com/mukezhz/code-mode/cmd/codemode-registry@latest \
+  -print-proto > proto/code_mode.proto
+
+# Every build:
+buf build --as-file-descriptor-set -o build/protoset.pb
+go run github.com/mukezhz/code-mode/cmd/codemode-registry@latest \
+  -descriptor build/protoset.pb -out internal/capabilities/registry.json
 ```
 
-That writes `registry/registry.json`: every capability, its RPC path, its
+That writes `registry.json`: every capability, its RPC path, its
 description, and its input and output schemas. Load it at startup — `go:embed`
 is the usual choice, so the binary carries its own allowlist:
 
 ```go
 //go:embed registry.json
-var registryJSON []byte
+var registryFS embed.FS
 
-var registry capability.Registry
-if err := json.Unmarshal(registryJSON, &registry); err != nil {
+registry, err := capability.LoadFS(registryFS, "registry.json")
+if err != nil {
 	log.Fatal(err)
 }
 ```
+
+`capability.Load`, `LoadFile`, and `LoadFS` all reject unknown fields and an
+empty capability list, so a hand-edited or truncated registry fails at startup
+rather than per request.
 
 Regenerate whenever the protos change. A stale registry means a capability the
 model is told about but that `Execute` will reject.
@@ -200,11 +215,13 @@ twenty capabilities you can describe all of them every time and skip search
 entirely. Above that, ranking starts to matter:
 
 ```go
+import _ "github.com/mukezhz/code-mode/capability/pgstore"   // or sqlitestore
+
 store, err := capability.OpenStore(ctx)   // CAPABILITY_DB, CAPABILITY_DB_DSN
 if err != nil {
 	log.Fatal(err)
 }
-embedder, err := llm.NewEmbedder()
+embedder, err := openai.NewEmbedder()   // llm/openai; the only embeddings protocol
 if err != nil {
 	log.Fatal(err)
 }
@@ -243,6 +260,11 @@ instruction.
 ## 6. Run a request
 
 ```go
+import (
+	_ "github.com/mukezhz/code-mode/llm/claude"    // registers LLM_PROVIDER=claude
+	_ "github.com/mukezhz/code-mode/sandbox/goja"  // registers SANDBOX_ENGINE=goja
+)
+
 model, err := llm.New()               // LLM_PROVIDER, ANTHROPIC_API_KEY, ...
 runner, err := sandbox.New(sandbox.Options{})  // SANDBOX_ENGINE
 defer runner.Close()
@@ -279,7 +301,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/mukezhz/code-mode/agent"
@@ -287,18 +308,18 @@ import (
 	"github.com/mukezhz/code-mode/codemode"
 	"github.com/mukezhz/code-mode/llm"
 	"github.com/mukezhz/code-mode/sandbox"
+
+	// Exactly what this binary links. Swap either line to swap the backend.
+	_ "github.com/mukezhz/code-mode/llm/claude"
+	_ "github.com/mukezhz/code-mode/sandbox/goja"
 )
 
 func main() {
 	ctx := context.Background()
 
 	// 1. The registry: what may run.
-	data, err := os.ReadFile("registry/registry.json")
+	registry, err := capability.LoadFile("registry/registry.json")
 	if err != nil {
-		log.Fatal(err)
-	}
-	var registry capability.Registry
-	if err := json.Unmarshal(data, &registry); err != nil {
 		log.Fatal(err)
 	}
 
@@ -417,6 +438,7 @@ program, and any repair attempts after it.
 - **Log `Result.Source`.** When an answer is wrong, the program is the evidence.
 - **Regenerate the registry in CI.** A drifted `registry.json` is a silent failure.
 - **Read [the isolation ladder](/sandbox#the-isolation-ladder)** if programs will ever be shaped by untrusted end users. All three engines run in-process.
+- **Blank-import exactly what you run.** An unregistered backend fails at `New`, not at startup — see [what your binary links](/dependencies).
 
 Then [Configuration](/configuration) for every environment variable, and
 [Troubleshooting](/troubleshooting) for what the errors mean.

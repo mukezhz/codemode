@@ -1,109 +1,38 @@
-package capability
+package capability_test
 
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/code-mode/capability/internal/fixture"
 )
 
-// memoryStore is an in-memory Store, so the Index logic is testable without a
-// database or a vector extension. It ranks by cosine distance, as the real
-// backends do.
-type memoryStore struct {
-	model     string
-	dimension int
-	records   []Record
-	closed    bool
-}
-
-func (store *memoryStore) Rebuild(_ context.Context, model string, dimension int, records []Record) error {
-	store.model, store.dimension, store.records = model, dimension, records
-	return nil
-}
-
-func (store *memoryStore) Metadata(context.Context) (string, int, error) {
-	if store.model == "" {
-		return "", 0, errors.New("index has not been built")
-	}
-	return store.model, store.dimension, nil
-}
-
-func (store *memoryStore) Search(_ context.Context, vector []float32, limit int) ([]Match, error) {
-	matches := make([]Match, 0, len(store.records))
-	for _, record := range store.records {
-		matches = append(matches, Match{
-			Capability: record.Capability,
-			Distance:   cosineDistance(vector, record.Vector),
-		})
-	}
-	sort.SliceStable(matches, func(i, j int) bool { return matches[i].Distance < matches[j].Distance })
-	if limit < len(matches) {
-		matches = matches[:limit]
-	}
-	return matches, nil
-}
-
-func (store *memoryStore) Close() error {
-	store.closed = true
-	return nil
-}
-
-func cosineDistance(a, b []float32) float64 {
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 1
-	}
-	return 1 - dot/(sqrt(normA)*sqrt(normB))
-}
-
-func sqrt(value float64) float64 {
-	// Newton's method keeps this file free of an import used once.
-	guess := value
-	for range 20 {
-		guess = (guess + value/guess) / 2
-	}
-	return guess
-}
-
-func testEmbedder() Embedder {
-	return Embedder{Model: "test-embedding-v1", Embed: func(_ context.Context, text string) ([]float32, error) {
-		text = strings.ToLower(text)
-		return []float32{
-			boolFloat(strings.Contains(text, "student") || strings.Contains(text, "interview")),
-			boolFloat(strings.Contains(text, "invoice") || strings.Contains(text, "unpaid") || strings.Contains(text, "bill")),
-			boolFloat(strings.Contains(text, "email")),
-		}, nil
-	}}
-}
-
-func testRegistry() Registry {
-	return Registry{Capabilities: []Capability{
-		{Name: "students.interviewsWithin", RPC: "student.v1.StudentService/InterviewsWithin", Description: "Returns upcoming student interviews.", Input: TypeSchema{Fields: map[string]string{}}, Output: TypeSchema{Fields: map[string]string{}}},
-		{Name: "invoices.listUnpaid", RPC: "invoice.v1.InvoiceService/ListUnpaid", Description: "Returns unpaid invoices.", Input: TypeSchema{Fields: map[string]string{}}, Output: TypeSchema{Fields: map[string]string{}}},
-		{Name: "email.send", RPC: "email.v1.EmailService/Send", Description: "Sends an email.", Input: TypeSchema{Fields: map[string]string{}}, Output: TypeSchema{Fields: map[string]string{}}},
-	}}
+// A backend registered only by this test, so registration mechanics are
+// exercised without linking a real driver.
+func init() {
+	capability.RegisterBackend(capability.Backend{
+		Name:    "stub",
+		Aliases: []string{"stubby"},
+		DSN:     "anything at all",
+		Open: func(context.Context, string) (capability.Store, error) {
+			return &fixture.Memory{}, nil
+		},
+	})
 }
 
 func TestIndexRanksBySimilarity(t *testing.T) {
 	ctx := context.Background()
-	store := &memoryStore{}
-	embedder := testEmbedder()
+	store := &fixture.Memory{}
+	embedder := fixture.Embedder()
 
-	if err := Rebuild(ctx, store, testRegistry(), embedder); err != nil {
+	if err := capability.Rebuild(ctx, store, fixture.Registry(), embedder); err != nil {
 		t.Fatalf("Rebuild returned error: %v", err)
 	}
-	if store.dimension != 3 || store.model != "test-embedding-v1" {
-		t.Fatalf("metadata = %q/%d, want test-embedding-v1/3", store.model, store.dimension)
-	}
 
-	index, err := Open(ctx, store, embedder)
+	index, err := capability.Open(ctx, store, embedder)
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
 	}
@@ -115,21 +44,21 @@ func TestIndexRanksBySimilarity(t *testing.T) {
 		t.Fatalf("matches = %#v", matches)
 	}
 
-	if err := index.Close(); err != nil || !store.closed {
-		t.Fatalf("Close did not reach the store (err %v, closed %v)", err, store.closed)
+	if err := index.Close(); err != nil || !store.Closed {
+		t.Fatalf("Close did not reach the store (err %v, closed %v)", err, store.Closed)
 	}
 }
 
 func TestOpenRejectsAMismatchedEmbeddingModel(t *testing.T) {
 	ctx := context.Background()
-	store := &memoryStore{}
-	if err := Rebuild(ctx, store, testRegistry(), testEmbedder()); err != nil {
+	store := &fixture.Memory{}
+	if err := capability.Rebuild(ctx, store, fixture.Registry(), fixture.Embedder()); err != nil {
 		t.Fatal(err)
 	}
 
-	other := testEmbedder()
+	other := fixture.Embedder()
 	other.Model = "different-embedding-v2"
-	_, err := Open(ctx, store, other)
+	_, err := capability.Open(ctx, store, other)
 	if err == nil {
 		t.Fatal("Open returned no error for a mismatched embedding model")
 	}
@@ -140,7 +69,7 @@ func TestOpenRejectsAMismatchedEmbeddingModel(t *testing.T) {
 
 func TestRebuildRejectsRaggedVectors(t *testing.T) {
 	first := true
-	embedder := Embedder{Model: "ragged", Embed: func(context.Context, string) ([]float32, error) {
+	embedder := capability.Embedder{Model: "ragged", Embed: func(context.Context, string) ([]float32, error) {
 		if first {
 			first = false
 			return []float32{1, 0, 0}, nil
@@ -148,7 +77,7 @@ func TestRebuildRejectsRaggedVectors(t *testing.T) {
 		return []float32{1, 0}, nil
 	}}
 
-	err := Rebuild(context.Background(), &memoryStore{}, testRegistry(), embedder)
+	err := capability.Rebuild(context.Background(), &fixture.Memory{}, fixture.Registry(), embedder)
 	if err == nil {
 		t.Fatal("Rebuild returned no error for vectors of differing dimension")
 	}
@@ -157,39 +86,62 @@ func TestRebuildRejectsRaggedVectors(t *testing.T) {
 	}
 }
 
-func TestOpenStoreSelectsTheBackendFromTheEnvironment(t *testing.T) {
+func TestOpenStoreSelectsARegisteredBackend(t *testing.T) {
+	for _, name := range []string{"stub", "stubby"} {
+		t.Setenv("CAPABILITY_DB", name)
+		t.Setenv("CAPABILITY_DB_DSN", "anything")
+		store, err := capability.OpenStore(context.Background())
+		if err != nil {
+			t.Fatalf("OpenStore(%q) returned error: %v", name, err)
+		}
+		store.Close()
+	}
+}
+
+// A missing blank import is the common failure of this design, so the error
+// has to name the package rather than say "unsupported".
+func TestOpenStoreNamesTheMissingImportForAShippedBackend(t *testing.T) {
+	for backend, want := range map[string]string{
+		capability.BackendSQLite:   "capability/sqlitestore",
+		capability.BackendPostgres: "capability/pgstore",
+	} {
+		t.Run(backend, func(t *testing.T) {
+			t.Setenv("CAPABILITY_DB", backend)
+			t.Setenv("CAPABILITY_DB_DSN", "anything")
+			_, err := capability.OpenStore(context.Background())
+			if err == nil {
+				t.Fatal("OpenStore unexpectedly succeeded")
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %v, want it to name %q", err, want)
+			}
+		})
+	}
+}
+
+func TestOpenStoreReportsMissingConfiguration(t *testing.T) {
 	for name, test := range map[string]struct {
 		env  map[string]string
-		want string // substring of the expected error
+		want string
 	}{
-		// Both backends fail to connect in a unit test; the assertion is that
-		// the right backend was selected before it tried.
-		"sqlite needs the extension": {
-			map[string]string{"CAPABILITY_DB": "sqlite", "CAPABILITY_DB_DSN": "capabilities.db"},
-			"sqlite-vector extension",
-		},
-		"sqlite needs a dsn": {
-			map[string]string{"CAPABILITY_DB": "sqlite"},
-			"CAPABILITY_DB_DSN must be the SQLite database path",
-		},
-		"postgres needs a dsn": {
-			map[string]string{"CAPABILITY_DB": "postgres"},
-			"CAPABILITY_DB_DSN must be the Postgres connection URL",
+		"no dsn for a registered backend": {
+			map[string]string{"CAPABILITY_DB": "stub"},
+			"CAPABILITY_DB_DSN must be anything at all",
 		},
 		"unknown backend": {
 			map[string]string{"CAPABILITY_DB": "mysql", "CAPABILITY_DB_DSN": "x"},
-			"is not supported",
+			`"mysql" is unknown`,
 		},
-		"unset backend needs a dsn": {
+		"nothing configured": {
 			map[string]string{},
 			"set CAPABILITY_DB_DSN",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, key := range []string{"CAPABILITY_DB", "CAPABILITY_DB_DSN", "SQLITE_VECTOR_EXTENSION"} {
+			for _, key := range []string{"CAPABILITY_DB", "CAPABILITY_DB_DSN"} {
 				t.Setenv(key, test.env[key])
 			}
-			store, err := OpenStore(context.Background())
+			store, err := capability.OpenStore(context.Background())
 			if err == nil {
 				store.Close()
 				t.Fatal("OpenStore unexpectedly succeeded")
@@ -201,14 +153,15 @@ func TestOpenStoreSelectsTheBackendFromTheEnvironment(t *testing.T) {
 	}
 }
 
-func TestFormatVectorMatchesPgvectorText(t *testing.T) {
-	if got := formatVector([]float32{1, -0.5, 0}); got != "[1,-0.5,0]" {
-		t.Fatalf("formatVector() = %q, want %q", got, "[1,-0.5,0]")
-	}
-	if got := formatVector(nil); got != "[]" {
-		t.Fatalf("formatVector(nil) = %q, want %q", got, "[]")
+// ErrNoStore is the signal a caller treats as "semantic search is off", so it
+// must survive the wrapping OpenStore does.
+func TestOpenStoreReportsErrNoStoreWhenUnconfigured(t *testing.T) {
+	t.Setenv("CAPABILITY_DB", "")
+	t.Setenv("CAPABILITY_DB_DSN", "")
+	if _, err := capability.OpenStore(context.Background()); !errors.Is(err, capability.ErrNoStore) {
+		t.Fatalf("error = %v, want ErrNoStore", err)
 	}
 }
 
-// Both backends and the test double must satisfy the interface.
-var _ Store = (*memoryStore)(nil)
+// The test double must satisfy the interface the real backends implement.
+var _ capability.Store = (*fixture.Memory)(nil)

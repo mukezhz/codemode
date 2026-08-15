@@ -1,4 +1,4 @@
-package sandbox
+package enginetest
 
 import (
 	"context"
@@ -7,13 +7,17 @@ import (
 	"time"
 
 	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/code-mode/sandbox/goja"
+	"github.com/mukezhz/code-mode/sandbox/lua"
+	"github.com/mukezhz/code-mode/sandbox/starlark"
 )
 
 // engine pairs a runner with a program written in its dialect, so every engine
 // can be held to the same behaviour with the same assertions.
 type engine struct {
 	name string
-	new  func(Options) (Runner, error)
+	new  func(sandbox.Options) (sandbox.Runner, error)
 
 	// compose reads a list, filters it, calls again, and returns a string.
 	compose string
@@ -31,7 +35,7 @@ func engines() []engine {
 	return []engine{
 		{
 			name: "goja",
-			new:  NewGoja,
+			new:  goja.New,
 			compose: `const { todos } = codemode.execute("todos.list", {});
 const pending = todos.filter(t => !t.completed);
 codemode.execute("todos.complete", { id: pending[0].id });
@@ -44,7 +48,7 @@ return "unreachable";`,
 		},
 		{
 			name: "starlark",
-			new:  NewStarlark,
+			new:  starlark.New,
 			compose: `todos = codemode.execute("todos.list", {})["todos"]
 pending = [t for t in todos if not t["completed"]]
 codemode.execute("todos.complete", {"id": pending[0]["id"]})
@@ -63,7 +67,7 @@ return total`,
 		},
 		{
 			name: "lua",
-			new:  NewLua,
+			new:  lua.New,
 			compose: `local todos = codemode.execute("todos.list", {}).todos
 local pending = {}
 for _, t in ipairs(todos) do
@@ -84,7 +88,7 @@ func TestEnginesComposeCapabilityCalls(t *testing.T) {
 	for _, engine := range engines() {
 		t.Run(engine.name, func(t *testing.T) {
 			mode := newFake()
-			runner, err := engine.new(Options{Timeout: 5 * time.Second})
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,7 +118,7 @@ func TestEnginesComposeCapabilityCalls(t *testing.T) {
 func TestEnginesRejectUnregisteredCapabilities(t *testing.T) {
 	for _, engine := range engines() {
 		t.Run(engine.name, func(t *testing.T) {
-			runner, err := engine.new(Options{Timeout: 5 * time.Second})
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,7 +139,7 @@ func TestEnginesEnforceTheCallBudget(t *testing.T) {
 	for _, engine := range engines() {
 		t.Run(engine.name, func(t *testing.T) {
 			mode := newFake()
-			runner, err := engine.new(Options{Timeout: 5 * time.Second, MaxCalls: 3})
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second, MaxCalls: 3})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +158,7 @@ func TestEnginesEnforceTheCallBudget(t *testing.T) {
 func TestEnginesStopRunawayPrograms(t *testing.T) {
 	for _, engine := range engines() {
 		t.Run(engine.name, func(t *testing.T) {
-			runner, err := engine.new(Options{Timeout: 80 * time.Millisecond})
+			runner, err := engine.new(sandbox.Options{Timeout: 80 * time.Millisecond})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +178,7 @@ func TestEnginesStopRunawayPrograms(t *testing.T) {
 func TestEnginesReturnNilWhenTheProgramReturnsNothing(t *testing.T) {
 	for _, engine := range engines() {
 		t.Run(engine.name, func(t *testing.T) {
-			runner, err := engine.new(Options{Timeout: 5 * time.Second})
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,7 +213,7 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 
 	for _, engine := range engines() {
 		t.Run(engine.name, func(t *testing.T) {
-			runner, err := engine.new(Options{})
+			runner, err := engine.new(sandbox.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -223,7 +227,7 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 			}
 			// The example in the prompt must be written in the same dialect the
 			// engine evaluates, or it teaches the model the wrong syntax.
-			if _, err := runner.Run(context.Background(), newFake(), exampleOf(engine.name)); err != nil {
+			if _, err := runner.Run(context.Background(), newFake(), exampleOf(t, runner)); err != nil {
 				t.Fatalf("the dialect's own example does not run: %v", err)
 			}
 		})
@@ -233,52 +237,54 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 // TestEnginesRenderNeutralTypesInTheirOwnNotation covers every shape the
 // registry can emit. The protos in this repository happen to use none of the
 // compound ones, so without this the map and bytes paths would ship untried.
+// It reads the rendered prompt rather than the dialect's type table, so it
+// tests the path a model actually sees.
 func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
-	neutral := map[string]string{
-		"flag":   "bool",
-		"count":  "number",
-		"blob":   "bytes",
-		"todo":   "Todo",
-		"todos":  "repeated Todo",
-		"labels": "map<string, Todo>",
+	matches := []capability.Match{{Capability: capability.Capability{
+		Name:        "shapes.all",
+		Description: "Every neutral type in one signature",
+		Input:       capability.TypeSchema{Fields: map[string]string{"flag": "bool", "count": "number"}},
+		Output: capability.TypeSchema{Fields: map[string]string{
+			"blob": "bytes", "todo": "Todo", "todos": "repeated Todo", "labels": "map<string, Todo>",
+		}},
+	}}}
+
+	want := map[string][]string{
+		"goja":     {"boolean", "number", "string (base64)", "Todo[]", "Record<string, Todo>"},
+		"starlark": {"bool", "int|float", "string (base64)", "[Todo]", "{string: Todo}"},
+		"lua":      {"boolean", "number", "string (base64)", "{Todo}", "{[string] = Todo}"},
 	}
 
-	want := map[string]map[string]string{
-		"goja": {
-			"flag": "boolean", "count": "number", "blob": "string (base64)",
-			"todo": "Todo", "todos": "Todo[]", "labels": "Record<string, Todo>",
-		},
-		"starlark": {
-			"flag": "bool", "count": "int|float", "blob": "string (base64)",
-			"todo": "Todo", "todos": "[Todo]", "labels": "{string: Todo}",
-		},
-		"lua": {
-			"flag": "boolean", "count": "number", "blob": "string (base64)",
-			"todo": "Todo", "todos": "{Todo}", "labels": "{[string] = Todo}",
-		},
-	}
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			runner, err := engine.new(sandbox.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
 
-	styles := map[string]types{"goja": javascriptTypes, "starlark": starlarkTypes, "lua": luaTypes}
-	for engine, expected := range want {
-		t.Run(engine, func(t *testing.T) {
-			for field, neutralType := range neutral {
-				if got := styles[engine].render(neutralType); got != expected[field] {
-					t.Errorf("render(%q) = %q, want %q", neutralType, got, expected[field])
+			prompt := runner.Prompt(matches)
+			for _, fragment := range want[engine.name] {
+				if !strings.Contains(prompt, fragment) {
+					t.Errorf("prompt is missing %q:\n%s", fragment, prompt)
 				}
 			}
 		})
 	}
 }
 
-func exampleOf(name string) string {
-	switch name {
-	case "goja":
-		return javascript.example
-	case "starlark":
-		return starlarkDialect.example
-	default:
-		return luaDialect.example
+// exampleOf pulls the worked example out of a rendered prompt. Taking it from
+// the prompt rather than the engine's own variable is the point: what gets
+// tested is the text a model is actually shown.
+func exampleOf(t *testing.T, runner sandbox.Runner) string {
+	t.Helper()
+	const marker = "Example of the shape expected:\n\n"
+	prompt := runner.Prompt(nil)
+	_, example, found := strings.Cut(prompt, marker)
+	if !found {
+		t.Fatalf("prompt has no example section:\n%s", prompt)
 	}
+	return example
 }
 
 func TestNewBuildsEveryEngine(t *testing.T) {
@@ -293,7 +299,7 @@ func TestNewBuildsEveryEngine(t *testing.T) {
 	} {
 		t.Run("alias="+alias, func(t *testing.T) {
 			t.Setenv("SANDBOX_ENGINE", alias)
-			runner, err := New(Options{})
+			runner, err := sandbox.New(sandbox.Options{})
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
@@ -305,9 +311,9 @@ func TestNewBuildsEveryEngine(t *testing.T) {
 	}
 }
 
-// Every engine must satisfy the interface.
+// Every engine constructor must return the interface callers depend on.
 var (
-	_ Runner = (*gojaRunner)(nil)
-	_ Runner = (*starlarkRunner)(nil)
-	_ Runner = (*luaRunner)(nil)
+	_ func(sandbox.Options) (sandbox.Runner, error) = goja.New
+	_ func(sandbox.Options) (sandbox.Runner, error) = starlark.New
+	_ func(sandbox.Options) (sandbox.Runner, error) = lua.New
 )

@@ -1,21 +1,25 @@
-package main
+// Package registry turns a protobuf descriptor set into a capability registry.
+//
+// The registry is the allowlist: it maps a capability name a model may call to
+// the RPC path the host will invoke. Generating it from descriptors rather than
+// from Go code means a service that is not annotated cannot become callable by
+// forgetting a line somewhere else.
+//
+// The codemode-registry command wraps this for build pipelines. Call Generate
+// directly to produce a registry in-process, such as from a go:generate program
+// or a test that asserts the surface has not grown.
+package registry
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
-	"github.com/mukezhz/code-mode/capability"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
-)
 
-const (
-	descriptorPath = "registry/protoset.pb"
-	registryPath   = "registry/registry.json"
+	"github.com/mukezhz/code-mode/capability"
 )
 
 var namespacePattern = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
@@ -24,32 +28,21 @@ type Registry = capability.Registry
 type Capability = capability.Capability
 type TypeSchema = capability.TypeSchema
 
-func main() {
-	data, err := os.ReadFile(descriptorPath)
-	if err != nil {
-		panic(err)
-	}
+// Generate builds a registry from a Buf descriptor set. Every service carrying
+// (code_mode.namespace) contributes its methods; a method missing
+// (code_mode.description) is an error, because the description is the only
+// thing search and the model ever see.
+func Generate(files *descriptorpb.FileDescriptorSet) (Registry, error) {
+	return generateRegistry(files)
+}
 
+// Parse unmarshals a Buf descriptor set and generates a registry from it.
+func Parse(descriptor []byte) (Registry, error) {
 	var files descriptorpb.FileDescriptorSet
-	if err := proto.Unmarshal(data, &files); err != nil {
-		panic(err)
+	if err := proto.Unmarshal(descriptor, &files); err != nil {
+		return Registry{}, fmt.Errorf("decode descriptor set: %w", err)
 	}
-
-	registry, err := generateRegistry(&files)
-	if err != nil {
-		panic(err)
-	}
-
-	output, err := json.MarshalIndent(registry, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	output = append(output, '\n')
-	if err := os.WriteFile(registryPath, output, 0o644); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("generated %s with %d capabilities\n", registryPath, len(registry.Capabilities))
+	return generateRegistry(&files)
 }
 
 func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {

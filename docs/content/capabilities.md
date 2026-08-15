@@ -61,7 +61,7 @@ message types are named, not recursively expanded.
 The registry is data, read by three sandbox dialects that disagree about how to
 spell a list. Committing it to one syntax would mean showing a model asked for
 Lua a type written in TypeScript. So the registry stores the neutral form and
-each dialect renders it, in `sandbox/prompt.go`:
+each dialect renders it, in `sandbox/internal/prompt`:
 
 | Registry | JavaScript | Starlark | Lua |
 | --- | --- | --- | --- |
@@ -78,8 +78,9 @@ returns decoded protojson, and protojson encodes `bytes` as base64 text. Decode
 it in the program if you need the octets, or keep bytes out of capability
 schemas and pass a handle instead.
 
-Adding a dialect means adding a `types` value beside its `dialect`; nothing else
-in the pipeline knows a language exists.
+Adding a dialect means adding a `prompt.Types` value beside its `prompt.Dialect`
+in a new `sandbox/<engine>` package; nothing else in the pipeline knows a
+language exists.
 
 ## Generate the registry
 
@@ -95,7 +96,7 @@ make generate
 ```mermaid
 flowchart LR
   proto["proto/*.proto"] -->|buf build| pb["registry/protoset.pb<br/><small>descriptor set</small>"]
-  pb -->|go run ./registry| json["registry/registry.json<br/><small>the catalogue</small>"]
+  pb -->|codemode-registry| json["registry.json<br/><small>the catalogue</small>"]
 ```
 
 Both outputs are generated and ignored by Git. Regenerate after every contract or
@@ -113,7 +114,7 @@ option change. The registry is deterministic for a given descriptor ordering:
     },
     "output": {
       "type": "InterviewsWithinResponse",
-      "fields": { "students": "Student[]" }
+      "fields": { "students": "repeated Student" }
     }
   }]
 }
@@ -128,12 +129,8 @@ generation and search cannot drift onto separate schemas.
 and a trusted executor:
 
 ```go
-data, err := os.ReadFile("registry/registry.json")
+registry, err := capability.LoadFile("registry/registry.json")
 if err != nil {
-    return err
-}
-var registry capability.Registry
-if err := json.Unmarshal(data, &registry); err != nil {
     return err
 }
 
@@ -196,9 +193,9 @@ func dynamicExecute(conn *grpc.ClientConn, files *protoregistry.Files) codemode.
 }
 ```
 
-Build `protoregistry.Files` from the same `registry/protoset.pb` the generator
-already produces, via `protodesc.NewFiles`. Add a proto method, run
-`make generate`, and it is callable — no Go changes.
+Build `protoregistry.Files` from the same descriptor set the generator consumes,
+via `protodesc.NewFiles`. Add a proto method, regenerate, and it is callable —
+no Go changes.
 
 ## Type safety at the boundary
 

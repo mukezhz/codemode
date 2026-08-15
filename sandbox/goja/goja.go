@@ -1,4 +1,4 @@
-package sandbox
+package goja
 
 import (
 	"context"
@@ -6,11 +6,21 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dop251/goja"
+	gojavm "github.com/dop251/goja"
 
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/code-mode/sandbox/internal/prompt"
 )
+
+func init() {
+	sandbox.RegisterEngine(sandbox.Engine{
+		Name:    sandbox.EngineGoja,
+		Aliases: []string{"javascript", "js"},
+		New:     New,
+	})
+}
 
 // gojaRunner evaluates programs in an in-process JavaScript interpreter.
 //
@@ -20,12 +30,13 @@ import (
 // subprocess or container before running code supplied by end users; the bridge
 // shape does not change, only the transport.
 type gojaRunner struct {
-	options Options
+	options sandbox.Options
 }
 
-// NewGoja returns a Runner backed by the in-process goja interpreter.
-func NewGoja(options Options) (Runner, error) {
-	options, err := options.checked()
+// New returns a Runner backed by the in-process goja interpreter. Blank-import
+// this package instead to have sandbox.New select it from SANDBOX_ENGINE.
+func New(options sandbox.Options) (sandbox.Runner, error) {
+	options, err := options.Checked()
 	if err != nil {
 		return nil, err
 	}
@@ -35,35 +46,35 @@ func NewGoja(options Options) (Runner, error) {
 // javascriptTypes renders registry types as TypeScript. Bytes are shown as a
 // base64 string rather than Uint8Array because that is what actually arrives:
 // the bridge decodes protojson, which encodes bytes as base64 text.
-var javascriptTypes = types{
-	scalar: map[string]string{
+var javascriptTypes = prompt.Types{
+	Scalar: map[string]string{
 		"bool":  "boolean",
 		"bytes": "string (base64)",
 	},
-	list: func(element string) string { return element + "[]" },
-	dict: func(key, value string) string { return "Record<" + key + ", " + value + ">" },
+	List: func(element string) string { return element + "[]" },
+	Dict: func(key, value string) string { return "Record<" + key + ", " + value + ">" },
 }
 
 // javascript is the dialect goja evaluates.
-var javascript = dialect{
-	id:    "javascript",
-	prose: "JavaScript",
-	rules: []string{
+var javascript = prompt.Dialect{
+	ID:    "javascript",
+	Prose: "JavaScript",
+	Rules: []string{
 		"Reply with the body of a function: statements only, no wrapper, no imports, no exports.",
 		"Call capabilities as codemode.execute(name, input). It is synchronous and returns the decoded response object. Never use async, await, promises, or callbacks.",
 		"End with a return statement whose value answers the request. Prefer a short human-readable string.",
 	},
-	example: `const { todos } = codemode.execute("todos.list", {});
+	Example: `const { todos } = codemode.execute("todos.list", {});
 const pending = todos.filter(todo => !todo.completed);
 if (pending.length === 0) {
 	return "nothing to do";
 }
 codemode.execute("todos.complete", { id: pending[0].id });
 return "completed " + pending[0].title;`,
-	comment: func(description string) string { return "/** " + description + " */" },
-	signature: func(item capability.Capability) string {
+	Comment: func(description string) string { return "/** " + description + " */" },
+	Signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
-			return fields(schema, javascriptTypes, func(name, fieldType string) string {
+			return prompt.Fields(schema, javascriptTypes, func(name, fieldType string) string {
 				return name + ": " + fieldType
 			}, "{}", "{ ", " }")
 		}
@@ -72,10 +83,10 @@ return "completed " + pending[0].title;`,
 	},
 }
 
-func (runner *gojaRunner) Language() string { return javascript.id }
+func (runner *gojaRunner) Language() string { return javascript.ID }
 
 func (runner *gojaRunner) Prompt(matches []capability.Match) string {
-	return javascript.prompt(matches)
+	return javascript.Render(matches)
 }
 
 func (runner *gojaRunner) Name() string {
@@ -97,7 +108,7 @@ func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, sourc
 
 	// A fresh interpreter per run. Its globals are exactly what Set installs,
 	// so the program has no filesystem, network, or module access.
-	vm := goja.New()
+	vm := gojavm.New()
 	calls := 0
 
 	// The entire host bridge. The capability name is an argument rather than a
@@ -135,13 +146,13 @@ func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, sourc
 
 	value, err := vm.RunString("(function(){\n" + source + "\n})()")
 	if err != nil {
-		var interrupted *goja.InterruptedError
+		var interrupted *gojavm.InterruptedError
 		if errors.As(err, &interrupted) {
 			return nil, fmt.Errorf("sandbox stopped: %w", ctx.Err())
 		}
 		return nil, fmt.Errorf("sandbox: %w", err)
 	}
-	if value == nil || goja.IsUndefined(value) || goja.IsNull(value) {
+	if value == nil || gojavm.IsUndefined(value) || gojavm.IsNull(value) {
 		return nil, nil
 	}
 	return value.Export(), nil

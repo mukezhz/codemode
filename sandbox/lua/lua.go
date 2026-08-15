@@ -1,4 +1,4 @@
-package sandbox
+package lua
 
 import (
 	"context"
@@ -6,11 +6,20 @@ import (
 	"errors"
 	"fmt"
 
-	lua "github.com/yuin/gopher-lua"
+	luavm "github.com/yuin/gopher-lua"
 
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/code-mode/sandbox/internal/prompt"
 )
+
+func init() {
+	sandbox.RegisterEngine(sandbox.Engine{
+		Name: sandbox.EngineLua,
+		New:  New,
+	})
+}
 
 // luaRunner evaluates programs in Lua 5.1. It is the smallest and fastest of
 // the three engines. The standard library is opened selectively: base, table,
@@ -20,12 +29,13 @@ import (
 // ponytail: like the others, this runs in-process and is not a defence against
 // a determined attacker sharing the process.
 type luaRunner struct {
-	options Options
+	options sandbox.Options
 }
 
-// NewLua returns a Runner backed by the in-process Lua interpreter.
-func NewLua(options Options) (Runner, error) {
-	options, err := options.checked()
+// New returns a Runner backed by the in-process Lua interpreter. Blank-import
+// this package instead to have sandbox.New select it from SANDBOX_ENGINE.
+func New(options sandbox.Options) (sandbox.Runner, error) {
+	options, err := options.Checked()
 	if err != nil {
 		return nil, err
 	}
@@ -35,20 +45,20 @@ func NewLua(options Options) (Runner, error) {
 // luaTypes renders registry types as Lua table constructors, which is the only
 // shape Lua has for both lists and maps. The bracketed key form is real Lua, so
 // a model reading it can copy the construction directly.
-var luaTypes = types{
-	scalar: map[string]string{
+var luaTypes = prompt.Types{
+	Scalar: map[string]string{
 		"bool":  "boolean",
 		"bytes": "string (base64)",
 	},
-	list: func(element string) string { return "{" + element + "}" },
-	dict: func(key, value string) string { return "{[" + key + "] = " + value + "}" },
+	List: func(element string) string { return "{" + element + "}" },
+	Dict: func(key, value string) string { return "{[" + key + "] = " + value + "}" },
 }
 
 // luaDialect is the dialect the Lua engine evaluates.
-var luaDialect = dialect{
-	id:    "lua",
-	prose: "Lua 5.1",
-	rules: []string{
+var luaDialect = prompt.Dialect{
+	ID:    "lua",
+	Prose: "Lua 5.1",
+	Rules: []string{
 		"Reply with statements at the top level of a chunk: no function wrapper, no require.",
 		"Call capabilities as codemode.execute(name, input). It is synchronous and returns the decoded response as a table.",
 		"End with a return statement whose value answers the request. Prefer a short human-readable string.",
@@ -56,7 +66,7 @@ var luaDialect = dialect{
 		"String concatenation uses ..; convert numbers with tostring() first.",
 		"Only the base, table, string, and math libraries exist. There is no io, os, or require.",
 	},
-	example: `local todos = codemode.execute("todos.list", {}).todos
+	Example: `local todos = codemode.execute("todos.list", {}).todos
 local pending = {}
 for _, todo in ipairs(todos) do
   if not todo.completed then
@@ -68,10 +78,10 @@ if #pending == 0 then
 end
 codemode.execute("todos.complete", { id = pending[1].id })
 return "completed " .. pending[1].title`,
-	comment: func(description string) string { return "-- " + description },
-	signature: func(item capability.Capability) string {
+	Comment: func(description string) string { return "-- " + description },
+	Signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
-			return fields(schema, luaTypes, func(name, fieldType string) string {
+			return prompt.Fields(schema, luaTypes, func(name, fieldType string) string {
 				return name + " = " + fieldType
 			}, "{}", "{ ", " }")
 		}
@@ -80,10 +90,10 @@ return "completed " .. pending[1].title`,
 	},
 }
 
-func (runner *luaRunner) Language() string { return luaDialect.id }
+func (runner *luaRunner) Language() string { return luaDialect.ID }
 
 func (runner *luaRunner) Prompt(matches []capability.Match) string {
-	return luaDialect.prompt(matches)
+	return luaDialect.Render(matches)
 }
 
 func (runner *luaRunner) Name() string {
@@ -104,20 +114,20 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 
 	// SkipOpenLibs leaves the interpreter empty; the loop below opens only the
 	// pure-computation libraries, so io, os, package, and debug never exist.
-	state := lua.NewState(lua.Options{SkipOpenLibs: true})
+	state := luavm.NewState(luavm.Options{SkipOpenLibs: true})
 	defer state.Close()
 
 	for _, library := range []struct {
 		name string
-		open lua.LGFunction
+		open luavm.LGFunction
 	}{
-		{lua.BaseLibName, lua.OpenBase},
-		{lua.TabLibName, lua.OpenTable},
-		{lua.StringLibName, lua.OpenString},
-		{lua.MathLibName, lua.OpenMath},
+		{luavm.BaseLibName, luavm.OpenBase},
+		{luavm.TabLibName, luavm.OpenTable},
+		{luavm.StringLibName, luavm.OpenString},
+		{luavm.MathLibName, luavm.OpenMath},
 	} {
 		state.Push(state.NewFunction(library.open))
-		state.Push(lua.LString(library.name))
+		state.Push(luavm.LString(library.name))
 		if err := state.PCall(1, 0, nil); err != nil {
 			return nil, fmt.Errorf("open lua library %s: %w", library.name, err)
 		}
@@ -125,7 +135,7 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 	// Base brings a few escape hatches with it; remove the ones that let a
 	// program reach outside its own evaluation.
 	for _, global := range []string{"dofile", "loadfile", "load", "loadstring", "collectgarbage", "print"} {
-		state.SetGlobal(global, lua.LNil)
+		state.SetGlobal(global, luavm.LNil)
 	}
 
 	// SetContext wires cancellation into the interpreter's instruction loop, so
@@ -133,7 +143,7 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 	state.SetContext(ctx)
 
 	calls := 0
-	execute := func(state *lua.LState) int {
+	execute := func(state *luavm.LState) int {
 		name := state.CheckString(1)
 		input := state.OptTable(2, state.NewTable())
 
@@ -188,16 +198,16 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 
 // toLua converts a JSON-decoded Go value into a Lua value. JSON arrays become
 // tables indexed from 1, matching Lua's own convention.
-func toLua(state *lua.LState, value any) lua.LValue {
+func toLua(state *luavm.LState, value any) luavm.LValue {
 	switch typed := value.(type) {
 	case nil:
-		return lua.LNil
+		return luavm.LNil
 	case bool:
-		return lua.LBool(typed)
+		return luavm.LBool(typed)
 	case float64:
-		return lua.LNumber(typed)
+		return luavm.LNumber(typed)
 	case string:
-		return lua.LString(typed)
+		return luavm.LString(typed)
 	case []any:
 		table := state.NewTable()
 		for _, item := range typed {
@@ -211,24 +221,24 @@ func toLua(state *lua.LState, value any) lua.LValue {
 		}
 		return table
 	default:
-		return lua.LNil
+		return luavm.LNil
 	}
 }
 
 // fromLua converts a Lua value into a JSON-encodable Go value. A table with
 // contiguous integer keys from 1 becomes a slice; anything else becomes a map,
 // which is how Lua's single table type maps onto JSON's two.
-func fromLua(value lua.LValue) (any, error) {
+func fromLua(value luavm.LValue) (any, error) {
 	switch typed := value.(type) {
-	case *lua.LNilType, nil:
+	case *luavm.LNilType, nil:
 		return nil, nil
-	case lua.LBool:
+	case luavm.LBool:
 		return bool(typed), nil
-	case lua.LNumber:
+	case luavm.LNumber:
 		return float64(typed), nil
-	case lua.LString:
+	case luavm.LString:
 		return string(typed), nil
-	case *lua.LTable:
+	case *luavm.LTable:
 		if length := typed.Len(); length > 0 {
 			items := make([]any, 0, length)
 			for i := 1; i <= length; i++ {
@@ -242,11 +252,11 @@ func fromLua(value lua.LValue) (any, error) {
 		}
 		result := map[string]any{}
 		var conversionErr error
-		typed.ForEach(func(key, item lua.LValue) {
+		typed.ForEach(func(key, item luavm.LValue) {
 			if conversionErr != nil {
 				return
 			}
-			name, ok := key.(lua.LString)
+			name, ok := key.(luavm.LString)
 			if !ok {
 				conversionErr = fmt.Errorf("table key %s is not a string", key.String())
 				return

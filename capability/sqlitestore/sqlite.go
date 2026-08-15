@@ -1,26 +1,51 @@
-package capability
+// Package sqlitestore indexes capabilities in SQLite using the sqlite-vector
+// extension.
+//
+// Blank-import it to make CAPABILITY_DB=sqlite available:
+//
+//	import _ "github.com/mukezhz/code-mode/capability/sqlitestore"
+//
+// It requires cgo, because the SQLite driver and the vector extension are C.
+// A binary that must build with CGO_ENABLED=0 should use capability/pgstore
+// instead, or no store at all.
+package sqlitestore
 
 import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
+	"strings"
 
 	"github.com/mattn/go-sqlite3"
+
+	"github.com/mukezhz/code-mode/capability"
 )
+
+func init() {
+	capability.RegisterBackend(capability.Backend{
+		Name:    capability.BackendSQLite,
+		Aliases: []string{"sqlite3"},
+		DSN:     "the SQLite database path",
+		Open: func(ctx context.Context, dsn string) (capability.Store, error) {
+			return Open(ctx, dsn, strings.TrimSpace(os.Getenv("SQLITE_VECTOR_EXTENSION")))
+		},
+	})
+}
 
 // sqliteStore indexes capabilities in SQLite using the sqlite-vector extension.
 type sqliteStore struct {
 	db *sql.DB
 }
 
-// OpenSQLite opens the SQLite index at path, loading the sqlite-vector library
-// from extensionPath. Ctx carries cancellation. The caller closes the store.
-func OpenSQLite(ctx context.Context, path, extensionPath string) (Store, error) {
+// Open opens the SQLite index at path, loading the sqlite-vector library from
+// extensionPath. Ctx carries cancellation. The caller closes the store.
+//
+// capability.OpenStore calls this with SQLITE_VECTOR_EXTENSION.
+func Open(ctx context.Context, path, extensionPath string) (capability.Store, error) {
 	if extensionPath == "" {
 		return nil, errors.New("sqlite-vector extension path is required (SQLITE_VECTOR_EXTENSION)")
 	}
@@ -58,7 +83,7 @@ func OpenSQLite(ctx context.Context, path, extensionPath string) (Store, error) 
 
 func (store *sqliteStore) Close() error { return store.db.Close() }
 
-func (store *sqliteStore) Rebuild(ctx context.Context, model string, dimension int, records []Record) error {
+func (store *sqliteStore) Rebuild(ctx context.Context, model string, dimension int, records []capability.Record) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -95,7 +120,7 @@ func (store *sqliteStore) Rebuild(ctx context.Context, model string, dimension i
 	}
 
 	for _, record := range records {
-		input, output, err := encodeSchemas(record.Capability)
+		input, output, err := capability.EncodeSchemas(record.Capability)
 		if err != nil {
 			return err
 		}
@@ -130,7 +155,7 @@ func (store *sqliteStore) Metadata(ctx context.Context) (string, int, error) {
 	return model, dimension, nil
 }
 
-func (store *sqliteStore) Search(ctx context.Context, vector []float32, limit int) ([]Match, error) {
+func (store *sqliteStore) Search(ctx context.Context, vector []float32, limit int) ([]capability.Match, error) {
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT c.name, c.rpc, c.description, c.input_json, c.output_json, v.distance
 		FROM vector_full_scan('capabilities', 'embedding', ?, ?) AS v
@@ -141,7 +166,7 @@ func (store *sqliteStore) Search(ctx context.Context, vector []float32, limit in
 		return nil, fmt.Errorf("search capabilities: %w", err)
 	}
 	defer rows.Close()
-	return scanMatches(rows, limit)
+	return capability.ScanMatches(rows, limit)
 }
 
 // execer is satisfied by both *sql.DB and *sql.Tx.
@@ -165,21 +190,4 @@ func encodeVector(vector []float32) []byte {
 		binary.LittleEndian.PutUint32(encoded[i*4:], math.Float32bits(value))
 	}
 	return encoded
-}
-
-func encodeSchemas(capability Capability) (input, output []byte, err error) {
-	if input, err = json.Marshal(capability.Input); err != nil {
-		return nil, nil, err
-	}
-	if output, err = json.Marshal(capability.Output); err != nil {
-		return nil, nil, err
-	}
-	return input, output, nil
-}
-
-func decodeSchemas(capability *Capability, input, output []byte) error {
-	if err := json.Unmarshal(input, &capability.Input); err != nil {
-		return err
-	}
-	return json.Unmarshal(output, &capability.Output)
 }

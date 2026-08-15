@@ -1,4 +1,12 @@
-package llm
+// Package claude speaks the Anthropic API.
+//
+// Blank-import it to make LLM_PROVIDER=claude available:
+//
+//	import _ "github.com/mukezhz/code-mode/llm/claude"
+//
+// Anthropic publishes no embeddings API, so capability search always uses
+// llm/openai's embedder, whichever provider writes the programs.
+package claude
 
 import (
 	"context"
@@ -9,7 +17,23 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"github.com/mukezhz/code-mode/llm"
 )
+
+func init() {
+	llm.RegisterProvider(llm.Provider{
+		Name:    llm.ProviderClaude,
+		Aliases: []string{"anthropic"},
+		New:     New,
+		// LLM_BASE_URL names no provider, so it must not select this one;
+		// only Anthropic's own variables count as configuration.
+		Configured: func() bool {
+			return os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != ""
+		},
+		Priority: 1,
+	})
+}
 
 // defaultClaudeModel is used when ANTHROPIC_MODEL is unset.
 const defaultClaudeModel = "claude-opus-5"
@@ -26,11 +50,15 @@ type claude struct {
 	fallbacks bool
 }
 
-func newClaude() (Client, error) {
+// New builds a Claude client from the environment. Blank-import this package
+// instead to have llm.New select it from LLM_PROVIDER.
+//
+// Environment: ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_BASE_URL.
+func New() (llm.Client, error) {
 	key := os.Getenv("ANTHROPIC_API_KEY")
-	endpoint := baseURL("ANTHROPIC_BASE_URL")
+	endpoint := llm.BaseURL("ANTHROPIC_BASE_URL")
 	if key == "" && endpoint == "" {
-		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY or a base URL", ErrNoProvider)
+		return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY or a base URL", llm.ErrNoProvider)
 	}
 
 	options := []option.RequestOption{option.WithAPIKey(key)}
@@ -39,7 +67,7 @@ func newClaude() (Client, error) {
 	}
 	return &claude{
 		client:    anthropic.NewClient(options...),
-		model:     env("ANTHROPIC_MODEL", defaultClaudeModel),
+		model:     llm.Env("ANTHROPIC_MODEL", defaultClaudeModel),
 		fallbacks: endpoint == "",
 	}, nil
 }

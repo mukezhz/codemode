@@ -1,4 +1,4 @@
-package sandbox
+package enginetest
 
 import (
 	"context"
@@ -10,6 +10,13 @@ import (
 
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/code-mode/sandbox"
+
+	// Every engine this module ships, so sandbox.New can select any of them.
+	// A real binary imports only the ones it runs.
+	_ "github.com/mukezhz/code-mode/sandbox/goja"
+	_ "github.com/mukezhz/code-mode/sandbox/lua"
+	_ "github.com/mukezhz/code-mode/sandbox/starlark"
 )
 
 // fake records the capability calls a program makes and answers them from a
@@ -43,7 +50,7 @@ const options = time.Second
 
 func TestNewSelectsTheEngineFromTheEnvironment(t *testing.T) {
 	t.Setenv("SANDBOX_ENGINE", "")
-	runner, err := New(Options{})
+	runner, err := sandbox.New(sandbox.Options{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -55,7 +62,7 @@ func TestNewSelectsTheEngineFromTheEnvironment(t *testing.T) {
 
 func TestNewRejectsAnUnknownEngine(t *testing.T) {
 	t.Setenv("SANDBOX_ENGINE", "wasm")
-	if _, err := New(Options{}); err == nil {
+	if _, err := sandbox.New(sandbox.Options{}); err == nil {
 		t.Fatal("New returned no error for an unknown engine")
 	}
 }
@@ -65,7 +72,7 @@ func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
 	t.Setenv("SANDBOX_TIMEOUT", "7s")
 	t.Setenv("SANDBOX_MAX_CALLS", "9")
 
-	runner, err := New(Options{})
+	runner, err := sandbox.New(sandbox.Options{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -77,7 +84,7 @@ func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
 	}
 
 	// An explicitly set field wins over the environment.
-	explicit, err := New(Options{MaxCalls: 3})
+	explicit, err := sandbox.New(sandbox.Options{MaxCalls: 3})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -89,13 +96,10 @@ func TestNewReadsBoundsFromTheEnvironment(t *testing.T) {
 
 func TestNewRejectsUnparseableBounds(t *testing.T) {
 	t.Setenv("SANDBOX_TIMEOUT", "soon")
-	if _, err := New(Options{}); err == nil {
+	if _, err := sandbox.New(sandbox.Options{}); err == nil {
 		t.Fatal("New returned no error for an unparseable SANDBOX_TIMEOUT")
 	}
 }
-
-// The engine must satisfy the interface callers depend on.
-var _ Runner = (*gojaRunner)(nil)
 
 func TestRunComposesCapabilityCalls(t *testing.T) {
 	mode := newFake()
@@ -106,7 +110,7 @@ func TestRunComposesCapabilityCalls(t *testing.T) {
 		return done.todo.title;
 	`
 
-	value, err := Run(context.Background(), mode, source, Options{Timeout: options})
+	value, err := sandbox.Run(context.Background(), mode, source, sandbox.Options{Timeout: options})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -129,7 +133,7 @@ func TestRunReportsUnregisteredCapability(t *testing.T) {
 	mode := newFake()
 	source := `return codemode.execute("todos.purge", {});`
 
-	if _, err := Run(context.Background(), mode, source, Options{Timeout: options}); err == nil {
+	if _, err := sandbox.Run(context.Background(), mode, source, sandbox.Options{Timeout: options}); err == nil {
 		t.Fatal("Run returned no error for an unregistered capability")
 	} else if !strings.Contains(err.Error(), "todos.purge") {
 		t.Fatalf("error = %v, want it to name the capability", err)
@@ -145,7 +149,7 @@ func TestRunEnforcesCallBudget(t *testing.T) {
 		return "unreachable";
 	`
 
-	if _, err := Run(context.Background(), mode, source, Options{Timeout: options, MaxCalls: 3}); err == nil {
+	if _, err := sandbox.Run(context.Background(), mode, source, sandbox.Options{Timeout: options, MaxCalls: 3}); err == nil {
 		t.Fatal("Run returned no error for an exhausted call budget")
 	}
 	if len(mode.calls) != 3 {
@@ -156,13 +160,13 @@ func TestRunEnforcesCallBudget(t *testing.T) {
 func TestRunStopsRunawayProgram(t *testing.T) {
 	mode := newFake()
 
-	_, err := Run(context.Background(), mode, `while (true) {}`, Options{Timeout: 50 * time.Millisecond})
+	_, err := sandbox.Run(context.Background(), mode, `while (true) {}`, sandbox.Options{Timeout: 50 * time.Millisecond})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
 	}
 }
 
-func TestDeclarationsRenderSelectedCapabilities(t *testing.T) {
+func TestPromptRendersSelectedCapabilities(t *testing.T) {
 	matches := []capability.Match{{Capability: capability.Capability{
 		Name:        "todos.complete",
 		Description: "Mark a todo as complete",
@@ -170,10 +174,17 @@ func TestDeclarationsRenderSelectedCapabilities(t *testing.T) {
 		Output:      capability.TypeSchema{Type: "CompleteResponse", Fields: map[string]string{"todo": "Todo"}},
 	}}}
 
+	t.Setenv("SANDBOX_ENGINE", "goja")
+	runner, err := sandbox.New(sandbox.Options{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer runner.Close()
+
 	want := "/** Mark a todo as complete */\n" +
 		"codemode.execute(name: \"todos.complete\", input: { id: number }): { todo: Todo };\n\n"
-	if got := Declarations(matches); got != want {
-		t.Fatalf("Declarations() = %q, want %q", got, want)
+	if got := runner.Prompt(matches); !strings.Contains(got, want) {
+		t.Fatalf("Prompt() is missing the declaration %q:\n%s", want, got)
 	}
 }
 

@@ -2,10 +2,13 @@ package capability
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"sync"
 )
 
 // Record is one capability contract paired with its embedding.
@@ -37,46 +40,142 @@ type Store interface {
 // ErrNoStore reports that no capability store is configured.
 var ErrNoStore = errors.New("no capability store configured")
 
-// OpenStore builds the store named by CAPABILITY_DB: "sqlite" (the default) or
-// "postgres". Ctx carries cancellation.
-//
-// Environment:
-//
-//	CAPABILITY_DB            sqlite | postgres      (default sqlite)
-//	CAPABILITY_DB_DSN        SQLite file path, or a Postgres connection URL
-//	SQLITE_VECTOR_EXTENSION  absolute path to the sqlite-vector library
-//
-// The caller closes the returned store.
-func OpenStore(ctx context.Context) (Store, error) {
-	backend := strings.ToLower(strings.TrimSpace(os.Getenv("CAPABILITY_DB")))
-	dsn := strings.TrimSpace(os.Getenv("CAPABILITY_DB_DSN"))
+// Backend describes one registered store implementation.
+type Backend struct {
+	// Name is the canonical value of CAPABILITY_DB that selects it.
+	Name string
+	// Aliases are other accepted spellings, such as "postgresql".
+	Aliases []string
+	// Open connects to dsn, the value of CAPABILITY_DB_DSN. A backend that
+	// needs more configuration than a DSN reads its own environment here.
+	Open func(ctx context.Context, dsn string) (Store, error)
+	// DSN describes what CAPABILITY_DB_DSN should hold, for the error raised
+	// when it is empty.
+	DSN string
+}
 
-	switch backend {
-	case "sqlite", "sqlite3", "":
-		if dsn == "" {
-			if backend == "" {
-				return nil, fmt.Errorf("%w: set CAPABILITY_DB_DSN", ErrNoStore)
-			}
-			return nil, errors.New("CAPABILITY_DB_DSN must be the SQLite database path")
+// Backends this module ships, and the package that registers each. Blank-import
+// the one you want; a binary then links only that driver, which is what keeps
+// cgo out of a build that only uses Postgres.
+const (
+	// BackendSQLite indexes in SQLite with the sqlite-vector extension.
+	// Package capability/sqlitestore. Requires cgo.
+	BackendSQLite = "sqlite"
+	// BackendPostgres indexes in PostgreSQL with pgvector.
+	// Package capability/pgstore. Pure Go.
+	BackendPostgres = "postgres"
+)
+
+// DefaultBackend is used when CAPABILITY_DB is unset.
+const DefaultBackend = BackendSQLite
+
+var shipped = map[string]string{
+	BackendSQLite:   "github.com/mukezhz/code-mode/capability/sqlitestore",
+	BackendPostgres: "github.com/mukezhz/code-mode/capability/pgstore",
+}
+
+var (
+	backendsMutex sync.RWMutex
+	backends      = map[string]Backend{}
+)
+
+// RegisterBackend makes backend selectable by OpenStore. Store packages call it
+// from init, so blank-importing one is enough. Registering a name twice panics,
+// which catches a duplicate import path at startup rather than in production.
+func RegisterBackend(backend Backend) {
+	if backend.Name == "" || backend.Open == nil {
+		panic("capability: backend needs a name and an opener")
+	}
+	backendsMutex.Lock()
+	defer backendsMutex.Unlock()
+	for _, name := range append([]string{backend.Name}, backend.Aliases...) {
+		if _, exists := backends[name]; exists {
+			panic("capability: backend " + name + " is already registered")
 		}
-		return OpenSQLite(ctx, dsn, strings.TrimSpace(os.Getenv("SQLITE_VECTOR_EXTENSION")))
-	case "postgres", "postgresql", "pgx":
-		if dsn == "" {
-			return nil, errors.New("CAPABILITY_DB_DSN must be the Postgres connection URL")
-		}
-		return OpenPostgres(ctx, dsn)
-	default:
-		return nil, fmt.Errorf("CAPABILITY_DB %q is not supported: use sqlite or postgres", backend)
+		backends[name] = backend
 	}
 }
 
-// scanMatches decodes capability rows in the column order every backend query
-// selects: name, rpc, description, input, output, distance.
-func scanMatches(rows interface {
+// RegisteredBackends lists the canonical names of every registered backend,
+// sorted.
+func RegisteredBackends() []string {
+	backendsMutex.RLock()
+	defer backendsMutex.RUnlock()
+	unique := map[string]bool{}
+	for _, backend := range backends {
+		unique[backend.Name] = true
+	}
+	names := make([]string, 0, len(unique))
+	for name := range unique {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// OpenStore builds the store named by CAPABILITY_DB from the registered
+// backends. Ctx carries cancellation.
+//
+// Environment:
+//
+//	CAPABILITY_DB      sqlite | postgres      (default sqlite)
+//	CAPABILITY_DB_DSN  SQLite file path, or a Postgres connection URL
+//
+// Each backend reads any further configuration it needs; sqlitestore also
+// reads SQLITE_VECTOR_EXTENSION.
+//
+// It returns ErrNoStore when nothing is configured at all, which a caller can
+// treat as "semantic search is off" rather than as a failure. The caller closes
+// the returned store.
+func OpenStore(ctx context.Context) (Store, error) {
+	name := strings.ToLower(strings.TrimSpace(os.Getenv("CAPABILITY_DB")))
+	dsn := strings.TrimSpace(os.Getenv("CAPABILITY_DB_DSN"))
+	if name == "" {
+		if dsn == "" {
+			return nil, fmt.Errorf("%w: set CAPABILITY_DB_DSN", ErrNoStore)
+		}
+		name = DefaultBackend
+	}
+
+	backendsMutex.RLock()
+	backend, registered := backends[name]
+	backendsMutex.RUnlock()
+	if !registered {
+		return nil, unregisteredBackend(name)
+	}
+	if dsn == "" {
+		return nil, fmt.Errorf("CAPABILITY_DB_DSN must be %s", backend.DSN)
+	}
+	return backend.Open(ctx, dsn)
+}
+
+// unregisteredBackend distinguishes "you forgot the import" from "no such
+// backend", because the fix is different and the first is far more common.
+func unregisteredBackend(name string) error {
+	if path, ships := shipped[name]; ships {
+		return fmt.Errorf("capability store %q is not registered: add `_ %q` to your imports", name, path)
+	}
+	available := RegisteredBackends()
+	if len(available) == 0 {
+		return fmt.Errorf("capability store %q is unknown and none are registered: blank-import %s or %s",
+			name, shipped[BackendSQLite], shipped[BackendPostgres])
+	}
+	return fmt.Errorf("capability store %q is unknown: registered backends are %s",
+		name, strings.Join(available, ", "))
+}
+
+// RowScanner is the part of *sql.Rows a backend query returns. It is an
+// interface so ScanMatches works for any driver.
+type RowScanner interface {
 	Next() bool
 	Scan(...any) error
 	Err() error
-}, limit int) ([]Match, error) {
+}
+
+// ScanMatches decodes capability rows in the column order every backend query
+// selects: name, rpc, description, input, output, distance. Backends outside
+// this module use it to stay consistent with the ones inside it.
+func ScanMatches(rows RowScanner, limit int) ([]Match, error) {
 	matches := make([]Match, 0, limit)
 	for rows.Next() {
 		var match Match
@@ -91,10 +190,29 @@ func scanMatches(rows interface {
 		); err != nil {
 			return nil, err
 		}
-		if err := decodeSchemas(&match.Capability, input, output); err != nil {
+		if err := DecodeSchemas(&match.Capability, input, output); err != nil {
 			return nil, err
 		}
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()
+}
+
+// EncodeSchemas renders a capability's input and output schemas for storage.
+func EncodeSchemas(item Capability) (input, output []byte, err error) {
+	if input, err = json.Marshal(item.Input); err != nil {
+		return nil, nil, err
+	}
+	if output, err = json.Marshal(item.Output); err != nil {
+		return nil, nil, err
+	}
+	return input, output, nil
+}
+
+// DecodeSchemas is the inverse of EncodeSchemas.
+func DecodeSchemas(item *Capability, input, output []byte) error {
+	if err := json.Unmarshal(input, &item.Input); err != nil {
+		return err
+	}
+	return json.Unmarshal(output, &item.Output)
 }

@@ -1,4 +1,13 @@
-package capability
+// Package pgstore indexes capabilities in PostgreSQL using the pgvector
+// extension.
+//
+// Blank-import it to make CAPABILITY_DB=postgres available:
+//
+//	import _ "github.com/mukezhz/code-mode/capability/pgstore"
+//
+// It is pure Go, so it builds with CGO_ENABLED=0. The database must allow
+// CREATE EXTENSION vector, or have it installed already.
+package pgstore
 
 import (
 	"context"
@@ -8,19 +17,30 @@ import (
 	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/mukezhz/code-mode/capability"
 )
 
-// postgresStore indexes capabilities in PostgreSQL using the pgvector
+func init() {
+	capability.RegisterBackend(capability.Backend{
+		Name:    capability.BackendPostgres,
+		Aliases: []string{"postgresql", "pgx"},
+		DSN:     "the Postgres connection URL",
+		Open:    func(ctx context.Context, dsn string) (capability.Store, error) { return Open(ctx, dsn) },
+	})
+}
+
+// store indexes capabilities in PostgreSQL using the pgvector
 // extension. The database must allow CREATE EXTENSION vector, or have it
 // installed already.
-type postgresStore struct {
+type pgStore struct {
 	db *sql.DB
 }
 
-// OpenPostgres connects to the Postgres index named by dsn, a libpq connection
-// string or URL such as postgres://user:pass@host:5432/db. Ctx carries
-// cancellation. The caller closes the store.
-func OpenPostgres(ctx context.Context, dsn string) (Store, error) {
+// Open connects to the Postgres index named by dsn, a libpq connection string
+// or URL such as postgres://user:pass@host:5432/db. Ctx carries cancellation.
+// The caller closes the store.
+func Open(ctx context.Context, dsn string) (capability.Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -33,12 +53,12 @@ func OpenPostgres(ctx context.Context, dsn string) (Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("enable pgvector (install it, or grant CREATE on the database): %w", err)
 	}
-	return &postgresStore{db: db}, nil
+	return &pgStore{db: db}, nil
 }
 
-func (store *postgresStore) Close() error { return store.db.Close() }
+func (store *pgStore) Close() error { return store.db.Close() }
 
-func (store *postgresStore) Rebuild(ctx context.Context, model string, dimension int, records []Record) error {
+func (store *pgStore) Rebuild(ctx context.Context, model string, dimension int, records []capability.Record) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -78,7 +98,7 @@ func (store *postgresStore) Rebuild(ctx context.Context, model string, dimension
 	}
 
 	for _, record := range records {
-		input, output, err := encodeSchemas(record.Capability)
+		input, output, err := capability.EncodeSchemas(record.Capability)
 		if err != nil {
 			return err
 		}
@@ -97,7 +117,7 @@ func (store *postgresStore) Rebuild(ctx context.Context, model string, dimension
 	return nil
 }
 
-func (store *postgresStore) Metadata(ctx context.Context) (string, int, error) {
+func (store *pgStore) Metadata(ctx context.Context) (string, int, error) {
 	var model string
 	var dimension int
 	if err := store.db.QueryRowContext(ctx,
@@ -108,7 +128,7 @@ func (store *postgresStore) Metadata(ctx context.Context) (string, int, error) {
 	return model, dimension, nil
 }
 
-func (store *postgresStore) Search(ctx context.Context, vector []float32, limit int) ([]Match, error) {
+func (store *pgStore) Search(ctx context.Context, vector []float32, limit int) ([]capability.Match, error) {
 	// <=> is pgvector's cosine distance operator, matching the SQLite backend.
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT name, rpc, description, input_json, output_json, embedding <=> $1 AS distance
@@ -120,7 +140,7 @@ func (store *postgresStore) Search(ctx context.Context, vector []float32, limit 
 		return nil, fmt.Errorf("search capabilities: %w", err)
 	}
 	defer rows.Close()
-	return scanMatches(rows, limit)
+	return capability.ScanMatches(rows, limit)
 }
 
 // formatVector renders a vector in pgvector's text form, "[1,2,3]".

@@ -1,9 +1,14 @@
-package capability
+package pgstore_test
 
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/mukezhz/code-mode/capability"
+	"github.com/mukezhz/code-mode/capability/internal/fixture"
+	"github.com/mukezhz/code-mode/capability/pgstore"
 )
 
 // TestPostgresSearch exercises the pgvector backend end to end. It skips
@@ -15,17 +20,17 @@ func TestPostgresSearch(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	store, err := OpenPostgres(ctx, dsn)
+	store, err := pgstore.Open(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	embedder := testEmbedder()
-	if err := Rebuild(ctx, store, testRegistry(), embedder); err != nil {
+	embedder := fixture.Embedder()
+	if err := capability.Rebuild(ctx, store, fixture.Registry(), embedder); err != nil {
 		t.Fatal(err)
 	}
-	index, err := Open(ctx, store, embedder)
+	index, err := capability.Open(ctx, store, embedder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,5 +51,18 @@ func TestPostgresSearch(t *testing.T) {
 	// Schemas must survive the JSON round trip through the database.
 	if matches[0].Capability.RPC != "invoice.v1.InvoiceService/ListUnpaid" {
 		t.Fatalf("rpc = %q", matches[0].Capability.RPC)
+	}
+}
+
+// Blank-importing the package must make CAPABILITY_DB=postgres selectable.
+func TestBackendRegistersItself(t *testing.T) {
+	t.Setenv("CAPABILITY_DB", capability.BackendPostgres)
+	t.Setenv("CAPABILITY_DB_DSN", "")
+	_, err := capability.OpenStore(context.Background())
+	if err == nil {
+		t.Fatal("OpenStore succeeded without a DSN")
+	}
+	if !strings.Contains(err.Error(), "the Postgres connection URL") {
+		t.Fatalf("error = %v, want the backend's own DSN description", err)
 	}
 }

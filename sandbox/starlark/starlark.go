@@ -1,4 +1,4 @@
-package sandbox
+package starlark
 
 import (
 	"context"
@@ -7,13 +7,23 @@ import (
 	"fmt"
 	"strings"
 
-	"go.starlark.net/starlark"
+	starlarkvm "go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
 	"github.com/mukezhz/code-mode/capability"
 	"github.com/mukezhz/code-mode/codemode"
+	"github.com/mukezhz/code-mode/sandbox"
+	"github.com/mukezhz/code-mode/sandbox/internal/prompt"
 )
+
+func init() {
+	sandbox.RegisterEngine(sandbox.Engine{
+		Name:    sandbox.EngineStarlark,
+		Aliases: []string{"python", "py"},
+		New:     New,
+	})
+}
 
 // starlarkRunner evaluates programs in Starlark, a small Python dialect built
 // for configuration. It has no ambient I/O at all: the interpreter ships
@@ -24,12 +34,13 @@ import (
 // ponytail: like goja, this runs in-process and is not a defence against a
 // determined attacker sharing the process.
 type starlarkRunner struct {
-	options Options
+	options sandbox.Options
 }
 
-// NewStarlark returns a Runner backed by the in-process Starlark interpreter.
-func NewStarlark(options Options) (Runner, error) {
-	options, err := options.checked()
+// New returns a Runner backed by the in-process Starlark interpreter. Blank-import
+// this package instead to have sandbox.New select it from SANDBOX_ENGINE.
+func New(options sandbox.Options) (sandbox.Runner, error) {
+	options, err := options.Checked()
 	if err != nil {
 		return nil, err
 	}
@@ -39,36 +50,36 @@ func NewStarlark(options Options) (Runner, error) {
 // starlarkTypes renders registry types as Starlark values. Numbers stay open
 // between int and float because the registry collapses every protobuf numeric
 // scalar into one, and Starlark keeps the two apart.
-var starlarkTypes = types{
-	scalar: map[string]string{
+var starlarkTypes = prompt.Types{
+	Scalar: map[string]string{
 		"number": "int|float",
 		"bytes":  "string (base64)",
 	},
-	list: func(element string) string { return "[" + element + "]" },
-	dict: func(key, value string) string { return "{" + key + ": " + value + "}" },
+	List: func(element string) string { return "[" + element + "]" },
+	Dict: func(key, value string) string { return "{" + key + ": " + value + "}" },
 }
 
 // starlarkDialect is the dialect the Starlark engine evaluates.
-var starlarkDialect = dialect{
-	id:    "starlark",
-	prose: "Starlark (a small Python dialect)",
-	rules: []string{
+var starlarkDialect = prompt.Dialect{
+	ID:    "starlark",
+	Prose: "Starlark (a small Python dialect)",
+	Rules: []string{
 		"Reply with the body of a function: statements only, indented at column zero, no def line, no imports.",
 		"Call capabilities as codemode.execute(name, input). It is synchronous and returns the decoded response as a dict.",
 		"End with a return statement whose value answers the request. Prefer a short human-readable string.",
 		"Starlark has no while loops and no recursion. Use for loops and list comprehensions.",
 		"String concatenation uses +; convert numbers with str() first.",
 	},
-	example: `todos = codemode.execute("todos.list", {})["todos"]
+	Example: `todos = codemode.execute("todos.list", {})["todos"]
 pending = [todo for todo in todos if not todo["completed"]]
 if len(pending) == 0:
     return "nothing to do"
 codemode.execute("todos.complete", {"id": pending[0]["id"]})
 return "completed " + pending[0]["title"]`,
-	comment: func(description string) string { return "# " + description },
-	signature: func(item capability.Capability) string {
+	Comment: func(description string) string { return "# " + description },
+	Signature: func(item capability.Capability) string {
 		object := func(schema capability.TypeSchema) string {
-			return fields(schema, starlarkTypes, func(name, fieldType string) string {
+			return prompt.Fields(schema, starlarkTypes, func(name, fieldType string) string {
 				return fmt.Sprintf("%q: %s", name, fieldType)
 			}, "{}", "{", "}")
 		}
@@ -77,10 +88,10 @@ return "completed " + pending[0]["title"]`,
 	},
 }
 
-func (runner *starlarkRunner) Language() string { return starlarkDialect.id }
+func (runner *starlarkRunner) Language() string { return starlarkDialect.ID }
 
 func (runner *starlarkRunner) Prompt(matches []capability.Match) string {
-	return starlarkDialect.prompt(matches)
+	return starlarkDialect.Render(matches)
 }
 
 func (runner *starlarkRunner) Name() string {
@@ -99,16 +110,16 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 	ctx, cancel := context.WithTimeout(ctx, runner.options.Timeout)
 	defer cancel()
 
-	thread := &starlark.Thread{Name: "codemode"}
+	thread := &starlarkvm.Thread{Name: "codemode"}
 	// Printing is the one builtin Starlark keeps; drop it so the program has no
 	// output channel other than its return value.
-	thread.Print = func(*starlark.Thread, string) {}
+	thread.Print = func(*starlarkvm.Thread, string) {}
 
 	calls := 0
-	execute := func(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	execute := func(_ *starlarkvm.Thread, _ *starlarkvm.Builtin, args starlarkvm.Tuple, kwargs []starlarkvm.Tuple) (starlarkvm.Value, error) {
 		var name string
-		var input starlark.Value
-		if err := starlark.UnpackPositionalArgs("execute", args, kwargs, 1, &name, &input); err != nil {
+		var input starlarkvm.Value
+		if err := starlarkvm.UnpackPositionalArgs("execute", args, kwargs, 1, &name, &input); err != nil {
 			return nil, err
 		}
 		calls++
@@ -117,7 +128,7 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 		}
 
 		request := json.RawMessage("{}")
-		if input != nil && input != starlark.None {
+		if input != nil && input != starlarkvm.None {
 			decoded, err := fromStarlark(input)
 			if err != nil {
 				return nil, fmt.Errorf("encode input for %s: %w", name, err)
@@ -140,8 +151,8 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 
 	// A struct, not a dict: only a struct supports codemode.execute attribute
 	// access, which is what keeps the call spelled the same in every dialect.
-	api := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-		"execute": starlark.NewBuiltin("execute", execute),
+	api := starlarkstruct.FromStringDict(starlarkstruct.Default, starlarkvm.StringDict{
+		"execute": starlarkvm.NewBuiltin("execute", execute),
 	})
 
 	// Starlark has no top-level return, so the program body becomes the body of
@@ -154,18 +165,18 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 	// The zero FileOptions is the restrictive one: no while loops, no
 	// recursion, no top-level control flow. That matches the prompt's rules and
 	// removes a class of runaway program at the language level.
-	globals, err := starlark.ExecFileOptions(
+	globals, err := starlarkvm.ExecFileOptions(
 		&syntax.FileOptions{},
 		thread,
 		"program.star",
 		program,
-		starlark.StringDict{"codemode": api},
+		starlarkvm.StringDict{"codemode": api},
 	)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("sandbox stopped: %w", ctx.Err())
 		}
-		var evalErr *starlark.EvalError
+		var evalErr *starlarkvm.EvalError
 		if errors.As(err, &evalErr) {
 			return nil, fmt.Errorf("sandbox: %s", evalErr.Msg)
 		}
@@ -173,7 +184,7 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 	}
 
 	result, ok := globals["__result"]
-	if !ok || result == starlark.None {
+	if !ok || result == starlarkvm.None {
 		return nil, nil
 	}
 	return fromStarlark(result)
@@ -194,21 +205,21 @@ func indentLines(source string) string {
 }
 
 // toStarlark converts a JSON-decoded Go value into a Starlark value.
-func toStarlark(value any) (starlark.Value, error) {
+func toStarlark(value any) (starlarkvm.Value, error) {
 	switch typed := value.(type) {
 	case nil:
-		return starlark.None, nil
+		return starlarkvm.None, nil
 	case bool:
-		return starlark.Bool(typed), nil
+		return starlarkvm.Bool(typed), nil
 	case float64:
 		if typed == float64(int64(typed)) {
-			return starlark.MakeInt64(int64(typed)), nil
+			return starlarkvm.MakeInt64(int64(typed)), nil
 		}
-		return starlark.Float(typed), nil
+		return starlarkvm.Float(typed), nil
 	case string:
-		return starlark.String(typed), nil
+		return starlarkvm.String(typed), nil
 	case []any:
-		items := make([]starlark.Value, len(typed))
+		items := make([]starlarkvm.Value, len(typed))
 		for i, item := range typed {
 			converted, err := toStarlark(item)
 			if err != nil {
@@ -216,15 +227,15 @@ func toStarlark(value any) (starlark.Value, error) {
 			}
 			items[i] = converted
 		}
-		return starlark.NewList(items), nil
+		return starlarkvm.NewList(items), nil
 	case map[string]any:
-		dict := starlark.NewDict(len(typed))
+		dict := starlarkvm.NewDict(len(typed))
 		for key, item := range typed {
 			converted, err := toStarlark(item)
 			if err != nil {
 				return nil, err
 			}
-			if err := dict.SetKey(starlark.String(key), converted); err != nil {
+			if err := dict.SetKey(starlarkvm.String(key), converted); err != nil {
 				return nil, err
 			}
 		}
@@ -235,23 +246,23 @@ func toStarlark(value any) (starlark.Value, error) {
 }
 
 // fromStarlark converts a Starlark value into a JSON-encodable Go value.
-func fromStarlark(value starlark.Value) (any, error) {
+func fromStarlark(value starlarkvm.Value) (any, error) {
 	switch typed := value.(type) {
-	case starlark.NoneType:
+	case starlarkvm.NoneType:
 		return nil, nil
-	case starlark.Bool:
+	case starlarkvm.Bool:
 		return bool(typed), nil
-	case starlark.Int:
+	case starlarkvm.Int:
 		number, ok := typed.Int64()
 		if !ok {
 			return nil, errors.New("integer is out of range")
 		}
 		return number, nil
-	case starlark.Float:
+	case starlarkvm.Float:
 		return float64(typed), nil
-	case starlark.String:
+	case starlarkvm.String:
 		return string(typed), nil
-	case *starlark.List:
+	case *starlarkvm.List:
 		items := make([]any, typed.Len())
 		for i := range items {
 			converted, err := fromStarlark(typed.Index(i))
@@ -261,7 +272,7 @@ func fromStarlark(value starlark.Value) (any, error) {
 			items[i] = converted
 		}
 		return items, nil
-	case starlark.Tuple:
+	case starlarkvm.Tuple:
 		items := make([]any, typed.Len())
 		for i := range items {
 			converted, err := fromStarlark(typed.Index(i))
@@ -271,10 +282,10 @@ func fromStarlark(value starlark.Value) (any, error) {
 			items[i] = converted
 		}
 		return items, nil
-	case *starlark.Dict:
+	case *starlarkvm.Dict:
 		result := make(map[string]any, typed.Len())
 		for _, item := range typed.Items() {
-			key, ok := starlark.AsString(item[0])
+			key, ok := starlarkvm.AsString(item[0])
 			if !ok {
 				return nil, fmt.Errorf("dict key %s is not a string", item[0].String())
 			}

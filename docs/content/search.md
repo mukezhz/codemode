@@ -63,7 +63,7 @@ connection-specific.
 
 ### Postgres
 
-Needs [pgvector](https://github.com/pgvector/pgvector). `OpenPostgres` runs
+Needs [pgvector](https://github.com/pgvector/pgvector). `pgstore.Open` runs
 `CREATE EXTENSION IF NOT EXISTS vector` on connect, so the role needs `CREATE` on
 the database, or the extension installed already. No CGO.
 
@@ -93,7 +93,7 @@ The model name is recorded in the index. `Open` rejects an embedder whose name
 differs from the one used to build it, so a silent mismatch cannot return
 nonsense.
 
-`llm.NewEmbedder()` provides one over the OpenAI embeddings protocol. Anthropic
+`openai.NewEmbedder()` provides one over the OpenAI embeddings protocol. Anthropic
 publishes no embeddings API, so this path is used regardless of `LLM_PROVIDER`;
 point `EMBEDDING_BASE_URL` at a local endpoint to embed without leaving the
 machine.
