@@ -55,10 +55,11 @@ Full docs are a VitePress site under [`docs/`](docs/content):
 - [**Add it to your application**](docs/content/using-it.md) — empty `main.go` to a working request
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
 - [Permissions](docs/content/permissions.md) — roles in the contract, rows in your code
+- [Caching programs](docs/content/caching.md) — answer repeats in milliseconds, and plug in your own store
 - [Many services, many users](docs/content/scaling-up.md) — composing proto files, and per-user scoping
 - [The flow, step by step](docs/content/flow.md) — one request end to end
 - [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
-- [Configuration](docs/content/configuration.md) · [Troubleshooting](docs/content/troubleshooting.md)
+- [Configuration](docs/content/configuration.md) · [Latency](docs/content/latency.md) · [Troubleshooting](docs/content/troubleshooting.md)
 
 ```sh
 make docs        # serve locally with hot reload

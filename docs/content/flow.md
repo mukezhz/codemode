@@ -65,6 +65,17 @@ Full detail in [Capabilities](/capabilities).
 Someone says *"add two todos and finish the first one."* Go takes it from here.
 Nothing has been sent to a model yet.
 
+::: tip A cache can short-circuit steps 2–5
+With a [program cache](/caching) configured, this is where it is consulted. A hit
+skips search, the prompt, and the model entirely, and jumps straight to step 6
+with the program that answered the same question last time.
+
+The program is cached, not the answer: it still runs, still calls into your
+application, and still sees today's data. If it fails because a capability has
+changed shape, the entry is dropped and the request continues from step 2 as
+though there had been no cache. Nothing about caching can fail a request.
+:::
+
 ### 2. Search picks the relevant capabilities
 
 `mode.Search` ranks the registry against the request and returns the best few
@@ -180,6 +191,10 @@ finally returns, that single value is the answer to the user.
 If the program throws, the error is fed back to the model along with the source
 that failed, and it gets another attempt. Three by default. Transport errors are
 not retried this way — only mistakes the model can actually fix.
+
+A program that succeeded is written to the cache, so the next identical request
+starts at step 6 instead of step 2. A failed cache write never fails an answered
+request.
 
 ## Why bother with a sandbox at all
 

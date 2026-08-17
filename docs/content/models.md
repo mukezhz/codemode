@@ -13,6 +13,10 @@ type Client interface {
 }
 ```
 
+A client may also implement `llm.Streamer`, which delivers the response in
+pieces as the model writes it. It is an optional interface, so a client without
+it still works everywhere — see [Streaming](#streaming) below.
+
 `llm.New(options)` builds one from an explicit `llm.Options`. `llm.NewFromEnv()`
 reads the environment first, and returns `llm.ErrNoProvider` when
 nothing is configured, so a caller with a fallback path can check for it with
@@ -196,7 +200,60 @@ if errors.Is(err, llm.ErrNoProvider) {
 ```
 
 `agent.Result` carries the answer, the program that produced it, the capabilities
-that were described to the model, and how many attempts it took.
+that were described to the model, how many attempts it took, whether it came from
+the [cache](/caching), and a `Timing` breakdown of where the time went.
+
+## Streaming
+
+A model call takes seconds and nothing on your side makes it shorter. Streaming
+does not change that — it changes what those seconds look like, turning a blank
+screen into a program appearing a line at a time.
+
+```go
+type Streamer interface {
+    CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error)
+}
+```
+
+Both shipped providers implement it. Ask for it through the agent:
+
+```go
+result, err := agent.Run(ctx, mode, model, request, agent.Options{
+    Runner:  runner,
+    OnChunk: func(piece string) { fmt.Print(piece) },
+})
+```
+
+Concatenating every chunk gives the same text `Complete` would have returned. A
+model that does not implement `Streamer` is not an error: `OnChunk` never fires
+and the program arrives in one piece.
+
+Three things to know:
+
+- **`OnChunk` runs on the goroutine driving the request** and must not block. The
+  stream is not read while it runs, so push to a channel or a response writer
+  rather than doing work there.
+- **Repair attempts stream too.** A caller displaying the program should reset
+  its buffer when `Result.Attempts` changes, or the second attempt appends to the
+  first.
+- **A wrapper must forward it.** A value stored in an interface loses the methods
+  that interface does not name, so a traced or instrumented `llm.Client` that does
+  not implement `Streamer` turns streaming off for everything behind it.
+
+```go
+func (wrapper *traced) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
+    streamer, ok := wrapper.inner.(llm.Streamer)
+    if !ok {
+        return wrapper.Complete(ctx, system, user)
+    }
+    return streamer.CompleteStream(ctx, system, user, chunk)
+}
+```
+
+`examples/taskreport` streams over server-sent events at `POST /api/chat/stream`,
+and logs time-to-first-chunk next to the total — the number that says whether a
+slow provider is thinking or merely producing a lot of output. See
+[Latency](/latency#time-to-first-chunk).
 
 ## Model responses are untrusted input
 

@@ -321,7 +321,45 @@ once, and evaluates the program. If the program fails, it hands the model the
 source and the error and asks again, up to `Attempts` times.
 
 `Result` carries more than the answer — `Source`, `Matches`, and `Attempts` are
-what you log when something goes wrong.
+what you log when something goes wrong, and `Timing` is what you log when it goes
+slowly.
+
+### Answer repeats without paying for them again
+
+The model call is typically 99.9% of a request. A program is a pure function of
+the request and the capabilities available, so a repeat need not buy one twice:
+
+```go
+cache := program.NewExactCache()
+defer cache.Close()
+
+result, err := agent.Run(ctx, mode, model, request, agent.Options{
+	Runner:      runner,
+	Cache:       cache,
+	CacheCaller: string(identity.Role), // never share across roles or tenants
+})
+```
+
+Same question, second time: about four milliseconds instead of several seconds.
+The cached program still runs and still sees live data.
+
+`Cache` is an interface, so your own database or caching policy drops in without
+touching anything else — [Caching programs](/caching) covers that, the semantic
+cache that also hits across rewordings, and how to scope entries safely.
+
+### Show the program as it is written
+
+For an interactive frontend, stream it:
+
+```go
+agent.Options{
+	Runner:  runner,
+	OnChunk: func(piece string) { /* push to the browser */ },
+}
+```
+
+This does not make the answer arrive sooner; it fills the several seconds a model
+takes with something to look at. See [Models](/models#streaming).
 
 To pin the model, bound the response, or add domain guidance:
 

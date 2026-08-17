@@ -49,6 +49,12 @@ features:
       Search runs on sqlite-vector or pgvector. Models come from Claude, OpenAI, or
       anything speaking either protocol. Each is an interface chosen by one
       environment variable.
+  - title: Repeats cost milliseconds
+    details: >
+      A program is a pure function of the request and the capabilities available,
+      so the second identical question skips the model entirely — about four
+      milliseconds instead of several seconds. Cache is an interface; bring your
+      own store or policy.
   - title: Your application is untouched
     details: >
       It validates its own input, enforces its own permissions, and owns what the

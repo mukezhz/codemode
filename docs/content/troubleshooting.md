@@ -43,7 +43,31 @@
 | `capability "x" is not registered` | The model invented a name. Expected, and correctly rejected — the repair loop feeds it back. Persistent cases usually mean a description is unclear. |
 | `sandbox: ... has no .execute field` | The engine's API object was built wrong. All three bind `codemode.execute`; file a bug. |
 
+## Caching
+
+| Symptom | Cause and fix |
+| --- | --- |
+| Every request pays for the model; the cache stays empty | Almost always a wrapper that does not forward `Fingerprint`. Without a capability fingerprint the agent turns caching off deliberately. See [Caching programs](/caching#the-capability-fingerprint). |
+| A cache hit never happens for reworded questions | `program.NewExactCache()` matches on text only. Use `program.New` with an embedder to hit across rewordings. |
+| A reworded question returns the wrong answer | The semantic threshold is too generous. Lower `program.Options.Threshold`; the default of 0.05 is strict on purpose. |
+| A user sees an answer scoped to someone else's access | `agent.Options.CacheCaller` was not set. It must carry the role, the tenant, or both. |
+| Cached programs vanish after a deploy | Expected when the capability set changed: the fingerprint changed with it, so programs written against the old set are unreachable. |
+| `program cache needs a store opened by capability/sqlitestore` | `OpenProgramCache` takes the store that package opened, not one from another backend. |
+
+## Streaming
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `OnChunk` never fires | The model does not implement `llm.Streamer`, or a wrapper around it does not forward `CompleteStream`. |
+| Chunks arrive all at once at the end | Something between you and the browser is buffering. Set `X-Accel-Buffering: no` and flush after each event. |
+| The program display doubles up on a retry | A repair attempt streams too. Reset the buffer when `Result.Attempts` changes. |
+| Long silence, then the whole answer quickly | Provider time-to-first-token, not your code. See [Latency](/latency#time-to-first-chunk). |
+
 ## Common confusions
+
+**Answers are slow.** Log `result.Timing`. It is almost certainly `Generate` —
+the model call is typically 99.9% of a request, and the sandbox is under a
+millisecond. [Latency](/latency) has the numbers and what to do about them.
 
 **A capability ran that search did not return.** Working as designed. Search
 decides what the model *knows about*; the registry decides what may *run*. They

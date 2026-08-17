@@ -24,12 +24,13 @@ export default withMermaid(
         {
           text: "Guide",
           link: "/overview",
-          activeMatch: "^/(overview|flow|using-it|dependencies|permissions|scaling-up)",
+          activeMatch:
+            "^/(overview|flow|using-it|dependencies|permissions|caching|scaling-up)",
         },
         {
           text: "Reference",
           link: "/configuration",
-          activeMatch: "^/(configuration|troubleshooting)",
+          activeMatch: "^/(configuration|latency|troubleshooting)",
         },
       ],
 
@@ -47,6 +48,7 @@ export default withMermaid(
             { text: "Add it to your application", link: "/using-it" },
             { text: "What your binary links", link: "/dependencies" },
             { text: "Permissions", link: "/permissions" },
+            { text: "Caching programs", link: "/caching" },
             { text: "Many services, many users", link: "/scaling-up" },
           ],
         },
@@ -63,6 +65,7 @@ export default withMermaid(
           text: "Reference",
           items: [
             { text: "Configuration", link: "/configuration" },
+            { text: "Latency", link: "/latency" },
             { text: "Troubleshooting", link: "/troubleshooting" },
           ],
         },
