@@ -16,7 +16,9 @@ const SUGGESTIONS = [
   "what should I work on next?",
 ];
 
-type Turn = { request: string; result?: ChatResult; error?: string };
+// writing holds the program as it streams in, before there is a result to
+// render. It is replaced by result, never shown alongside it.
+type Turn = { request: string; result?: ChatResult; error?: string; writing?: string };
 
 function Ask() {
   const [request, setRequest] = useState("");
@@ -32,7 +34,14 @@ function Ask() {
     setTurns((previous) => [...previous, { request: question }]);
 
     try {
-      const result = await api.chat(question);
+      // The program streams in as the model writes it. It is the only thing
+      // that exists before the answer does — the document cannot be rendered
+      // until the program has run.
+      let written = "";
+      const result = await api.chatStream(question, (piece) => {
+        written += piece;
+        setTurns((previous) => replaceLast(previous, { request: question, writing: written }));
+      });
       setTurns((previous) => replaceLast(previous, { request: question, result }));
     } catch (err) {
       setTurns((previous) =>
@@ -102,7 +111,12 @@ function TurnView({ turn, pending }: { turn: Turn; pending: boolean }) {
     <section className="turn">
       <p className="question">{turn.request}</p>
 
-      {pending && !turn.result && !turn.error && <p className="thinking">Writing a program…</p>}
+      {pending && !turn.result && !turn.error && (
+        <>
+          <p className="thinking">Writing a program…</p>
+          {turn.writing && <pre className="program writing">{turn.writing}</pre>}
+        </>
+      )}
       {turn.error && <p className="error">{turn.error}</p>}
 
       {turn.result && (

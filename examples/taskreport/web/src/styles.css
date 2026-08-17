@@ -190,3 +190,11 @@ tbody tr:last-child td { border-bottom: none; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* The program as it streams in. Dimmed because it is not the answer: it is
+   evidence that the answer is being written. */
+.program.writing {
+  opacity: 0.65;
+  max-height: 16rem;
+  overflow-y: auto;
+}

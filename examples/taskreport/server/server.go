@@ -126,6 +126,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/tasks/{id}", server.deleteTask)
 	mux.HandleFunc("GET /api/summary", server.summary)
 	mux.HandleFunc("POST /api/chat", server.chat)
+	mux.HandleFunc("POST /api/chat/stream", server.chatStream)
 
 	// The frontend is a single-page app, so any unmatched path serves the
 	// shell and lets the router decide.
@@ -307,36 +308,113 @@ type chatResponse struct {
 const chatCallBudget = 25
 
 func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
+	body, identity, mode, ok := server.chatRequest(writer, request)
+	if !ok {
+		return
+	}
+	response, status, err := server.answer(request.Context(), body, identity, mode, nil)
+	if err != nil {
+		fail(writer, status, err)
+		return
+	}
+	send(writer, response)
+}
+
+// chatStream answers over server-sent events, emitting the program as the model
+// writes it and then the finished document.
+//
+// The model call is several seconds and nothing here makes it shorter. What
+// this changes is what those seconds look like: the program appears a line at a
+// time instead of the page sitting blank until all of it exists. A cached
+// answer skips straight to the result, which is the visible difference between
+// the two paths.
+func (server *Server) chatStream(writer http.ResponseWriter, request *http.Request) {
+	body, identity, mode, ok := server.chatRequest(writer, request)
+	if !ok {
+		return
+	}
+
+	flusher, streamable := writer.(http.Flusher)
+	if !streamable {
+		// Nothing downstream can push bytes early, so streaming would only
+		// buffer the same response and deliver it later.
+		fail(writer, http.StatusInternalServerError, errors.New("this server cannot stream"))
+		return
+	}
+
+	writer.Header().Set("Content-Type", "text/event-stream")
+	writer.Header().Set("Cache-Control", "no-cache")
+	writer.Header().Set("Connection", "keep-alive")
+	// Without this a reverse proxy may buffer the whole stream, which turns
+	// streaming back into waiting.
+	writer.Header().Set("X-Accel-Buffering", "no")
+	writer.WriteHeader(http.StatusOK)
+
+	event := func(name string, value any) {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", name, payload)
+		flusher.Flush()
+	}
+
+	// Tell the browser the request is alive before the model has said anything,
+	// so the first paint does not wait on the provider.
+	event("start", map[string]string{"request": body.Request})
+
+	response, status, err := server.answer(request.Context(), body, identity, mode, func(piece string) {
+		event("chunk", map[string]string{"text": piece})
+	})
+	if err != nil {
+		event("error", map[string]any{"error": err.Error(), "status": status})
+		return
+	}
+	event("result", response)
+}
+
+// chatRequest performs the checks every chat path shares. It writes the failure
+// itself and reports false, so a handler that gets false is done.
+func (server *Server) chatRequest(writer http.ResponseWriter, request *http.Request) (chatRequest, auth.Identity, codemode.CodeMode, bool) {
+	var body chatRequest
 	if server.options.Model == nil {
 		fail(writer, http.StatusServiceUnavailable,
 			errors.New("no model is configured; restart with -api-key and -base-url"))
-		return
+		return body, auth.Identity{}, nil, false
 	}
-
-	var body chatRequest
 	if err := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 1<<16)).Decode(&body); err != nil {
 		fail(writer, http.StatusBadRequest, err)
-		return
+		return body, auth.Identity{}, nil, false
 	}
 	if strings.TrimSpace(body.Request) == "" {
 		fail(writer, http.StatusBadRequest, errors.New("request is required"))
-		return
+		return body, auth.Identity{}, nil, false
 	}
-
 	identity, err := auth.From(request.Context())
 	if err != nil {
 		fail(writer, http.StatusUnauthorized, err)
-		return
+		return body, auth.Identity{}, nil, false
 	}
 	mode, _, err := server.scoped(request.Context())
 	if err != nil {
 		fail(writer, http.StatusUnauthorized, err)
-		return
+		return body, auth.Identity{}, nil, false
 	}
+	return body, identity, mode, true
+}
 
+// answer runs one request to a rendered document. OnChunk, when set, receives
+// the program as the model writes it.
+func (server *Server) answer(
+	parent context.Context,
+	body chatRequest,
+	identity auth.Identity,
+	mode codemode.CodeMode,
+	onChunk func(string),
+) (chatResponse, int, error) {
 	// The model call is the slow part, so the deadline lives here rather than
 	// on the sandbox, which bounds only the program.
-	ctx, cancel := context.WithTimeout(request.Context(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Minute)
 	defer cancel()
 
 	log := server.log.With("request", body.Request)
@@ -352,11 +430,11 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		// A program is written against one role's capabilities, so it may only
 		// ever be reused for that role.
 		CacheCaller: string(identity.Role),
+		OnChunk:     onChunk,
 	})
 	if err != nil {
 		server.log.Error("chat failed", "request", body.Request, "error", err, "program", result.Source)
-		fail(writer, http.StatusBadGateway, err)
-		return
+		return chatResponse{}, http.StatusBadGateway, err
 	}
 
 	document, err := view.Parse(result.Answer)
@@ -365,8 +443,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		// source with the error is what makes this debuggable rather than
 		// mysterious.
 		server.log.Error("unrenderable result", "error", err, "program", result.Source)
-		fail(writer, http.StatusBadGateway, err)
-		return
+		return chatResponse{}, http.StatusBadGateway, err
 	}
 
 	if document.Refused() {
@@ -383,7 +460,8 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 			"took", time.Since(started).Round(time.Millisecond))
 	}
 
-	send(writer, chatResponse{
+	return chatResponse{
+
 		Document: document,
 		Program:  result.Source,
 		Attempts: result.Attempts,
@@ -391,7 +469,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		Took:     time.Since(started).Round(time.Millisecond).String(),
 		Cached:   result.Cached,
 		Timing:   result.Timing,
-	})
+	}, http.StatusOK, nil
 }
 
 // ---------------------------------------------------------------- assets

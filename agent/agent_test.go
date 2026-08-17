@@ -456,3 +456,22 @@ func TestRunReportsTimingWhenItGivesUp(t *testing.T) {
 		t.Fatalf("failed run timing = %s, want the attempts it paid for", result.Timing)
 	}
 }
+
+// A wrapper that forwards Fingerprint but has nothing to forward to reports an
+// empty one. Caching on that would scope every capability set to the same key,
+// which is the reuse the fingerprint exists to prevent.
+func TestRunTreatsAnEmptyFingerprintAsNoCache(t *testing.T) {
+	runtime := fingerprinted{mode: &mode{}, fingerprint: ""}
+	author := &model{responses: []string{workingProgram, workingProgram}}
+	options := Options{Runner: newRunner(t), Cache: newCache(t)}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		result, err := Run(context.Background(), runtime, author, "list my todos", options)
+		if err != nil {
+			t.Fatalf("run %d returned error: %v", attempt, err)
+		}
+		if result.Cached {
+			t.Fatalf("run %d cached against an empty fingerprint", attempt)
+		}
+	}
+}

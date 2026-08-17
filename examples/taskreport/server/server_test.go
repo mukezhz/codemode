@@ -36,6 +36,16 @@ func (model *model) Complete(_ context.Context, system, _ string) (string, error
 	return model.program, nil
 }
 
+// CompleteStream implements llm.Streamer, handing the program over in pieces so
+// the streaming path is exercised the way a real provider drives it.
+func (model *model) CompleteStream(_ context.Context, system, _ string, chunk func(string)) (string, error) {
+	model.system = system
+	for _, piece := range strings.Split(model.program, "\n") {
+		chunk(piece + "\n")
+	}
+	return model.program, nil
+}
+
 func newServer(t *testing.T, author *model) http.Handler {
 	t.Helper()
 
@@ -318,5 +328,100 @@ func TestSystemPromptDescribesTheCallersReach(t *testing.T) {
 		if strings.Contains(author.system, test.notWant) {
 			t.Errorf("%s's prompt wrongly contains %q", test.user, test.notWant)
 		}
+	}
+}
+
+// The streaming path has to deliver the program as it is written and still end
+// with the same document the plain path returns. A frontend that gets one
+// without the other is worse off than one that waited.
+func TestChatStreamEmitsChunksThenTheResult(t *testing.T) {
+	author := &model{program: `
+		const counts = codemode.execute("reports.statusCounts", {});
+		return { title: "Status", blocks: [
+			{ type: "text", text: "There are " + counts.open + " open tasks." }
+		]};
+	`}
+
+	handler := newServer(t, author)
+	response := do(t, handler, "POST", "/api/chat/stream", `{"request":"how are things?"}`, "ada", "member")
+	if response.Code != http.StatusOK {
+		t.Fatalf("stream returned %d: %s", response.Code, response.Body)
+	}
+	if got := response.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("content type = %q, want text/event-stream", got)
+	}
+
+	body := response.Body.String()
+	for _, name := range []string{"event: start", "event: chunk", "event: result"} {
+		if !strings.Contains(body, name) {
+			t.Fatalf("stream did not emit %q:\n%s", name, body)
+		}
+	}
+	// The program has to arrive before the answer does, or the chunks are
+	// decoration rather than progress.
+	if strings.Index(body, "event: chunk") > strings.Index(body, "event: result") {
+		t.Fatal("the result arrived before the program was streamed")
+	}
+
+	var chunks strings.Builder
+	var result struct {
+		Document view.Document `json:"document"`
+		Program  string        `json:"program"`
+	}
+	for _, event := range strings.Split(body, "\n\n") {
+		name, data, found := strings.Cut(event, "\ndata: ")
+		if !found {
+			continue
+		}
+		switch strings.TrimSpace(strings.TrimPrefix(name, "event: ")) {
+		case "chunk":
+			var piece struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal([]byte(data), &piece); err != nil {
+				t.Fatalf("decode chunk: %v", err)
+			}
+			chunks.WriteString(piece.Text)
+		case "result":
+			if err := json.Unmarshal([]byte(data), &result); err != nil {
+				t.Fatalf("decode result: %v", err)
+			}
+		}
+	}
+
+	// Every chunk concatenated is the program the sandbox was given.
+	if !strings.Contains(chunks.String(), "reports.statusCounts") {
+		t.Fatalf("chunks did not carry the program:\n%s", chunks.String())
+	}
+	if !strings.Contains(result.Program, "reports.statusCounts") {
+		t.Fatalf("result program = %q", result.Program)
+	}
+	if len(result.Document.Blocks) == 0 {
+		t.Fatal("the stream ended without a document")
+	}
+}
+
+// A cache hit has no model call to stream, so it goes straight to the result.
+func TestChatStreamServesACachedProgramWithoutTheModel(t *testing.T) {
+	author := &model{program: `return { title: "Status", blocks: [{ type: "text", text: "ok" }] };`}
+	handler := newServer(t, author)
+
+	const ask = `{"request":"how are things?"}`
+	if code := do(t, handler, "POST", "/api/chat/stream", ask, "ada", "member").Code; code != http.StatusOK {
+		t.Fatalf("first stream returned %d", code)
+	}
+
+	// The model would panic on a nil program; the cache means it is never asked.
+	author.program = ""
+	response := do(t, handler, "POST", "/api/chat/stream", ask, "ada", "member")
+	if response.Code != http.StatusOK {
+		t.Fatalf("second stream returned %d: %s", response.Code, response.Body)
+	}
+	body := response.Body.String()
+	if strings.Contains(body, "event: chunk") {
+		t.Fatal("a cached answer streamed a program it never generated")
+	}
+	if !strings.Contains(body, `"cached":true`) {
+		t.Fatalf("the second answer was not reported as cached:\n%s", body)
 	}
 }

@@ -68,6 +68,19 @@ type Options struct {
 	// role or a tenant. Leave it empty only when every caller of this agent
 	// sees the same capabilities and the same data.
 	CacheCaller string
+
+	// OnChunk receives the program as the model writes it, when the model
+	// supports streaming. Nil, or a model that does not implement llm.Streamer,
+	// means the program arrives in one piece instead.
+	//
+	// It does not make the answer arrive sooner. It makes the several seconds
+	// a model takes visible, which is the difference between a blank screen
+	// and a page filling in. A repair attempt streams too, so a caller showing
+	// the program should reset its display when Attempts changes.
+	//
+	// It runs on the goroutine driving the request and must not block: the
+	// stream is not read while it runs.
+	OnChunk func(string)
 }
 
 // Defaults applied when the matching Options field is zero.
@@ -216,7 +229,7 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 		result.Attempts = attempt
 
 		generating := time.Now()
-		response, err := model.Complete(ctx, system, prompt)
+		response, err := complete(ctx, model, system, prompt, options.OnChunk)
 		timing.Generate += time.Since(generating)
 		if err != nil {
 			return result, err
@@ -250,10 +263,18 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 	if !ok {
 		return program.Key{}, false
 	}
+	// An empty fingerprint is the same as none. A wrapper that forwards the
+	// method but has nothing to forward to reports one, and scoping every
+	// capability set to the same empty string is exactly the reuse the
+	// fingerprint exists to prevent.
+	fingerprint := fingerprinter.Fingerprint()
+	if fingerprint == "" {
+		return program.Key{}, false
+	}
 	return program.Key{
 		Request:      request,
 		Language:     runner.Language(),
-		Capabilities: fingerprinter.Fingerprint(),
+		Capabilities: fingerprint,
 		Caller:       options.CacheCaller,
 	}, true
 }
@@ -280,6 +301,18 @@ func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache,
 		return Result{}, false
 	}
 	return Result{Answer: answer, Source: entry.Source, Cached: true}, true
+}
+
+// complete asks the model for a program, streaming it when both the caller
+// wants chunks and the model can produce them. A model that cannot stream is
+// not an error — the caller simply sees the program arrive all at once.
+func complete(ctx context.Context, model llm.Client, system, prompt string, chunk func(string)) (string, error) {
+	if chunk != nil {
+		if streamer, ok := model.(llm.Streamer); ok {
+			return streamer.CompleteStream(ctx, system, prompt, chunk)
+		}
+	}
+	return model.Complete(ctx, system, prompt)
 }
 
 // Program extracts a program from a model response, tolerating the markdown

@@ -63,6 +63,22 @@ type tracedMode struct {
 	log   *slog.Logger
 }
 
+// Fingerprint forwards the wrapped runtime's capability fingerprint, when it
+// has one.
+//
+// A wrapper has to forward this explicitly. A runtime stored in an interface
+// loses the methods that interface does not name, so a traced runtime that did
+// not implement codemode.Fingerprinter would turn program caching off for
+// everything behind the trace — silently, because the agent treats a missing
+// fingerprint as "caching is not safe here" rather than as an error.
+func (mode *tracedMode) Fingerprint() string {
+	fingerprinter, ok := mode.inner.(codemode.Fingerprinter)
+	if !ok {
+		return ""
+	}
+	return fingerprinter.Fingerprint()
+}
+
 func (mode *tracedMode) Search(ctx context.Context, query string, limit int) ([]capability.Match, error) {
 	started := time.Now()
 	matches, err := mode.inner.Search(ctx, query, limit)
@@ -135,6 +151,47 @@ func (model *tracedModel) Complete(ctx context.Context, system, user string) (st
 	}
 
 	model.log.Info("step=model.done", "took", since(started), "bytes", len(response))
+	return response, nil
+}
+
+// CompleteStream implements llm.Streamer when the wrapped model does.
+//
+// The wrapper has to forward it explicitly: a client stored in an interface
+// loses the methods the interface does not name, so a traced model that did not
+// implement Streamer would silently turn streaming off for everything behind
+// the trace.
+func (model *tracedModel) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
+	streamer, ok := model.inner.(llm.Streamer)
+	if !ok {
+		return model.Complete(ctx, system, user)
+	}
+
+	model.log.Info("step=model",
+		"provider", model.inner.Name(),
+		"system_bytes", len(system),
+		"user", truncate(user, 300),
+		"streaming", true)
+	model.log.Debug("step=prompt", "system", system)
+
+	started := time.Now()
+	first := time.Duration(0)
+	response, err := streamer.CompleteStream(ctx, system, user, func(piece string) {
+		if first == 0 {
+			// Time to first chunk is the number streaming actually improves,
+			// so it is the one worth logging next to the total.
+			first = time.Since(started)
+		}
+		chunk(piece)
+	})
+	if err != nil {
+		model.log.Error("step=model.done", "took", since(started), "error", err)
+		return "", err
+	}
+
+	model.log.Info("step=model.done",
+		"took", since(started),
+		"first_chunk", first.Round(time.Millisecond),
+		"bytes", len(response))
 	return response, nil
 }
 

@@ -119,4 +119,84 @@ export const api = {
 
   chat: (request: string) =>
     call<ChatResult>("/chat", { method: "POST", body: JSON.stringify({ request }) }),
+
+  chatStream: streamChat,
 };
+
+// streamChat asks over server-sent events, calling onChunk with the program as
+// the model writes it and resolving with the finished answer.
+//
+// The answer does not arrive sooner than it would from api.chat — a model call
+// is a model call. What changes is that the several seconds it takes have
+// something in them.
+//
+// EventSource cannot POST, so this reads the response body directly. That also
+// means handling partial frames: a chunk boundary lands wherever the network
+// puts it, not on an event boundary.
+async function streamChat(
+  request: string,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<ChatResult> {
+  const { user, role } = identity();
+  const response = await fetch("/api/chat/stream", {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Demo-User": user,
+      "X-Demo-Role": role,
+    },
+    body: JSON.stringify({ request }),
+  });
+  if (!response.ok || !response.body) {
+    const text = await response.text();
+    throw new Error(parseError(text) ?? `${response.status} ${response.statusText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: ChatResult | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Everything up to the last blank line is whole events; whatever follows
+    // is an event still being written.
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+
+      const [nameLine, ...dataLines] = frame.split("\n");
+      const name = nameLine.replace(/^event:\s*/, "");
+      const data = dataLines.join("\n").replace(/^data:\s*/, "");
+      if (!data) continue;
+
+      if (name === "chunk") {
+        onChunk((JSON.parse(data) as { text: string }).text);
+      } else if (name === "result") {
+        result = JSON.parse(data) as ChatResult;
+      } else if (name === "error") {
+        throw new Error((JSON.parse(data) as { error: string }).error);
+      }
+    }
+  }
+
+  if (!result) {
+    throw new Error("the answer stream ended without a result");
+  }
+  return result;
+}
+
+function parseError(text: string): string | null {
+  try {
+    return (JSON.parse(text) as { error?: string }).error ?? null;
+  } catch {
+    return null;
+  }
+}

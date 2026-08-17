@@ -99,7 +99,9 @@ func New(options Options) (llm.Client, error) {
 
 func (client *client) Name() string { return "openai/" + client.model }
 
-func (client *client) Complete(ctx context.Context, system, user string) (string, error) {
+// request builds the completion parameters shared by Complete and
+// CompleteStream, so the two cannot drift in what they ask the model for.
+func (client *client) request(system, user string) openaisdk.ChatCompletionNewParams {
 	params := openaisdk.ChatCompletionNewParams{
 		Model:               client.model,
 		MaxCompletionTokens: openaisdk.Int(int64(client.params.MaxTokens)),
@@ -124,6 +126,11 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 		params.Stop = openaisdk.ChatCompletionNewParamsStopUnion{OfStringArray: stop}
 	}
 
+	return params
+}
+
+func (client *client) Complete(ctx context.Context, system, user string) (string, error) {
+	params := client.request(system, user)
 	response, err := client.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return "", fmt.Errorf("openai: %w", err)
@@ -134,6 +141,36 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
 	if content == "" {
 		return "", fmt.Errorf("openai: empty response (finish reason %q)", response.Choices[0].FinishReason)
+	}
+	return content, nil
+}
+
+// CompleteStream implements llm.Streamer.
+func (client *client) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
+	stream := client.client.Chat.Completions.NewStreaming(ctx, client.request(system, user))
+	defer stream.Close()
+
+	var builder strings.Builder
+	for stream.Next() {
+		event := stream.Current()
+		if len(event.Choices) == 0 {
+			continue
+		}
+		delta := event.Choices[0].Delta.Content
+		if delta == "" {
+			continue
+		}
+		builder.WriteString(delta)
+		if chunk != nil {
+			chunk(delta)
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return "", fmt.Errorf("openai: %w", err)
+	}
+	content := strings.TrimSpace(builder.String())
+	if content == "" {
+		return "", fmt.Errorf("openai: empty response")
 	}
 	return content, nil
 }

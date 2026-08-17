@@ -54,6 +54,29 @@ type Client interface {
 	Name() string
 }
 
+// Streamer is an optional interface a Client may also implement, delivering
+// the response in pieces as the model writes it.
+//
+// It exists for latency that cannot be removed: a model call takes seconds, and
+// nothing the caller does makes it take less. Streaming does not make the
+// answer arrive sooner — it makes the wait visible, which is the difference
+// between a blank screen and a page filling in.
+//
+// Every caller must still work against a Client that does not implement it, so
+// this is an optional interface rather than a method on Client. Check for it:
+//
+//	if streamer, ok := client.(llm.Streamer); ok { ... }
+type Streamer interface {
+	// CompleteStream returns the same text Complete would, calling chunk with
+	// each piece as it arrives. Chunks are fragments, not whole lines or
+	// tokens; concatenating every chunk gives the returned text.
+	//
+	// Chunk runs on the calling goroutine and must not block for long — the
+	// stream is not read while it runs. It may be nil, which is the same as
+	// Complete.
+	CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error)
+}
+
 // ErrNoProvider reports that no provider is configured. Callers that have a
 // fallback path, such as demos, can check for it with errors.Is.
 var ErrNoProvider = errors.New("no LLM provider configured")

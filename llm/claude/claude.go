@@ -153,7 +153,9 @@ func thinkingConfig(options Options) anthropic.BetaThinkingConfigParamUnion {
 
 func (client *client) Name() string { return "claude/" + client.model }
 
-func (client *client) Complete(ctx context.Context, system, user string) (string, error) {
+// request builds the message parameters shared by Complete and CompleteStream,
+// so the two cannot drift in what they ask the model for.
+func (client *client) request(system, user string) anthropic.BetaMessageNewParams {
 	params := anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(client.model),
 		MaxTokens: client.maxTokens,
@@ -185,6 +187,11 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 		params.Betas = append(params.Betas, anthropic.AnthropicBetaServerSideFallback2026_07_01)
 	}
 
+	return params
+}
+
+func (client *client) Complete(ctx context.Context, system, user string) (string, error) {
+	params := client.request(system, user)
 	response, err := client.client.Beta.Messages.New(ctx, params)
 	if err != nil {
 		return "", fmt.Errorf("claude: %w", err)
@@ -201,6 +208,45 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 	}
 	if builder.Len() == 0 {
 		return "", fmt.Errorf("claude: empty response (stop reason %q)", response.StopReason)
+	}
+	return builder.String(), nil
+}
+
+// CompleteStream implements llm.Streamer.
+func (client *client) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
+	stream := client.client.Beta.Messages.NewStreaming(ctx, client.request(system, user))
+	defer stream.Close()
+
+	// Accumulate rather than assemble by hand: the SDK knows which deltas
+	// belong to which block, and only text blocks are the answer.
+	var message anthropic.BetaMessage
+	var builder strings.Builder
+	for stream.Next() {
+		event := stream.Current()
+		if err := message.Accumulate(event); err != nil {
+			return "", fmt.Errorf("claude: %w", err)
+		}
+		delta, ok := event.AsAny().(anthropic.BetaRawContentBlockDeltaEvent)
+		if !ok {
+			continue
+		}
+		text, ok := delta.Delta.AsAny().(anthropic.BetaTextDelta)
+		if !ok || text.Text == "" {
+			continue
+		}
+		builder.WriteString(text.Text)
+		if chunk != nil {
+			chunk(text.Text)
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return "", fmt.Errorf("claude: %w", err)
+	}
+	if message.StopReason == anthropic.BetaStopReasonRefusal {
+		return "", errors.New("claude: request was declined")
+	}
+	if builder.Len() == 0 {
+		return "", fmt.Errorf("claude: empty response (stop reason %q)", message.StopReason)
 	}
 	return builder.String(), nil
 }
