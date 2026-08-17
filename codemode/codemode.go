@@ -2,9 +2,12 @@ package codemode
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mukezhz/codemode/capability"
@@ -25,6 +28,30 @@ type CodeMode interface {
 	// JSON response. The runtime resolves name to the trusted protobuf RPC path
 	// before calling the configured ExecuteFunc.
 	Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error)
+}
+
+// Fingerprinter reports a stable identifier for the capability set a runtime
+// will execute. A program written against one capability set must not be reused
+// against another, so anything that caches programs scopes them by this.
+//
+// The runtime New returns implements it. A CodeMode of your own does not have
+// to, but a caller that caches will have to be told the fingerprint some other
+// way.
+type Fingerprinter interface {
+	Fingerprint() string
+}
+
+// Fingerprint hashes the name and RPC path of every registered capability.
+// Adding, removing, or repointing one changes it, which is exactly when a
+// program written against the old set stops being safe to reuse.
+func (runtime *runtime) Fingerprint() string {
+	names := make([]string, 0, len(runtime.capabilities))
+	for name, item := range runtime.capabilities {
+		names = append(names, name+"\x00"+item.RPC)
+	}
+	sort.Strings(names)
+	sum := sha256.Sum256([]byte(strings.Join(names, "\x1e")))
+	return hex.EncodeToString(sum[:])
 }
 
 // SearchFunc implements capability ranking. Query describes the user's intent,

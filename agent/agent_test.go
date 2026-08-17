@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/program"
 	"github.com/mukezhz/codemode/sandbox"
 
 	"github.com/mukezhz/codemode/sandbox/goja"
@@ -260,5 +262,147 @@ func TestRunRequiresARunner(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Runner is required") {
 		t.Fatalf("error = %v, want it to name the missing option", err)
+	}
+}
+
+// fingerprinted is a mode that can report its capability set, which is what
+// makes caching possible. The bare mode above deliberately cannot, so the
+// existing tests exercise the uncached path.
+type fingerprinted struct {
+	*mode
+	fingerprint string
+}
+
+func (runtime fingerprinted) Fingerprint() string { return runtime.fingerprint }
+
+// exactEmbedder maps a request to a vector that is close to itself and far from
+// anything else, so cache hits in these tests are decided by the request text
+// rather than by embedding quality.
+func exactEmbedder() capability.Embedder {
+	return capability.Embedder{
+		Model: "test/exact",
+		Embed: func(_ context.Context, text string) ([]float32, error) {
+			sum := sha256.Sum256([]byte(text))
+			vector := make([]float32, len(sum))
+			for i, b := range sum {
+				vector[i] = float32(b)
+			}
+			return vector, nil
+		},
+	}
+}
+
+func newCache(t *testing.T) program.Cache {
+	t.Helper()
+	cache, err := program.New(program.NewMemoryStore(), exactEmbedder(), program.Options{})
+	if err != nil {
+		t.Fatalf("program.New returned error: %v", err)
+	}
+	t.Cleanup(func() { cache.Close() })
+	return cache
+}
+
+func TestRunCachesTheProgramAndReusesIt(t *testing.T) {
+	runtime := fingerprinted{mode: &mode{}, fingerprint: "registry-1"}
+	author := &model{responses: []string{workingProgram}}
+	options := Options{Runner: newRunner(t), Cache: newCache(t)}
+
+	first, err := Run(context.Background(), runtime, author, "list my todos", options)
+	if err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+	if first.Cached {
+		t.Fatal("the first run reported a cache hit")
+	}
+
+	// The model has no responses left, so a second run can only succeed from
+	// the cache.
+	second, err := Run(context.Background(), runtime, author, "list my todos", options)
+	if err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	if !second.Cached {
+		t.Fatal("the second run generated a program instead of reusing the cached one")
+	}
+	if second.Answer != first.Answer {
+		t.Fatalf("cached answer = %#v, want %#v", second.Answer, first.Answer)
+	}
+	if len(author.prompts) != 1 {
+		t.Fatalf("model was called %d times, want 1", len(author.prompts))
+	}
+}
+
+func TestRunDoesNotReuseAProgramAcrossCapabilitySets(t *testing.T) {
+	cache := newCache(t)
+	author := &model{responses: []string{workingProgram, workingProgram}}
+
+	before := fingerprinted{mode: &mode{}, fingerprint: "registry-1"}
+	if _, err := Run(context.Background(), before, author, "list my todos",
+		Options{Runner: newRunner(t), Cache: cache}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	// The registry changed. The cached program was written against the old one,
+	// so it must not be served, even for the identical request.
+	after := fingerprinted{mode: &mode{}, fingerprint: "registry-2"}
+	result, err := Run(context.Background(), after, author, "list my todos",
+		Options{Runner: newRunner(t), Cache: cache})
+	if err != nil {
+		t.Fatalf("Run after the registry changed returned error: %v", err)
+	}
+	if result.Cached {
+		t.Fatal("a program written for another capability set was reused")
+	}
+}
+
+func TestRunForgetsACachedProgramThatNoLongerRuns(t *testing.T) {
+	ctx := context.Background()
+	cache := newCache(t)
+	runtime := fingerprinted{mode: &mode{}, fingerprint: "registry-1"}
+
+	// Seed the cache with a program that calls a capability this runtime does
+	// not have, standing in for one that has since been removed.
+	stale := program.Key{Request: "list my todos", Language: "javascript", Capabilities: "registry-1"}
+	if err := cache.Put(ctx, stale, `return codemode.execute("todos.purge", {});`); err != nil {
+		t.Fatalf("Put returned error: %v", err)
+	}
+
+	author := &model{responses: []string{workingProgram}}
+	result, err := Run(ctx, runtime, author, "list my todos", Options{Runner: newRunner(t), Cache: cache})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.Cached {
+		t.Fatal("a program that no longer runs was served from the cache")
+	}
+	if result.Answer != "write docs" {
+		t.Fatalf("answer = %#v, want %q", result.Answer, "write docs")
+	}
+
+	// The stale entry is gone, replaced by the program that worked.
+	entry, found, err := cache.Lookup(ctx, stale)
+	if err != nil || !found {
+		t.Fatalf("Lookup = (found %v, err %v), want (true, nil)", found, err)
+	}
+	if entry.Source != workingProgram {
+		t.Fatalf("cached source = %q, want the program that succeeded", entry.Source)
+	}
+}
+
+func TestRunWithoutAFingerprintDoesNotCache(t *testing.T) {
+	// A CodeMode that cannot fingerprint its capability set gives no way to
+	// tell that a cached program has gone stale, so caching stays off rather
+	// than becoming unsafe.
+	author := &model{responses: []string{workingProgram, workingProgram}}
+	options := Options{Runner: newRunner(t), Cache: newCache(t)}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		result, err := Run(context.Background(), &mode{}, author, "list my todos", options)
+		if err != nil {
+			t.Fatalf("run %d returned error: %v", attempt, err)
+		}
+		if result.Cached {
+			t.Fatalf("run %d reported a cache hit without a capability fingerprint", attempt)
+		}
 	}
 }

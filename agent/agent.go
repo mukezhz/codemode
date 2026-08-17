@@ -17,6 +17,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/program"
 	"github.com/mukezhz/codemode/sandbox"
 )
 
@@ -49,6 +50,23 @@ type Options struct {
 	// the prompt entirely, drive the loop yourself — Runner.Prompt gives you
 	// the same base to build on.
 	Instructions string
+
+	// Cache serves the program for a request that has been answered before,
+	// skipping search and generation entirely. Nil disables caching.
+	//
+	// This is where nearly all the latency of a repeated request is: writing a
+	// program costs a model call, running one costs microseconds. A hit is
+	// scoped to the engine's dialect, the runtime's capability fingerprint,
+	// and CacheCaller, so a cached program is never served into a world it was
+	// not written for.
+	//
+	// The caller closes it. See package program.
+	Cache program.Cache
+
+	// CacheCaller separates cache entries that must not be shared, such as a
+	// role or a tenant. Leave it empty only when every caller of this agent
+	// sees the same capabilities and the same data.
+	CacheCaller string
 }
 
 // Defaults applied when the matching Options field is zero.
@@ -83,8 +101,11 @@ type Result struct {
 	// Matches are the capabilities that were described to the model.
 	Matches []capability.Match
 	// Attempts is how many programs were generated, including the one that
-	// succeeded.
+	// succeeded. A cached answer generated nothing, so it reports zero.
 	Attempts int
+	// Cached reports that Source came from the cache. Matches is empty in that
+	// case: a cache hit skips capability search along with generation.
+	Cached bool
 }
 
 // Run answers request by searching mode for capabilities, asking model for a
@@ -102,6 +123,13 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	}
 
 	runner := options.Runner
+
+	key, caching := cacheKey(mode, runner, request, options)
+	if caching {
+		if result, hit := fromCache(ctx, mode, options.Cache, key, runner); hit {
+			return result, nil
+		}
+	}
 
 	matches, err := mode.Search(ctx, request, options.Limit)
 	if err != nil {
@@ -135,12 +163,60 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 		answer, err := runner.Run(ctx, mode, result.Source)
 		if err == nil {
 			result.Answer = answer
+			if caching {
+				// A cache write that fails costs the next identical request a
+				// model call it would have paid anyway, so it must not fail a
+				// request that has already been answered.
+				_ = options.Cache.Put(ctx, key, result.Source)
+			}
 			return result, nil
 		}
 		lastErr = err
 		prompt = repairPrompt(request, result.Source, err)
 	}
 	return result, fmt.Errorf("gave up after %d attempts: %w", options.Attempts, lastErr)
+}
+
+// cacheKey builds the key a cached program is stored under, and reports
+// whether caching is possible at all. It is not when no cache is configured,
+// and not when the runtime cannot fingerprint its capability set: without a
+// fingerprint there is no way to tell that a cached program was written for a
+// registry that has since changed, and serving it anyway is worse than not
+// caching.
+func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, options Options) (program.Key, bool) {
+	if options.Cache == nil {
+		return program.Key{}, false
+	}
+	fingerprinter, ok := mode.(codemode.Fingerprinter)
+	if !ok {
+		return program.Key{}, false
+	}
+	return program.Key{
+		Request:      request,
+		Language:     runner.Language(),
+		Capabilities: fingerprinter.Fingerprint(),
+		Caller:       options.CacheCaller,
+	}, true
+}
+
+// fromCache answers request with a previously generated program. A miss, a
+// cache that errors, and a cached program that no longer runs all report no
+// hit, so the caller falls through to generation — the cache is an
+// optimization, and nothing about it may fail a request.
+func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner) (Result, bool) {
+	entry, found, err := cache.Lookup(ctx, key)
+	if err != nil || !found {
+		return Result{}, false
+	}
+	answer, err := runner.Run(ctx, mode, entry.Source)
+	if err != nil {
+		// The world moved under this program: a capability it called changed
+		// shape, or the data it assumed is gone. Drop it rather than serve it
+		// again, and let generation produce one that fits.
+		_ = cache.Forget(ctx, entry.ID)
+		return Result{}, false
+	}
+	return Result{Answer: answer, Source: entry.Source, Cached: true}, true
 }
 
 // Program extracts a program from a model response, tolerating the markdown
