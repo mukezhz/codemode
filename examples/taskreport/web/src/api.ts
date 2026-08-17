@@ -57,6 +57,9 @@ export type ChatResult = {
   attempts: number;
   used: { capability: { name: string; description: string }; distance: number }[];
   took: string;
+  cached: boolean;
+  // Nanoseconds, as Go encodes a duration. Divide before showing.
+  timing: { Total: number; Cache: number; Search: number; Generate: number; Run: number };
 };
 
 // The demo switches users from a dropdown, so identity lives in localStorage

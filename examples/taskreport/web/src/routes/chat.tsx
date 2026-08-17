@@ -87,6 +87,14 @@ function Ask() {
   );
 }
 
+// ms renders a Go duration, which arrives in nanoseconds.
+function ms(nanoseconds: number): string {
+  if (nanoseconds < 1_000_000) {
+    return `${Math.round(nanoseconds / 1000)}\u00b5s`;
+  }
+  return `${(nanoseconds / 1_000_000).toFixed(0)}ms`;
+}
+
 function TurnView({ turn, pending }: { turn: Turn; pending: boolean }) {
   const [showProgram, setShowProgram] = useState(false);
 
@@ -108,13 +116,24 @@ function TurnView({ turn, pending }: { turn: Turn; pending: boolean }) {
               {showProgram ? "Hide" : "Show"} the program
             </button>
             <span className="muted">
-              {turn.result.attempts} attempt{turn.result.attempts === 1 ? "" : "s"} ·{" "}
-              {turn.result.took} · {turn.result.used.length} capabilities offered
+              {turn.result.cached
+                ? "reused a cached program"
+                : `${turn.result.attempts} attempt${turn.result.attempts === 1 ? "" : "s"}`}{" "}
+              · {turn.result.took} · {turn.result.used.length} capabilities offered
             </span>
           </div>
 
           {showProgram && (
             <>
+              {/* Where the time actually went. Writing the program is a
+                  network round trip to a model; running it is an in-process
+                  interpreter, and is normally three orders of magnitude
+                  cheaper. A cached answer skips the first entirely. */}
+              <p className="muted">
+                writing {ms(turn.result.timing.Generate)} · searching{" "}
+                {ms(turn.result.timing.Search)} · cache {ms(turn.result.timing.Cache)} · running{" "}
+                {ms(turn.result.timing.Run)}
+              </p>
               <pre className="program">{turn.result.program}</pre>
               <ul className="offered">
                 {turn.result.used.map((match) => (

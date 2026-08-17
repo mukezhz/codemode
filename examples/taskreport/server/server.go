@@ -30,6 +30,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/program"
 	"github.com/mukezhz/codemode/sandbox"
 
 	"github.com/mukezhz/codemode/examples/taskreport/app"
@@ -66,6 +67,15 @@ type Options struct {
 	Programs io.Writer
 	// Logger records every step of a request. Nil discards them.
 	Logger *slog.Logger
+	// Cache reuses the program a request produced the last time it was asked,
+	// which removes the model call — the six seconds — from the repeat. Nil
+	// disables it.
+	//
+	// This demo has no embedding endpoint, so New installs an exact-match
+	// cache: the same question asked twice is free, and a differently worded
+	// one is not. A deployment with an embedder should pass program.New over
+	// its capability store instead, which also reuses across rewordings.
+	Cache program.Cache
 }
 
 // Server is the HTTP handler.
@@ -82,6 +92,9 @@ func New(options Options) (*Server, error) {
 	}
 	if options.Limit == 0 {
 		options.Limit = 12
+	}
+	if options.Cache == nil {
+		options.Cache = program.NewExactCache()
 	}
 	if options.Attempts == 0 {
 		options.Attempts = 3
@@ -274,6 +287,11 @@ type chatResponse struct {
 	Attempts int                `json:"attempts"`
 	Used     []capability.Match `json:"used"`
 	Took     string             `json:"took"`
+	// Cached reports that the program was reused rather than written again.
+	Cached bool `json:"cached"`
+	// Timing is where the time went, so a slow answer is diagnosable from the
+	// browser rather than only from the server log.
+	Timing agent.Timing `json:"timing"`
 }
 
 // chatCallBudget bounds one answer.
@@ -330,6 +348,10 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		// Two things the model cannot work out for itself: the shape of the
 		// answer, and the shape of its own access.
 		Instructions: view.Instructions + "\n\n" + identity.Instructions(),
+		Cache:        server.options.Cache,
+		// A program is written against one role's capabilities, so it may only
+		// ever be reused for that role.
+		CacheCaller: string(identity.Role),
 	})
 	if err != nil {
 		server.log.Error("chat failed", "request", body.Request, "error", err, "program", result.Source)
@@ -356,6 +378,8 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		log.Info("step=answer",
 			"blocks", len(document.Blocks),
 			"attempts", result.Attempts,
+			"cached", result.Cached,
+			"timing", result.Timing.String(),
 			"took", time.Since(started).Round(time.Millisecond))
 	}
 
@@ -365,6 +389,8 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		Attempts: result.Attempts,
 		Used:     result.Matches,
 		Took:     time.Since(started).Round(time.Millisecond).String(),
+		Cached:   result.Cached,
+		Timing:   result.Timing,
 	})
 }
 

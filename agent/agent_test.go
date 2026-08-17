@@ -406,3 +406,53 @@ func TestRunWithoutAFingerprintDoesNotCache(t *testing.T) {
 		}
 	}
 }
+
+func TestRunReportsWhereTheTimeWent(t *testing.T) {
+	runtime := fingerprinted{mode: &mode{}, fingerprint: "registry-1"}
+	author := &model{responses: []string{workingProgram}}
+	options := Options{Runner: newRunner(t), Cache: newCache(t)}
+
+	generated, err := Run(context.Background(), runtime, author, "list my todos", options)
+	if err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+	if generated.Timing.Total == 0 || generated.Timing.Generate == 0 || generated.Timing.Run == 0 {
+		t.Fatalf("generated run timing = %s, want a model call and a sandbox run", generated.Timing)
+	}
+	if generated.Timing.Search == 0 {
+		t.Fatalf("generated run timing = %s, want a capability search", generated.Timing)
+	}
+
+	cached, err := Run(context.Background(), runtime, author, "list my todos", options)
+	if err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	// The point of the cache: a hit pays for a lookup and a sandbox run, and
+	// for neither of the two stages that cost a network round trip.
+	if cached.Timing.Generate != 0 {
+		t.Errorf("cache hit spent %s generating", cached.Timing.Generate)
+	}
+	if cached.Timing.Search != 0 {
+		t.Errorf("cache hit spent %s searching", cached.Timing.Search)
+	}
+	if cached.Timing.Cache == 0 || cached.Timing.Run == 0 {
+		t.Errorf("cache hit timing = %s, want a lookup and a sandbox run", cached.Timing)
+	}
+	if cached.Timing.Total == 0 {
+		t.Error("cache hit reported no total")
+	}
+}
+
+func TestRunReportsTimingWhenItGivesUp(t *testing.T) {
+	broken := `return codemode.execute("todos.purge", {});`
+	author := &model{responses: []string{broken, broken}}
+
+	result, err := Run(context.Background(), &mode{}, author, "list my todos",
+		Options{Attempts: 2, Runner: newRunner(t)})
+	if err == nil {
+		t.Fatal("Run returned no error for a program that never succeeds")
+	}
+	if result.Timing.Total == 0 || result.Timing.Generate == 0 || result.Timing.Run == 0 {
+		t.Fatalf("failed run timing = %s, want the attempts it paid for", result.Timing)
+	}
+}

@@ -154,8 +154,13 @@ func report(result agent.Result) {
 		fmt.Println()
 	}
 	if result.Source != "" {
-		fmt.Printf("program (attempt %d)\n%s\n\n", result.Attempts, indent(result.Source))
+		origin := fmt.Sprintf("attempt %d", result.Attempts)
+		if result.Cached {
+			origin = "cached"
+		}
+		fmt.Printf("program (%s)\n%s\n\n", origin, indent(result.Source))
 	}
+	fmt.Printf("timing\n  %s\n\n", result.Timing)
 }
 
 // offline runs the demo without a model so the flow is inspectable without

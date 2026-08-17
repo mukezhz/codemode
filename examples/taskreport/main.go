@@ -318,6 +318,7 @@ func report(result agent.Result, verbose bool, runner sandbox.Runner) {
 	}
 	// The program itself is printed by trace.Runner as it reaches the sandbox,
 	// so repeating it here would only make the two drift.
+	fmt.Printf("timing\n  %s\n\n", result.Timing)
 }
 
 // offline runs without a model so the whole path stays inspectable without

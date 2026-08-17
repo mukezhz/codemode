@@ -214,3 +214,46 @@ func TestNewRejectsAnUnusableConfiguration(t *testing.T) {
 		}
 	}
 }
+
+// The exact cache is the one a deployment without an embedding model uses, so
+// it has to hold the same contract: same request hits, anything else misses,
+// scopes stay apart, and a forgotten entry stays forgotten.
+func TestExactCacheMatchesOnlyTheSameRequest(t *testing.T) {
+	ctx := context.Background()
+	cache := NewExactCache()
+	defer cache.Close()
+
+	if err := cache.Put(ctx, key("list my todos"), "listing program"); err != nil {
+		t.Fatalf("Put returned error: %v", err)
+	}
+
+	entry, found, err := cache.Lookup(ctx, key("  LIST My Todos  "))
+	if err != nil || !found {
+		t.Fatalf("Lookup of the same request in another case = (found %v, err %v), want (true, nil)", found, err)
+	}
+	if entry.Source != "listing program" {
+		t.Fatalf("source = %q", entry.Source)
+	}
+
+	// A near-miss is a miss: without an embedding there is nothing to justify
+	// calling two different sentences the same request.
+	if _, found, _ := cache.Lookup(ctx, key("list todos")); found {
+		t.Error("a different request hit the exact cache")
+	}
+
+	elsewhere := key("list my todos")
+	elsewhere.Caller = "admin"
+	if _, found, _ := cache.Lookup(ctx, elsewhere); found {
+		t.Error("another caller saw a cached program")
+	}
+
+	if err := cache.Forget(ctx, entry.ID); err != nil {
+		t.Fatalf("Forget returned error: %v", err)
+	}
+	if _, found, _ := cache.Lookup(ctx, key("list my todos")); found {
+		t.Error("a forgotten program was served again")
+	}
+	if err := cache.Forget(ctx, entry.ID); err != nil {
+		t.Fatalf("second Forget returned error: %v", err)
+	}
+}

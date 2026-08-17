@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
@@ -106,11 +107,45 @@ type Result struct {
 	// Cached reports that Source came from the cache. Matches is empty in that
 	// case: a cache hit skips capability search along with generation.
 	Cached bool
+	// Timing is where the request spent its time.
+	Timing Timing
+}
+
+// Timing breaks a request down by stage, so a deployment can see what its
+// latency is actually made of rather than assume.
+//
+// The stages are measured because they are the ones that differ by orders of
+// magnitude: Generate is a network round trip to a model, Search and Cache are
+// an embedding call and a query, and Run is an in-process interpreter. A cache
+// hit is Cache plus Run and nothing else, which is the whole point of the
+// cache and the easiest thing to confirm from these numbers.
+type Timing struct {
+	// Total is the whole call, including the parts below and the work between
+	// them.
+	Total time.Duration
+	// Cache is the cache lookup, zero when no cache is configured.
+	Cache time.Duration
+	// Search is the capability search, zero on a cache hit.
+	Search time.Duration
+	// Generate is every model call added up, zero on a cache hit.
+	Generate time.Duration
+	// Run is every sandbox run added up, including a cached program that
+	// turned out to be stale and the attempts that failed.
+	Run time.Duration
+}
+
+// String renders a timing breakdown for a log line.
+func (timing Timing) String() string {
+	return fmt.Sprintf("total=%s cache=%s search=%s generate=%s run=%s",
+		timing.Total.Round(time.Microsecond), timing.Cache.Round(time.Microsecond),
+		timing.Search.Round(time.Microsecond), timing.Generate.Round(time.Microsecond),
+		timing.Run.Round(time.Microsecond))
 }
 
 // Run answers request by searching mode for capabilities, asking model for a
 // program, and running it against mode. Ctx carries cancellation.
 func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, options Options) (Result, error) {
+	started := time.Now()
 	if mode == nil || model == nil {
 		return Result{}, errors.New("code mode runtime and model are required")
 	}
@@ -123,52 +158,76 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	}
 
 	runner := options.Runner
+	var timing Timing
+	// Every path out of here reports its timing, including the failures: a
+	// request that gave up after three attempts is exactly the one worth
+	// knowing the shape of.
+	finish := func(result Result, err error) (Result, error) {
+		timing.Total = time.Since(started)
+		result.Timing = timing
+		return result, err
+	}
 
 	key, caching := cacheKey(mode, runner, request, options)
 	if caching {
-		if result, hit := fromCache(ctx, mode, options.Cache, key, runner); hit {
-			return result, nil
+		if result, hit := fromCache(ctx, mode, options.Cache, key, runner, &timing); hit {
+			return finish(result, nil)
 		}
 	}
 
+	search := time.Now()
 	matches, err := mode.Search(ctx, request, options.Limit)
+	timing.Search = time.Since(search)
 	if err != nil {
-		return Result{}, fmt.Errorf("search: %w", err)
+		return finish(Result{}, fmt.Errorf("search: %w", err))
 	}
 	if len(matches) == 0 {
-		return Result{}, errors.New("search matched no capabilities")
+		return finish(Result{}, errors.New("search matched no capabilities"))
 	}
 
+	result, err := generate(ctx, mode, model, request, matches, options, &timing)
+	if err != nil {
+		return finish(result, err)
+	}
+	if caching {
+		// A cache write that fails costs the next identical request a model
+		// call it would have paid anyway, so it must not fail a request that
+		// has already been answered.
+		_ = options.Cache.Put(ctx, key, result.Source)
+	}
+	return finish(result, nil)
+}
+
+// generate asks the model for a program and runs it, feeding each failure back
+// so the next attempt can correct it. Sandbox errors are the model's to fix;
+// transport errors are not.
+func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, matches []capability.Match, options Options, timing *Timing) (Result, error) {
 	// The engine that will evaluate the program writes the instructions for
 	// producing it, so switching engines switches dialects with no other change.
-	system := runner.Prompt(matches)
+	system := options.Runner.Prompt(matches)
 	if instructions := strings.TrimSpace(options.Instructions); instructions != "" {
 		system += "\nAdditional instructions:\n" + instructions + "\n"
 	}
 	prompt := request
 	result := Result{Matches: matches}
 
-	// Each failure is fed back so the next program can correct it. Sandbox
-	// errors are the model's to fix; transport errors are not.
 	var lastErr error
 	for attempt := 1; attempt <= options.Attempts; attempt++ {
 		result.Attempts = attempt
 
+		generating := time.Now()
 		response, err := model.Complete(ctx, system, prompt)
+		timing.Generate += time.Since(generating)
 		if err != nil {
 			return result, err
 		}
 		result.Source = Program(response)
 
-		answer, err := runner.Run(ctx, mode, result.Source)
+		running := time.Now()
+		answer, err := options.Runner.Run(ctx, mode, result.Source)
+		timing.Run += time.Since(running)
 		if err == nil {
 			result.Answer = answer
-			if caching {
-				// A cache write that fails costs the next identical request a
-				// model call it would have paid anyway, so it must not fail a
-				// request that has already been answered.
-				_ = options.Cache.Put(ctx, key, result.Source)
-			}
 			return result, nil
 		}
 		lastErr = err
@@ -203,12 +262,16 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 // cache that errors, and a cached program that no longer runs all report no
 // hit, so the caller falls through to generation — the cache is an
 // optimization, and nothing about it may fail a request.
-func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner) (Result, bool) {
+func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner, timing *Timing) (Result, bool) {
+	lookup := time.Now()
 	entry, found, err := cache.Lookup(ctx, key)
+	timing.Cache = time.Since(lookup)
 	if err != nil || !found {
 		return Result{}, false
 	}
+	running := time.Now()
 	answer, err := runner.Run(ctx, mode, entry.Source)
+	timing.Run += time.Since(running)
 	if err != nil {
 		// The world moved under this program: a capability it called changed
 		// shape, or the data it assumed is gone. Drop it rather than serve it
