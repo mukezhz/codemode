@@ -135,6 +135,9 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 		}
 
 		response, err := mode.Execute(ctx, name, request)
+		if err == nil {
+			err = runner.options.CheckResponse(name, response)
+		}
 		if err != nil {
 			return nil, err
 		}

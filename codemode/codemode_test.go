@@ -44,3 +44,19 @@ func TestSearchAndExecute(t *testing.T) {
 		t.Fatalf("output = %s", output)
 	}
 }
+
+func TestFingerprintChangesWhenAContractChanges(t *testing.T) {
+	fingerprint := func(readOnly bool) string {
+		registry := capability.Registry{Capabilities: []capability.Capability{{Name: "todos.list", RPC: "todo/List", ReadOnly: readOnly}}}
+		mode, err := New(registry,
+			func(context.Context, string, int) ([]capability.Match, error) { return nil, nil },
+			func(context.Context, string, json.RawMessage) (json.RawMessage, error) { return nil, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return mode.(Fingerprinter).Fingerprint()
+	}
+	if fingerprint(true) == fingerprint(false) {
+		t.Fatal("fingerprint ignores the read-only flag")
+	}
+}

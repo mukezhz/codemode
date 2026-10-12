@@ -154,9 +154,10 @@ type Fingerprinter interface {
 }
 ```
 
-The runtime `codemode.New` returns implements it, hashing the name and RPC path
-of every registered capability. Change the set and every program cached against
-the old one becomes unreachable.
+The runtime `codemode.New` returns implements it, hashing the full contract
+of every registered capability: name, RPC path, schemas, roles, and read-only
+flag. Change any of it and every program cached against the old one becomes
+unreachable.
 
 ::: warning A wrapper must forward Fingerprint
 A value stored in an interface loses the methods that interface does not name.

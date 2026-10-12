@@ -22,6 +22,9 @@ type Capability struct {
 
 	// Roles are the caller roles allowed to use this capability; empty means unrestricted.
 	Roles []string `json:"roles,omitempty"`
+
+	// ReadOnly is set by (idempotency_level) = NO_SIDE_EFFECTS; anything else is treated as a write.
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 // AllowsRole reports whether role may use this capability. A capability with no

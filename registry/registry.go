@@ -133,6 +133,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 					Output:      output,
 					Types:       types,
 					Roles:       roles,
+					ReadOnly:    method.GetOptions().GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS,
 				})
 			}
 		}

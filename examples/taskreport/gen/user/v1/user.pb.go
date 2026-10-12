@@ -249,10 +249,10 @@ const file_user_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\r.user.v1.UserR\x04user\"\x12\n" +
 	"\x10ListUsersRequest\"8\n" +
 	"\x11ListUsersResponse\x12#\n" +
-	"\x05users\x18\x01 \x03(\v2\r.user.v1.UserR\x05users2\xc8\x02\n" +
-	"\vUserService\x12\x99\x01\n" +
-	"\x02Me\x12\x12.user.v1.MeRequest\x1a\x15.user.v1.UserResponse\"h\x82\xb5\x18dReturns the signed-in user: their name and role. Takes no arguments — the caller is already known.\x12\x91\x01\n" +
-	"\x04List\x12\x19.user.v1.ListUsersRequest\x1a\x1a.user.v1.ListUsersResponse\"R\x82\xb5\x18ELists everyone in the workspace with their role. Administrators only.\x8a\xb5\x18\x05admin\x1a\t\x82\xb5\x18\x05usersBDZBgithub.com/mukezhz/codemode/examples/taskreport/gen/user/v1;userv1b\x06proto3"
+	"\x05users\x18\x01 \x03(\v2\r.user.v1.UserR\x05users2\xce\x02\n" +
+	"\vUserService\x12\x9c\x01\n" +
+	"\x02Me\x12\x12.user.v1.MeRequest\x1a\x15.user.v1.UserResponse\"k\x82\xb5\x18dReturns the signed-in user: their name and role. Takes no arguments — the caller is already known.\x90\x02\x01\x12\x94\x01\n" +
+	"\x04List\x12\x19.user.v1.ListUsersRequest\x1a\x1a.user.v1.ListUsersResponse\"U\x82\xb5\x18ELists everyone in the workspace with their role. Administrators only.\x8a\xb5\x18\x05admin\x90\x02\x01\x1a\t\x82\xb5\x18\x05usersBDZBgithub.com/mukezhz/codemode/examples/taskreport/gen/user/v1;userv1b\x06proto3"
 
 var (
 	file_user_proto_rawDescOnce sync.Once

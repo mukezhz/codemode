@@ -35,6 +35,9 @@ type Options struct {
 	// OnChunk receives the program as the model streams it, including repair
 	// attempts; nil disables streaming. It must not block.
 	OnChunk func(string)
+	// Plan records writes instead of executing them; review Result.Planned, then pass it to Apply.
+	// ponytail: a planned write returns {} to the program, so logic that reads a write's output plans wrongly.
+	Plan bool
 }
 
 // Defaults applied when the matching Options field is zero.
@@ -70,7 +73,15 @@ type Result struct {
 	Attempts int
 	Cached   bool
 	Timing   Timing
+	// Calls are every capability call made, across all attempts, in order.
+	Calls []codemode.Call
+	// Planned are the writes the answering program recorded in plan mode.
+	Planned []codemode.Call
 }
+
+// ErrNotRetried reports a failed program that is not retried because a retry
+// could repeat a write or cannot fix the failure.
+var ErrNotRetried = errors.New("not retried")
 
 // Timing breaks a request's latency down by stage.
 type Timing struct {
@@ -115,8 +126,8 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 
 	key, caching := cacheKey(mode, runner, request, options)
 	if caching {
-		if result, hit := fromCache(ctx, mode, options.Cache, key, runner, &timing); hit {
-			return finish(result, nil)
+		if result, hit, err := fromCache(ctx, mode, options.Cache, key, runner, options.Plan, &timing); hit || err != nil {
+			return finish(result, err)
 		}
 	}
 
@@ -164,12 +175,15 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 		}
 		result.Source = Program(response)
 
-		running := time.Now()
-		answer, err := options.Runner.Run(ctx, mode, result.Source)
-		timing.Run += time.Since(running)
+		answer, recorder, err := run(ctx, mode, options.Runner, result.Source, options.Plan, timing)
+		result.Calls = append(result.Calls, recorder.Calls()...)
 		if err == nil {
 			result.Answer = answer
+			result.Planned = planned(recorder)
 			return result, nil
+		}
+		if stop := unretryable(recorder, err); stop != nil {
+			return result, stop
 		}
 		lastErr = err
 		prompt = repairPrompt(request, result.Source, err)
@@ -201,22 +215,66 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 }
 
 // fromCache answers with a cached program; any cache failure reports a miss.
-func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner, timing *Timing) (Result, bool) {
+// A cached program that fails after writing is not regenerated.
+func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner, plan bool, timing *Timing) (Result, bool, error) {
 	lookup := time.Now()
 	entry, found, err := cache.Lookup(ctx, key)
 	timing.Cache = time.Since(lookup)
 	if err != nil || !found {
-		return Result{}, false
+		return Result{}, false, nil
 	}
-	running := time.Now()
-	answer, err := runner.Run(ctx, mode, entry.Source)
-	timing.Run += time.Since(running)
+	answer, recorder, err := run(ctx, mode, runner, entry.Source, plan, timing)
+	result := Result{Answer: answer, Source: entry.Source, Cached: true, Calls: recorder.Calls()}
 	if err != nil {
 		// Stale program: drop it and regenerate.
 		_ = cache.Forget(ctx, entry.ID)
-		return Result{}, false
+		return result, false, unretryable(recorder, err)
 	}
-	return Result{Answer: answer, Source: entry.Source, Cached: true}, true
+	result.Planned = planned(recorder)
+	return result, true, nil
+}
+
+// run evaluates source once, recording its calls.
+func run(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner, source string, plan bool, timing *Timing) (any, *codemode.Recorder, error) {
+	recorder := &codemode.Recorder{Plan: plan}
+	running := time.Now()
+	answer, err := runner.Run(codemode.WithRecorder(ctx, recorder), mode, source)
+	timing.Run += time.Since(running)
+	return answer, recorder, err
+}
+
+// unretryable returns the error to stop with when a failed run must not be retried, else nil.
+func unretryable(recorder *codemode.Recorder, err error) error {
+	if permanent := recorder.Permanent(); permanent != nil {
+		return fmt.Errorf("%w: %w", ErrNotRetried, permanent)
+	}
+	if recorder.Wrote() {
+		return fmt.Errorf("%w: program failed after a write: %w", ErrNotRetried, err)
+	}
+	return nil
+}
+
+func planned(recorder *codemode.Recorder) []codemode.Call {
+	var writes []codemode.Call
+	for _, call := range recorder.Calls() {
+		if call.Planned {
+			writes = append(writes, call)
+		}
+	}
+	return writes
+}
+
+// Apply executes planned writes in order, stopping at the first failure, and
+// returns the calls made. Each still passes the registry and the transport.
+func Apply(ctx context.Context, mode codemode.CodeMode, planned []codemode.Call) ([]codemode.Call, error) {
+	recorder := &codemode.Recorder{}
+	ctx = codemode.WithRecorder(ctx, recorder)
+	for _, call := range planned {
+		if _, err := mode.Execute(ctx, call.Name, call.Input); err != nil {
+			return recorder.Calls(), err
+		}
+	}
+	return recorder.Calls(), nil
 }
 
 // complete asks the model for a program, streaming when both sides support it.

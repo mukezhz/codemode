@@ -14,6 +14,7 @@ service TodoService {
   }
 
   rpc List(ListTodosRequest) returns (ListTodosResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Lists all todo items and their completion state.";
   }
 

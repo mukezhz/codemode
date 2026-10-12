@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/mukezhz/codemode/codemode"
 )
 
 // Role decides which capabilities exist for a caller and how widely queries reach.
@@ -27,8 +29,9 @@ type Identity struct {
 // Admin reports whether this identity may reach across owners.
 func (identity Identity) Admin() bool { return identity.Role == RoleAdmin }
 
-// ErrNoIdentity reports a request with no identity; it never falls back to a default.
-var ErrNoIdentity = errors.New("no identity on the request context")
+// ErrNoIdentity reports a request with no identity; it never falls back to a default;
+// it is permanent, so the agent does not retry around it.
+var ErrNoIdentity = codemode.Permanent(errors.New("no identity on the request context"))
 
 type contextKey struct{}
 

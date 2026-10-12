@@ -160,6 +160,9 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 		}
 
 		response, err := mode.Execute(ctx, name, request)
+		if err == nil {
+			err = runner.options.CheckResponse(name, response)
+		}
 		if err != nil {
 			state.RaiseError("%s", err)
 			return 0

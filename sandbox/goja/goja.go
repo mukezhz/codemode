@@ -118,6 +118,9 @@ func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, sourc
 			panic(vm.NewGoError(fmt.Errorf("encode input for %s: %w", name, err)))
 		}
 		response, err := mode.Execute(ctx, name, request)
+		if err == nil {
+			err = runner.options.CheckResponse(name, response)
+		}
 		if err != nil {
 			panic(vm.NewGoError(err))
 		}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mukezhz/codemode/capability"
 )
@@ -29,15 +30,21 @@ type Fingerprinter interface {
 	Fingerprint() string
 }
 
-// Fingerprint hashes the name and RPC path of every registered capability.
+// Fingerprint hashes every registered capability's full contract, so a schema,
+// role, or effect change invalidates programs cached against the old one.
 func (runtime *runtime) Fingerprint() string {
 	names := make([]string, 0, len(runtime.capabilities))
-	for name, item := range runtime.capabilities {
-		names = append(names, name+"\x00"+item.RPC)
+	for name := range runtime.capabilities {
+		names = append(names, name)
 	}
 	sort.Strings(names)
-	sum := sha256.Sum256([]byte(strings.Join(names, "\x1e")))
-	return hex.EncodeToString(sum[:])
+	hash := sha256.New()
+	for _, name := range names {
+		contract, _ := json.Marshal(runtime.capabilities[name])
+		hash.Write(contract)
+		hash.Write([]byte{0x1e})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // SearchFunc implements capability ranking.
@@ -83,9 +90,32 @@ func (runtime *runtime) Execute(ctx context.Context, name string, input json.Raw
 	if !ok {
 		return nil, fmt.Errorf("capability %q is not registered", name)
 	}
+	recorder := recorderFrom(ctx)
+	if recorder == nil {
+		return runtime.call(ctx, item, input)
+	}
+	call := Call{Name: name, Input: input, ReadOnly: item.ReadOnly}
+	if recorder.Plan && !item.ReadOnly {
+		call.Planned = true
+		call.Output = json.RawMessage("{}")
+		recorder.add(call)
+		return call.Output, nil
+	}
+	started := time.Now()
+	output, err := runtime.call(ctx, item, input)
+	call.Duration = time.Since(started)
+	call.Output = output
+	if err != nil {
+		call.Error, call.err = err.Error(), err
+	}
+	recorder.add(call)
+	return output, err
+}
+
+func (runtime *runtime) call(ctx context.Context, item capability.Capability, input json.RawMessage) (json.RawMessage, error) {
 	output, err := runtime.execute(ctx, item.RPC, input)
 	if err != nil {
-		return nil, fmt.Errorf("execute %s: %w", name, err)
+		return nil, fmt.Errorf("execute %s: %w", item.Name, err)
 	}
 	return output, nil
 }

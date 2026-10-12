@@ -44,12 +44,16 @@ type Options struct {
 	Timeout time.Duration
 	// MaxCalls limits capability calls per run; zero applies DefaultMaxCalls.
 	MaxCalls int
+	// MaxResponseBytes limits each capability response; zero applies DefaultMaxResponseBytes.
+	// ponytail: bounds input, not interpreter heap; a hard memory cap needs process isolation.
+	MaxResponseBytes int
 }
 
 // Defaults applied when the matching Options field is zero.
 const (
-	DefaultMaxCalls = 50
-	DefaultTimeout  = 30 * time.Second
+	DefaultMaxCalls         = 50
+	DefaultTimeout          = 30 * time.Second
+	DefaultMaxResponseBytes = 1 << 20
 )
 
 // Checked validates options and applies defaults.
@@ -60,11 +64,17 @@ func (options Options) Checked() (Options, error) {
 	if options.MaxCalls < 0 {
 		return options, errors.New("max calls must not be negative")
 	}
+	if options.MaxResponseBytes < 0 {
+		return options, errors.New("max response bytes must not be negative")
+	}
 	if options.Timeout == 0 {
 		options.Timeout = DefaultTimeout
 	}
 	if options.MaxCalls == 0 {
 		options.MaxCalls = DefaultMaxCalls
+	}
+	if options.MaxResponseBytes == 0 {
+		options.MaxResponseBytes = DefaultMaxResponseBytes
 	}
 	return options, nil
 }
@@ -182,4 +192,12 @@ func Run(ctx context.Context, mode codemode.CodeMode, source string, options Opt
 	}
 	defer runner.Close()
 	return runner.Run(ctx, mode, source)
+}
+
+// CheckResponse rejects a capability response larger than options allow.
+func (options Options) CheckResponse(name string, response []byte) error {
+	if len(response) > options.MaxResponseBytes {
+		return fmt.Errorf("response of %s is %d bytes, over the %d byte limit", name, len(response), options.MaxResponseBytes)
+	}
+	return nil
 }

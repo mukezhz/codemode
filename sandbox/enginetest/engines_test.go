@@ -351,3 +351,20 @@ func TestEnginesOmitTheShapesSectionWhenEmpty(t *testing.T) {
 		runner.Close()
 	}
 }
+
+func TestEnginesRejectOversizedResponses(t *testing.T) {
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second, MaxResponseBytes: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
+
+			_, err = runner.Run(context.Background(), newFake(), engine.compose)
+			if err == nil || !strings.Contains(err.Error(), "byte limit") {
+				t.Fatalf("err = %v, want the response limit", err)
+			}
+		})
+	}
+}

@@ -358,10 +358,10 @@ const file_todo_proto_rawDesc = "" +
 	"\x04Todo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1c\n" +
-	"\tcompleted\x18\x03 \x01(\bR\tcompleted2\xf3\x02\n" +
+	"\tcompleted\x18\x03 \x01(\bR\tcompleted2\xf6\x02\n" +
 	"\vTodoService\x12p\n" +
-	"\x06Create\x12\x1a.todo.v1.CreateTodoRequest\x1a\x1b.todo.v1.CreateTodoResponse\"-\x82\xb5\x18)Creates a todo item with the given title.\x12s\n" +
-	"\x04List\x12\x19.todo.v1.ListTodosRequest\x1a\x1a.todo.v1.ListTodosResponse\"4\x82\xb5\x180Lists all todo items and their completion state.\x12r\n" +
+	"\x06Create\x12\x1a.todo.v1.CreateTodoRequest\x1a\x1b.todo.v1.CreateTodoResponse\"-\x82\xb5\x18)Creates a todo item with the given title.\x12v\n" +
+	"\x04List\x12\x19.todo.v1.ListTodosRequest\x1a\x1a.todo.v1.ListTodosResponse\"7\x82\xb5\x180Lists all todo items and their completion state.\x90\x02\x01\x12r\n" +
 	"\bComplete\x12\x1c.todo.v1.CompleteTodoRequest\x1a\x1d.todo.v1.CompleteTodoResponse\")\x82\xb5\x18%Marks a todo item as completed by ID.\x1a\t\x82\xb5\x18\x05todosB>Z<github.com/mukezhz/codemode/examples/todo/gen/todo/v1;todov1b\x06proto3"
 
 var (
