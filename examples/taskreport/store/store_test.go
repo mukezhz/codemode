@@ -7,8 +7,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/store"
 )
 
-// fixed is the clock every test runs against. Reports that say "overdue" or
-// "today" are only testable if today is not the wall clock.
 var fixed = time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 
 func open(t *testing.T) *store.Store {
@@ -35,7 +33,6 @@ func TestCreateAppliesDefaultsAndValidates(t *testing.T) {
 	if task.CreatedDate != "2026-08-15" {
 		t.Errorf("created_date = %q, want the store's clock", task.CreatedDate)
 	}
-	// Tags are lower-cased and deduplicated, so a filter cannot miss one.
 	if len(task.Tags) != 1 || task.Tags[0] != "writing" {
 		t.Errorf("tags = %v, want [writing]", task.Tags)
 	}
@@ -46,8 +43,6 @@ func TestCreateAppliesDefaultsAndValidates(t *testing.T) {
 	if _, err := tasks.Create("ada", "x", "", "urgent", "", nil); err == nil {
 		t.Error("Create accepted an unknown priority")
 	}
-	// A malformed date stored as-is would make every range query silently
-	// wrong rather than fail.
 	if _, err := tasks.Create("ada", "x", "", "", "20th August", nil); err == nil {
 		t.Error("Create accepted a malformed due date")
 	}
@@ -83,8 +78,7 @@ func TestCompleteAndReopenAreNotIdempotent(t *testing.T) {
 	if !done.Completed || done.CompletedDate != "2026-08-15" {
 		t.Fatalf("task = %+v, want completed today", done)
 	}
-	// Completing twice is a mistake worth surfacing: a program that does it has
-	// lost track of state, and a silent success hides that.
+	// Completing twice is an error, not a silent success.
 	if _, err := tasks.Complete(store.Everyone(), created.ID); err == nil {
 		t.Error("Complete accepted an already completed task")
 	}
@@ -121,8 +115,7 @@ func TestListFiltersCombine(t *testing.T) {
 	}
 }
 
-// Tags are stored delimited in one column, so a substring match would let "ui"
-// match "build". The delimiters on both sides are what stops that.
+// Tag filters must not substring-match ("ui" vs "build").
 func TestTagFilterDoesNotMatchSubstrings(t *testing.T) {
 	tasks := open(t)
 	tasks.Create("ada", "Has ui", "design", "", "", []string{"ui"})
@@ -149,7 +142,6 @@ func TestOverdueUsesTheStoreClock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Due today is not overdue, and a completed task never is.
 	if len(overdue) != 1 || overdue[0].Title != "Late" {
 		t.Fatalf("overdue = %v, want only Late", titles(overdue))
 	}
@@ -181,8 +173,6 @@ func TestStatusCountsSeparatesOverdueFromDueToday(t *testing.T) {
 	}
 }
 
-// A trend with the quiet days removed is not a trend, so the gaps have to be
-// filled by the store rather than reconstructed by every caller.
 func TestThroughputIncludesDaysWithNoCompletions(t *testing.T) {
 	tasks := open(t)
 	done, _ := tasks.Create("ada", "Done today", "", "", "", nil)
@@ -226,7 +216,6 @@ func TestByPriorityIsOrderedHighestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Alphabetical would give high, low, medium — which reads as noise.
 	for index, want := range []string{"high", "medium", "low"} {
 		if groups[index].Name != want {
 			t.Fatalf("groups = %+v, want highest priority first", groups)
@@ -259,7 +248,6 @@ func TestProjectsAndRename(t *testing.T) {
 	if names["documentation"] != 2 {
 		t.Errorf("projects = %+v, want documentation with 2", projects)
 	}
-	// A blank project is real data, so it gets a label rather than an empty row.
 	if names["(none)"] != 1 {
 		t.Errorf("projects = %+v, want the unassigned task labelled", projects)
 	}
@@ -273,9 +261,7 @@ func titles(tasks []store.Task) []string {
 	return names
 }
 
-// Every read takes a Scope, so a code path that forgets to build one gets the
-// zero value. That has to reach nothing rather than everything: fail-closed is
-// the only safe default for the thing standing between two users' data.
+// The zero Scope must reach nothing.
 func TestZeroScopeReachesNothing(t *testing.T) {
 	tasks := open(t)
 	mine, _ := tasks.Create("ada", "Ada's task", "platform", "high", "2026-08-01", nil)
@@ -314,7 +300,6 @@ func TestScopeSeparatesOwners(t *testing.T) {
 		t.Fatalf("ada sees %v", titles(mine))
 	}
 
-	// Writes are scoped too, or a known ID would be enough to change a row.
 	if _, err := tasks.Complete(store.Only("ada"), theirs.ID); err == nil {
 		t.Fatal("ada completed a task belonging to linus")
 	}
@@ -322,7 +307,6 @@ func TestScopeSeparatesOwners(t *testing.T) {
 		t.Fatal("ada deleted a task belonging to linus")
 	}
 
-	// Reports respect the scope, or a total leaks what a listing does not.
 	overdue, err := tasks.Overdue(store.Only("ada"), "")
 	if err != nil {
 		t.Fatal(err)

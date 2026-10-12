@@ -1,6 +1,3 @@
-// This file is the only place in the package that reads the process
-// environment. New takes an Options and consults nothing else.
-
 package claude
 
 import (
@@ -17,13 +14,7 @@ const (
 	EnvBaseURL = "ANTHROPIC_BASE_URL"
 )
 
-// OptionsFromEnv reads ANTHROPIC_* into an llm.Options and reports whether any
-// of them were set. Nothing is applied for you: override any field before
-// passing it to New.
-//
-// The shared LLM_* variables are deliberately not read here — llm.OptionsFromEnv
-// layers those on top, and reading them in both places would make the precedence
-// depend on which function you called.
+// OptionsFromEnv reads ANTHROPIC_* into an llm.Options and reports whether any were set.
 func OptionsFromEnv() (llm.Options, bool, error) {
 	options := llm.Options{
 		Provider: llm.ProviderClaude,
@@ -31,8 +22,7 @@ func OptionsFromEnv() (llm.Options, bool, error) {
 		Model:    strings.TrimSpace(os.Getenv(EnvModel)),
 		BaseURL:  strings.TrimSpace(os.Getenv(EnvBaseURL)),
 	}
-	// LLM_BASE_URL names no provider, so it must not make this one look
-	// configured; only Anthropic's own variables count.
+	// LLM_BASE_URL names no provider, so it must not mark this one configured.
 	configured := options.APIKey != "" || options.BaseURL != ""
 	return options, configured, nil
 }

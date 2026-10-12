@@ -1,11 +1,4 @@
-// Package store is the task application's own database. It is ordinary
-// application code: the library never sees it, and nothing here knows a model
-// exists.
-//
-// The split matters. Everything in this package validates its own input and
-// owns what an operation means, exactly as it would behind an HTTP handler. A
-// program written by a model reaches it only through the capability names the
-// registry allows, and only ever with JSON.
+// Package store is the task application's own database; it validates its own input and knows nothing about models.
 package store
 
 import (
@@ -19,8 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// Task mirrors the protobuf message. The JSON tags are the wire format the
-// sandbox sees, so they stay in protobuf's snake_case.
+// Task mirrors the protobuf message; JSON tags are the sandbox wire format.
 type Task struct {
 	ID            int64    `json:"id"`
 	Owner         string   `json:"owner"`
@@ -56,12 +48,7 @@ type DayCount struct {
 	Completed int    `json:"completed"`
 }
 
-// Scope is the set of rows a call may touch. Every read and write takes one,
-// so scoping is a parameter the compiler insists on rather than a filter
-// somebody remembers to add.
-//
-// The zero Scope reaches nothing, which is the failure mode to want: a code
-// path that forgets to build one returns no rows instead of everyone's.
+// Scope is the set of rows a call may touch; the zero Scope reaches nothing.
 type Scope struct {
 	// Owner limits the call to one person's tasks.
 	Owner string
@@ -75,27 +62,22 @@ func Only(owner string) Scope { return Scope{Owner: owner} }
 // Everyone returns an unlimited Scope.
 func Everyone() Scope { return Scope{All: true} }
 
-// where returns the SQL predicate and argument for this scope.
 func (scope Scope) where() (string, []any) {
 	if scope.All {
 		return "", nil
 	}
-	// An empty owner on a non-All scope matches nothing rather than everything.
+	// Empty owner on a non-All scope matches nothing, not everything.
 	return " AND owner = ?", []any{scope.Owner}
 }
 
-// Priorities are the only accepted values, lowest first. Keeping them a short
-// closed set means a model cannot invent one, and the ordering gives reports a
-// stable sort.
+// Priorities are the accepted priority values, lowest first.
 var Priorities = []string{"low", "medium", "high"}
 
 const defaultPriority = "medium"
 
 // Store is the task database.
 type Store struct {
-	db *sql.DB
-	// now is injectable so tests are not tied to the wall clock. Reports that
-	// say "overdue" or "today" have to agree on what today is.
+	db  *sql.DB
 	now func() time.Time
 }
 
@@ -105,8 +87,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: one connection avoids SQLITE_BUSY without a retry loop. Raise it
-	// with WAL mode if this ever serves concurrent requests.
+	// ponytail: one connection avoids SQLITE_BUSY; raise with WAL for concurrency.
 	db.SetMaxOpenConns(1)
 
 	store := &Store{db: db, now: time.Now}
@@ -117,7 +98,7 @@ func Open(path string) (*Store, error) {
 	return store, nil
 }
 
-// SetClock overrides the clock, for tests and for reproducible demos.
+// SetClock overrides the clock.
 func (store *Store) SetClock(now func() time.Time) { store.now = now }
 
 func (store *Store) Close() error { return store.db.Close() }
@@ -152,10 +133,7 @@ func (store *Store) Today() string { return store.now().Format(dateLayout) }
 
 const dateLayout = "2006-01-02"
 
-// ---------------------------------------------------------------- tasks
-
-// Create inserts a task owned by owner. Title is required; priority defaults
-// to medium. Owner comes from the signed-in identity, never from a request.
+// Create inserts a task owned by owner; title is required and priority defaults to medium.
 func (store *Store) Create(owner, title, project, priority, dueDate string, tags []string) (Task, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" {
@@ -189,10 +167,7 @@ func (store *Store) Create(owner, title, project, priority, dueDate string, tags
 }
 
 // Get returns one task by ID, within scope.
-//
-// A task outside the scope reports "not found" rather than "forbidden". The
-// difference matters: a distinct forbidden error would let a program discover
-// which IDs exist by probing them.
+// Out-of-scope tasks report "not found", not "forbidden", so IDs cannot be probed.
 func (store *Store) Get(scope Scope, id int64) (Task, error) {
 	predicate, args := scope.where()
 	row := store.db.QueryRow(taskColumns+` FROM tasks WHERE id = ?`+predicate,
@@ -240,8 +215,7 @@ func (store *Store) List(scope Scope, filter Filter) ([]Task, error) {
 		args = append(args, priority)
 	}
 	if tag := strings.TrimSpace(filter.Tag); tag != "" {
-		// Tags are stored as a delimited string; the delimiters on both sides
-		// stop "ui" from matching "build".
+		// Delimiters on both sides stop "ui" from matching "build".
 		query += ` AND ',' || tags || ',' LIKE ?`
 		args = append(args, "%,"+strings.ToLower(tag)+",%")
 	}
@@ -270,8 +244,7 @@ func (store *Store) Search(scope Scope, text string, limit int) ([]Task, error) 
 	return store.query(query, args...)
 }
 
-// Update writes only the fields that are set, so a caller changing a priority
-// does not have to resend the title.
+// Update writes only the fields that are set.
 func (store *Store) Update(scope Scope, id int64, title, project, priority, dueDate string) (Task, error) {
 	current, err := store.Get(scope, id)
 	if err != nil {
@@ -401,10 +374,7 @@ func (store *Store) editTags(scope Scope, id int64, tag string, edit func([]stri
 	return store.Get(scope, id)
 }
 
-// Assign moves a task to a different owner. It takes no Scope because only an
-// administrator can reach it, and an administrator's scope is unlimited by
-// definition — spelling that out here would suggest the restriction lives in
-// the store when it lives at the boundary.
+// Assign moves a task to a different owner; only administrators reach it.
 func (store *Store) Assign(id int64, owner string) (Task, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" {
@@ -437,8 +407,6 @@ func (store *Store) Owners() ([]string, error) {
 	}
 	return owners, rows.Err()
 }
-
-// ---------------------------------------------------------------- projects
 
 // Projects lists every project holding at least one task.
 func (store *Store) Projects(scope Scope) ([]Project, error) {
@@ -488,8 +456,6 @@ func (store *Store) RenameProject(scope Scope, from, to string) (int, error) {
 	return int(moved), err
 }
 
-// ---------------------------------------------------------------- reports
-
 // StatusCounts totals every task by state.
 type StatusCounts struct {
 	Total     int `json:"total"`
@@ -504,8 +470,7 @@ func (store *Store) StatusCounts(scope Scope) (StatusCounts, error) {
 	today := store.Today()
 	predicate, scopeArgs := scope.where()
 	var counts StatusCounts
-	// COALESCE because SUM over no rows is NULL, not zero — and a scope
-	// matching no rows is the ordinary case for a user with no tasks yet.
+	// COALESCE: SUM over no rows is NULL.
 	err := store.db.QueryRow(`
 		SELECT COUNT(*),
 		       COALESCE(SUM(CASE WHEN completed = 0 THEN 1 ELSE 0 END), 0),
@@ -527,9 +492,7 @@ func (store *Store) ByProject(scope Scope) ([]GroupCount, error) {
 	return store.groupCounts(scope, `project`, "(none)")
 }
 
-// ByOwner counts open and completed tasks per person. Only an administrator's
-// scope reaches more than one person, which is what makes it a report rather
-// than a way to read a colleague's backlog.
+// ByOwner counts open and completed tasks per person.
 func (store *Store) ByOwner(scope Scope) ([]GroupCount, error) {
 	return store.groupCounts(scope, `owner`, "(unassigned)")
 }
@@ -540,9 +503,6 @@ func (store *Store) ByPriority(scope Scope) ([]GroupCount, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Priority has a meaningful order that alphabetical sorting destroys —
-	// "high, low, medium" reads as noise in a report.
-	// Priorities is lowest first, so the index is the rank.
 	rank := map[string]int{}
 	for index, priority := range Priorities {
 		rank[priority] = index
@@ -581,8 +541,7 @@ func (store *Store) groupCounts(scope Scope, column, emptyLabel string) ([]Group
 	return groups, rows.Err()
 }
 
-// Overdue lists open tasks due before asOf, oldest due date first. An empty
-// asOf means today.
+// Overdue lists open tasks due before asOf (default today), oldest first.
 func (store *Store) Overdue(scope Scope, asOf string) ([]Task, error) {
 	if asOf = strings.TrimSpace(asOf); asOf == "" {
 		asOf = store.Today()
@@ -617,9 +576,7 @@ func (store *Store) CompletedBetween(scope Scope, start, end string) ([]Task, er
 		ORDER BY completed_date DESC, id DESC`, append([]any{start, end}, args...)...)
 }
 
-// Throughput counts completions on each of the last days, most recent first.
-// Days with no completions are included, because a gap is the interesting part
-// of a trend and a caller should not have to reconstruct it.
+// Throughput counts completions on each of the last days, most recent first, including empty days.
 func (store *Store) Throughput(scope Scope, days int) ([]DayCount, error) {
 	if days <= 0 {
 		days = 7
@@ -663,8 +620,6 @@ func (store *Store) Throughput(scope Scope, days int) ([]DayCount, error) {
 	}
 	return trend, nil
 }
-
-// ---------------------------------------------------------------- internals
 
 const taskColumns = `SELECT id, owner, title, project, priority, due_date, completed, completed_date, created_date, tags`
 
@@ -713,9 +668,7 @@ func normalizePriority(priority string) (string, error) {
 	return "", fmt.Errorf("priority %q is not one of %s", priority, strings.Join(Priorities, ", "))
 }
 
-// validateDate accepts an empty date, since most date fields are optional, but
-// rejects anything that is not YYYY-MM-DD. Storing a malformed date would make
-// every range query silently wrong rather than fail.
+// validateDate accepts empty or YYYY-MM-DD.
 func validateDate(field, value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -727,9 +680,7 @@ func validateDate(field, value string) error {
 	return nil
 }
 
-// Tags are stored as a lower-cased comma-delimited string. A join table would
-// be tidier; for a demo this keeps every query in one statement.
-// ponytail: move to a tags table if tag filtering ever needs an index.
+// ponytail: tags are a comma-delimited string; move to a table if filtering needs an index.
 func encodeTags(tags []string) string {
 	cleaned := make([]string, 0, len(tags))
 	seen := map[string]bool{}

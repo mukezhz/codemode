@@ -19,10 +19,7 @@ import (
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
 
-	// The demo links every backend so one binary can show all of them. A real
-	// application blank-imports only what it runs, which is the point of the
-	// split: no cgo unless you asked for SQLite, no goja unless you asked for
-	// JavaScript.
+	// The demo links every backend; a real app blank-imports only what it runs.
 	_ "github.com/mukezhz/codemode/capability/pgstore"
 	_ "github.com/mukezhz/codemode/capability/sqlitestore"
 	_ "github.com/mukezhz/codemode/llm/claude"
@@ -39,8 +36,6 @@ func main() {
 	instructions := flag.String("instructions", "", "extra guidance appended to the system prompt")
 	flag.Parse()
 
-	// A command-line application configures itself from flags and the
-	// environment. The library reads neither: it is handed this Options.
 	options, err := llm.OptionsFromEnv()
 	if errors.Is(err, llm.ErrNoProvider) {
 		options = llm.Options{}
@@ -62,10 +57,6 @@ func main() {
 }
 
 func run(ctx context.Context, request string, options llm.Options, instructions string) error {
-	// The registry is derived from the contracts at startup: the generated
-	// package carries its own descriptors, so there is no file to build, embed,
-	// or keep in step. codemode-registry is there for projects that would
-	// rather review registry.json in a pull request.
 	registry, err := coderegistry.FromFiles(todov1.File_todo_proto)
 	if err != nil {
 		return err
@@ -110,9 +101,7 @@ func run(ctx context.Context, request string, options llm.Options, instructions 
 	return nil
 }
 
-// newSearch returns the ranking function and a cleanup. It prefers the semantic
-// index when CAPABILITY_DB_DSN and an embedding endpoint are configured, and
-// falls back to the demo's keyword ranker otherwise.
+// newSearch returns the ranking function and a cleanup, preferring the semantic index when configured.
 func newSearch(ctx context.Context, registry capability.Registry) (codemode.SearchFunc, func(), error) {
 	store, err := capability.OpenStoreFromEnv(ctx)
 	if errors.Is(err, capability.ErrNoStore) {
@@ -129,8 +118,7 @@ func newSearch(ctx context.Context, registry capability.Registry) (codemode.Sear
 		return nil, nil, fmt.Errorf("capability store is configured but embeddings are not: %w", err)
 	}
 
-	// ponytail: the demo rebuilds on every run because the registry is tiny.
-	// Production rebuilds when contracts or the embedding model change.
+	// ponytail: rebuilt every run because the registry is tiny.
 	if err := capability.Rebuild(ctx, store, registry, capability.Embedder{Model: embedder.Model, Embed: embedder.Embed}); err != nil {
 		store.Close()
 		return nil, nil, err
@@ -163,9 +151,7 @@ func report(result agent.Result) {
 	fmt.Printf("timing\n  %s\n\n", result.Timing)
 }
 
-// offline runs the demo without a model so the flow is inspectable without
-// credentials. Everything except the program's authorship is unchanged: search
-// still selects the capabilities, and the sandbox still calls the host.
+// offline runs the demo with fixed programs in place of a model.
 func offline(ctx context.Context, mode codemode.CodeMode, request string) error {
 	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
@@ -201,11 +187,7 @@ func offline(ctx context.Context, mode codemode.CodeMode, request string) error 
 	return nil
 }
 
-// fixedPrograms stand in for model-authored code when no provider is
-// configured, one per sandbox dialect. They do the same job three ways: each
-// sees only codemode.execute, and each does its looping and filtering inside
-// the sandbox, so the host and the model exchange one request and one answer
-// rather than one round trip per call.
+// fixedPrograms stand in for model-authored code, one per sandbox dialect.
 var fixedPrograms = map[string]string{
 	"javascript": `
 codemode.execute("todos.create", { title: "Document code mode" });

@@ -1,24 +1,4 @@
-// Package view is the contract between the model-authored program and the
-// browser.
-//
-// A program that returns a sentence can only ever produce a sentence. Returning
-// a small document instead — a few stat cards, a bar chart, a table — lets one
-// prompt produce a report the user can actually read, and lets the frontend
-// render it without knowing anything about tasks.
-//
-// The schema is deliberately tiny. Every block type here is one React component
-// on the other side, and a model can hold the whole vocabulary in its head:
-//
-//	{"title": "This week", "blocks": [
-//	  {"type": "stats", "items": [{"label": "Open", "value": 8}]},
-//	  {"type": "bar", "series": [{"label": "platform", "value": 3}]},
-//	  {"type": "table", "columns": ["Task", "Due"], "rows": [["Ship it", "2026-08-09"]]},
-//	  {"type": "text", "text": "Three tasks are overdue."}
-//	]}
-//
-// Parse is strict. A model that invents a block type or misspells a field is
-// told so while the error can still be fed back for repair, rather than the
-// browser rendering a blank panel.
+// Package view defines the strict document schema programs return and the browser renders.
 package view
 
 import (
@@ -27,7 +7,7 @@ import (
 	"strings"
 )
 
-// Block kinds. Each is one component in the frontend renderer.
+// Block kinds, each one frontend component.
 const (
 	// KindStats is a row of headline numbers.
 	KindStats = "stats"
@@ -46,25 +26,11 @@ type Document struct {
 	Title  string  `json:"title,omitempty"`
 	Blocks []Block `json:"blocks,omitempty"`
 
-	// Unavailable explains, in one sentence, why the request cannot be
-	// answered with the capabilities this caller has. A document that sets it
-	// carries no blocks.
-	//
-	// Without somewhere to say "I cannot", a model answers anyway. Asked for a
-	// colleague's tasks it will call the capabilities it does have, get its own
-	// rows, and title them with the colleague's name. Asked for every task when
-	// it has only a search, it will call search thirty-six times, once per
-	// letter and digit, and reassemble the list.
-	//
-	// Both produce a plausible report. Neither answers the question. A refusal
-	// is the honest output and it has to be reachable, or the model will find a
-	// worse way to fill the silence.
+	// Unavailable explains why the request cannot be answered with this caller's capabilities; a document that sets it carries no blocks.
 	Unavailable string `json:"unavailable,omitempty"`
 }
 
-// Block is one element of a document. Which fields matter depends on Type,
-// which is why this is one struct rather than an interface: it decodes from
-// JSON in one step, and the validation below is what keeps it honest.
+// Block is one element of a document; which fields matter depends on Type.
 type Block struct {
 	Type string `json:"type"`
 
@@ -103,18 +69,12 @@ type Point struct {
 var tones = map[string]bool{"": true, "good": true, "warn": true, "bad": true}
 
 // Parse decodes and validates a document produced by a program.
-//
-// The value arrives as the Go form of decoded JSON — map[string]any and
-// friends — because that is what the sandbox hands back. Re-encoding it to
-// route through the same decoder keeps one definition of the schema rather than
-// two that can drift.
 func Parse(value any) (Document, error) {
 	if value == nil {
 		return Document{}, fmt.Errorf("the program returned nothing; return a view document")
 	}
 	if text, ok := value.(string); ok {
-		// A model that returns prose instead of a document is not wrong enough
-		// to fail on: wrap it, and the reader still gets their answer.
+		// Wrap prose answers rather than failing.
 		return Document{Blocks: []Block{{Type: KindText, Text: text}}}, nil
 	}
 
@@ -141,9 +101,6 @@ func (document Document) Refused() bool { return strings.TrimSpace(document.Unav
 // Validate reports the first problem with a document.
 func (document Document) Validate() error {
 	if document.Refused() {
-		// A refusal with blocks is the failure worth catching: it means the
-		// model both declined and answered, and the reader gets whichever the
-		// renderer happens to show.
 		if len(document.Blocks) > 0 {
 			return fmt.Errorf("a document may say it is unavailable or carry blocks, not both")
 		}
@@ -189,8 +146,6 @@ func (block Block) validate() error {
 		if len(block.Columns) == 0 {
 			return fmt.Errorf("needs columns")
 		}
-		// A ragged row renders as a broken table, and the reader has no way to
-		// tell which cell went missing.
 		for row, cells := range block.Rows {
 			if len(cells) != len(block.Columns) {
 				return fmt.Errorf("row %d has %d cells but there are %d columns",
@@ -213,9 +168,7 @@ func (block Block) validate() error {
 	return nil
 }
 
-// Instructions tell the model to return a document. They are appended to the
-// engine's own system prompt through agent.Options.Instructions, so the rules
-// about the language and the single binding stay where they belong.
+// Instructions tell the model to return a document; appended via agent.Options.Instructions.
 const Instructions = `Return a view document, not a sentence. It is an object with an optional "title" and a "blocks" array. Each block is one of:
 
 {"type":"stats","heading":"...","items":[{"label":"Open","value":8,"tone":"warn"}]}   tone is good, warn, bad, or omitted

@@ -16,20 +16,15 @@ type Record struct {
 	Vector     []float32
 }
 
-// Store holds embedded capability contracts and answers nearest-neighbour
-// queries over them. Implementations are backend-specific; the ranking policy
-// (cosine distance, closest first) is the same for all of them.
+// Store holds embedded capability contracts and answers nearest-neighbour queries by cosine distance.
 type Store interface {
-	// Rebuild replaces the index contents with records, recording the
-	// embedding model and vector dimension they were produced with.
+	// Rebuild replaces the index contents with records and the model and dimension that produced them.
 	Rebuild(ctx context.Context, model string, dimension int, records []Record) error
 
-	// Metadata returns the embedding model and dimension the index was built
-	// with, so a caller can reject a mismatched embedder before querying.
+	// Metadata returns the embedding model and dimension the index was built with.
 	Metadata(ctx context.Context) (model string, dimension int, err error)
 
-	// Search returns at most limit capabilities nearest to vector, ordered
-	// from closest to least close.
+	// Search returns at most limit capabilities nearest to vector, closest first.
 	Search(ctx context.Context, vector []float32, limit int) ([]Match, error)
 
 	// Close releases the backend connection.
@@ -45,29 +40,17 @@ type Backend struct {
 	Name string
 	// Aliases are other accepted spellings, such as "postgresql".
 	Aliases []string
-	// OpenFromEnv connects to dsn using this backend's own environment for
-	// anything else it needs. Only OpenStoreFromEnv calls it; a backend is
-	// otherwise opened by calling its package's Open directly, which takes
-	// typed arguments and reads nothing.
+	// OpenFromEnv connects to dsn, reading any other settings from the environment.
 	OpenFromEnv func(ctx context.Context, dsn string) (Store, error)
-	// DSN describes what the DSN should hold, for the error raised when it is
-	// empty.
+	// DSN describes the expected DSN, for the error raised when it is empty.
 	DSN string
 }
 
-// Backends this module ships, and the package that registers each. Blank-import
-// the one you want; a binary then links only that driver, which is what keeps
-// cgo out of a build that only uses Postgres.
-//
-// Registration exists for OpenStoreFromEnv. To open a store from your own
-// configuration, call the backend package's Open directly — it takes typed
-// arguments and reads no environment.
+// Shipped backend names; blank-import the matching package to register one.
 const (
-	// BackendSQLite indexes in SQLite with the sqlite-vector extension.
-	// Package capability/sqlitestore. Requires cgo.
+	// BackendSQLite is capability/sqlitestore (sqlite-vector); requires cgo.
 	BackendSQLite = "sqlite"
-	// BackendPostgres indexes in PostgreSQL with pgvector.
-	// Package capability/pgstore. Pure Go.
+	// BackendPostgres is capability/pgstore (pgvector); pure Go.
 	BackendPostgres = "postgres"
 )
 
@@ -84,9 +67,7 @@ var (
 	backends      = map[string]Backend{}
 )
 
-// RegisterBackend makes backend selectable by OpenStoreFromEnv. Store packages call it
-// from init, so blank-importing one is enough. Registering a name twice panics,
-// which catches a duplicate import path at startup rather than in production.
+// RegisterBackend makes backend selectable by OpenStoreFromEnv; registering a name twice panics.
 func RegisterBackend(backend Backend) {
 	if backend.Name == "" || backend.OpenFromEnv == nil {
 		panic("capability: backend needs a name and an opener")
@@ -101,8 +82,7 @@ func RegisterBackend(backend Backend) {
 	}
 }
 
-// RegisteredBackends lists the canonical names of every registered backend,
-// sorted.
+// RegisteredBackends lists the canonical names of every registered backend, sorted.
 func RegisteredBackends() []string {
 	backendsMutex.RLock()
 	defer backendsMutex.RUnlock()
@@ -118,8 +98,7 @@ func RegisteredBackends() []string {
 	return names
 }
 
-// unregisteredBackend distinguishes "you forgot the import" from "no such
-// backend", because the fix is different and the first is far more common.
+// unregisteredBackend distinguishes a missing import from an unknown backend.
 func unregisteredBackend(name string) error {
 	if path, ships := shipped[name]; ships {
 		return fmt.Errorf("capability store %q is not registered: add `_ %q` to your imports", name, path)
@@ -133,17 +112,14 @@ func unregisteredBackend(name string) error {
 		name, strings.Join(available, ", "))
 }
 
-// RowScanner is the part of *sql.Rows a backend query returns. It is an
-// interface so ScanMatches works for any driver.
+// RowScanner is the part of *sql.Rows that ScanMatches needs.
 type RowScanner interface {
 	Next() bool
 	Scan(...any) error
 	Err() error
 }
 
-// ScanMatches decodes capability rows in the column order every backend query
-// selects: name, rpc, description, input, output, distance. Backends outside
-// this module use it to stay consistent with the ones inside it.
+// ScanMatches decodes rows in the column order name, rpc, description, input, output, distance.
 func ScanMatches(rows RowScanner, limit int) ([]Match, error) {
 	matches := make([]Match, 0, limit)
 	for rows.Next() {
@@ -186,7 +162,6 @@ func DecodeSchemas(item *Capability, input, output []byte) error {
 	return json.Unmarshal(output, &item.Output)
 }
 
-// lookupBackend returns the backend registered under name.
 func lookupBackend(name string) (Backend, bool) {
 	backendsMutex.RLock()
 	defer backendsMutex.RUnlock()

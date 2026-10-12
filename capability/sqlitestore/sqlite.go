@@ -1,13 +1,4 @@
-// Package sqlitestore indexes capabilities in SQLite using the sqlite-vector
-// extension.
-//
-// Blank-import it to make CAPABILITY_DB=sqlite available:
-//
-//	import _ "github.com/mukezhz/codemode/capability/sqlitestore"
-//
-// It requires cgo, because the SQLite driver and the vector extension are C.
-// A binary that must build with CGO_ENABLED=0 should use capability/pgstore
-// instead, or no store at all.
+// Package sqlitestore indexes capabilities in SQLite using the sqlite-vector extension; it requires cgo.
 package sqlitestore
 
 import (
@@ -29,12 +20,7 @@ type sqliteStore struct {
 	db *sql.DB
 }
 
-// Open opens the SQLite index at path, loading the sqlite-vector library from
-// extensionPath. Ctx carries cancellation. The caller closes the store.
-//
-// It reads no environment variable. capability.OpenStoreFromEnv reaches this
-// through OpenFromEnv, which supplies extensionPath from
-// SQLITE_VECTOR_EXTENSION.
+// Open opens the SQLite index at path, loading the sqlite-vector library from extensionPath; the caller closes the store.
 func Open(ctx context.Context, path, extensionPath string) (capability.Store, error) {
 	if extensionPath == "" {
 		return nil, errors.New("sqlite-vector extension path is required (SQLITE_VECTOR_EXTENSION)")
@@ -47,8 +33,7 @@ func Open(ctx context.Context, path, extensionPath string) (capability.Store, er
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: one connection keeps extension initialization simple; register a
-	// per-connection driver hook if search throughput ever needs a pool.
+	// ponytail: one connection keeps per-connection extension initialization simple.
 	db.SetMaxOpenConns(1)
 
 	conn, err := db.Conn(ctx)
@@ -137,8 +122,7 @@ func (store *sqliteStore) Metadata(ctx context.Context) (string, int, error) {
 	).Scan(&model, &dimension); err != nil {
 		return "", 0, fmt.Errorf("read capability index metadata: %w", err)
 	}
-	// The extension needs the vector column re-declared on each connection
-	// before it can be queried.
+	// The extension needs the vector column re-declared on each connection.
 	if err := sqliteInitVector(ctx, store.db, dimension); err != nil {
 		return "", 0, err
 	}

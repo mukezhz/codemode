@@ -21,19 +21,12 @@ func init() {
 	})
 }
 
-// luaRunner evaluates programs in Lua 5.1. It is the smallest and fastest of
-// the three engines. The standard library is opened selectively: base, table,
-// string, and math, but not io, os, package, or debug, so the program has no
-// file access, no clock, and no module loader.
-//
-// ponytail: like the others, this runs in-process and is not a defence against
-// a determined attacker sharing the process.
+// luaRunner evaluates Lua 5.1 in-process with only base, table, string, and math opened; not a boundary against a determined attacker.
 type luaRunner struct {
 	options sandbox.Options
 }
 
-// New returns a Runner backed by the in-process Lua interpreter. Blank-import
-// this package instead to have sandbox.New select it from SANDBOX_ENGINE.
+// New returns a Runner backed by the in-process Lua interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
@@ -42,9 +35,7 @@ func New(options sandbox.Options) (sandbox.Runner, error) {
 	return &luaRunner{options: options}, nil
 }
 
-// luaTypes renders registry types as Lua table constructors, which is the only
-// shape Lua has for both lists and maps. The bracketed key form is real Lua, so
-// a model reading it can copy the construction directly.
+// luaTypes renders registry types as Lua table constructors.
 var luaTypes = prompt.Types{
 	Scalar: map[string]string{
 		"bool":  "boolean",
@@ -117,8 +108,7 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 	ctx, cancel := context.WithTimeout(ctx, runner.options.Timeout)
 	defer cancel()
 
-	// SkipOpenLibs leaves the interpreter empty; the loop below opens only the
-	// pure-computation libraries, so io, os, package, and debug never exist.
+	// Open only pure-computation libraries; io, os, package, and debug never exist.
 	state := luavm.NewState(luavm.Options{SkipOpenLibs: true})
 	defer state.Close()
 
@@ -137,14 +127,12 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 			return nil, fmt.Errorf("open lua library %s: %w", library.name, err)
 		}
 	}
-	// Base brings a few escape hatches with it; remove the ones that let a
-	// program reach outside its own evaluation.
+	// Remove base functions that reach outside the evaluation.
 	for _, global := range []string{"dofile", "loadfile", "load", "loadstring", "collectgarbage", "print"} {
 		state.SetGlobal(global, luavm.LNil)
 	}
 
-	// SetContext wires cancellation into the interpreter's instruction loop, so
-	// a runaway program is stopped at the timeout.
+	// SetContext stops a runaway program at the timeout.
 	state.SetContext(ctx)
 
 	calls := 0
@@ -201,8 +189,7 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 	return fromLua(state.Get(-1))
 }
 
-// toLua converts a JSON-decoded Go value into a Lua value. JSON arrays become
-// tables indexed from 1, matching Lua's own convention.
+// toLua converts a JSON-decoded Go value into a Lua value; arrays are 1-indexed.
 func toLua(state *luavm.LState, value any) luavm.LValue {
 	switch typed := value.(type) {
 	case nil:
@@ -230,9 +217,7 @@ func toLua(state *luavm.LState, value any) luavm.LValue {
 	}
 }
 
-// fromLua converts a Lua value into a JSON-encodable Go value. A table with
-// contiguous integer keys from 1 becomes a slice; anything else becomes a map,
-// which is how Lua's single table type maps onto JSON's two.
+// fromLua converts a Lua value into a JSON-encodable Go value; contiguous 1-based tables become slices.
 func fromLua(value luavm.LValue) (any, error) {
 	switch typed := value.(type) {
 	case *luavm.LNilType, nil:

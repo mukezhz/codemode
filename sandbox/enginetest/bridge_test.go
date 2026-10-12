@@ -12,15 +12,12 @@ import (
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/sandbox"
 
-	// Every engine this module ships, so sandbox.New can select any of them.
-	// A real binary imports only the ones it runs.
 	_ "github.com/mukezhz/codemode/sandbox/goja"
 	_ "github.com/mukezhz/codemode/sandbox/lua"
 	_ "github.com/mukezhz/codemode/sandbox/starlark"
 )
 
-// fake records the capability calls a program makes and answers them from a
-// fixed script, so tests exercise the bridge rather than a real application.
+// fake records capability calls and answers them from a fixed script.
 type fake struct {
 	responses map[string]string
 	calls     []string
@@ -83,7 +80,6 @@ func TestNewFromEnvReadsBounds(t *testing.T) {
 		}
 	}
 
-	// An explicitly set field wins over the environment.
 	explicit, err := sandbox.NewFromEnv(sandbox.Options{MaxCalls: 3})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -187,5 +183,4 @@ func TestPromptRendersSelectedCapabilities(t *testing.T) {
 	}
 }
 
-// The bridge must satisfy the public interface it is handed.
 var _ codemode.CodeMode = (*fake)(nil)

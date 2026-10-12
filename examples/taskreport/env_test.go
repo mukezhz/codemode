@@ -53,8 +53,6 @@ URL=https://api.deepseek.com/v1
 	}
 }
 
-// A value already exported wins, so `API_KEY=… go run …` beats the file and a
-// stale dotfile cannot quietly override a deliberate override.
 func TestLoadEnvFileDoesNotOverrideTheEnvironment(t *testing.T) {
 	t.Setenv("TASKREPORT_TEST_KEY", "from the shell")
 	if err := loadEnvFile(write(t, "TASKREPORT_TEST_KEY=from the file\n")); err != nil {
@@ -65,15 +63,12 @@ func TestLoadEnvFileDoesNotOverrideTheEnvironment(t *testing.T) {
 	}
 }
 
-// A demo must not insist on a file you may not want.
 func TestLoadEnvFileIgnoresAMissingFile(t *testing.T) {
 	if err := loadEnvFile(filepath.Join(t.TempDir(), "absent")); err != nil {
 		t.Fatalf("a missing file was an error: %v", err)
 	}
 }
 
-// A malformed line is worth stopping for: silently skipping it means the key
-// you thought you set is simply absent, and the failure surfaces much later.
 func TestLoadEnvFileRejectsAMalformedLine(t *testing.T) {
 	err := loadEnvFile(write(t, "OPENAI_API_KEY sk-forgot-the-equals\n"))
 	if err == nil {

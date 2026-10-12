@@ -10,16 +10,13 @@ import (
 // EmbedFunc turns text into a vector. Ctx carries cancellation.
 type EmbedFunc func(context.Context, string) ([]float32, error)
 
-// Embedder names the embedding model and the function that runs it. The model
-// name is recorded in the index so a later query with a different model is
-// rejected rather than silently returning nonsense.
+// Embedder names the embedding model, which the index records to reject a mismatched query model.
 type Embedder struct {
 	Model string
 	Embed EmbedFunc
 }
 
-// Match is a capability contract and its distance from the query. Lower is a
-// stronger match.
+// Match is a capability contract and its distance from the query; lower is closer.
 type Match struct {
 	Capability Capability `json:"capability"`
 	Distance   float64    `json:"distance"`
@@ -32,9 +29,7 @@ type Index struct {
 	dimension int
 }
 
-// Rebuild embeds every capability in registry and replaces the contents of
-// store. This runs when contracts or the embedding model change, not per
-// request. Ctx carries cancellation; the caller closes store.
+// Rebuild embeds every capability in registry and replaces the contents of store; the caller closes store.
 func Rebuild(ctx context.Context, store Store, registry Registry, embedder Embedder) error {
 	if store == nil {
 		return errors.New("store is required")
@@ -67,8 +62,7 @@ func Rebuild(ctx context.Context, store Store, registry Registry, embedder Embed
 	return store.Rebuild(ctx, embedder.Model, dimension, records)
 }
 
-// Open reads store's metadata and returns an Index that queries it. Ctx carries
-// cancellation. Closing the Index closes store.
+// Open reads store's metadata and returns an Index that queries it; closing the Index closes store.
 func Open(ctx context.Context, store Store, embedder Embedder) (*Index, error) {
 	if store == nil {
 		return nil, errors.New("store is required")
@@ -90,9 +84,7 @@ func Open(ctx context.Context, store Store, embedder Embedder) (*Index, error) {
 // Close releases the underlying store.
 func (index *Index) Close() error { return index.store.Close() }
 
-// Search returns the capabilities most relevant to query, closest first. Limit
-// is the maximum number of matches. Its signature matches codemode.SearchFunc,
-// so it can be passed straight to codemode.New.
+// Search returns at most limit capabilities most relevant to query, closest first.
 func (index *Index) Search(ctx context.Context, query string, limit int) ([]Match, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {

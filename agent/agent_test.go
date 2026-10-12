@@ -102,7 +102,6 @@ func TestRunRepairsAFailedProgram(t *testing.T) {
 	if len(author.prompts) != 2 {
 		t.Fatalf("prompts = %d, want 2", len(author.prompts))
 	}
-	// The second prompt must carry the failure so the model can correct it.
 	if !strings.Contains(author.prompts[1], "todos.purge") {
 		t.Fatalf("repair prompt does not include the failed program: %q", author.prompts[1])
 	}
@@ -147,8 +146,7 @@ func TestAnswerRendersValues(t *testing.T) {
 	}
 }
 
-// runner records the programs it was asked to evaluate and returns a fixed
-// answer, so the agent's use of the sandbox seam is observable.
+// runner records the programs it evaluates and returns a fixed answer.
 type runner struct {
 	sources []string
 	closed  bool
@@ -185,21 +183,17 @@ func TestRunUsesTheProvidedRunner(t *testing.T) {
 	if result.Answer != "ran "+workingProgram {
 		t.Fatalf("answer = %#v, want the runner's value", result.Answer)
 	}
-	// A caller-supplied runner is the caller's to close.
 	if engine.closed {
 		t.Fatal("Run closed a runner it did not build")
 	}
 }
 
-// The fakes must satisfy the interfaces the agent depends on.
 var (
 	_ codemode.CodeMode = (*mode)(nil)
 	_ llm.Client        = (*model)(nil)
 	_ sandbox.Runner    = (*runner)(nil)
 )
 
-// Instructions must reach the model, and must not displace the engine's own
-// rules — a prompt without them produces code the sandbox cannot run.
 func TestInstructionsAreAppendedToTheEnginePrompt(t *testing.T) {
 	runtime := &mode{}
 	author := &model{responses: []string{workingProgram}}
@@ -221,13 +215,11 @@ func TestInstructionsAreAppendedToTheEnginePrompt(t *testing.T) {
 	if !strings.Contains(system, "codemode.execute") {
 		t.Fatalf("instructions displaced the engine's own rules:\n%s", system)
 	}
-	// The engine's rules come first; instructions qualify them.
 	if strings.Index(system, "codemode.execute") > strings.Index(system, "Always answer in French.") {
 		t.Fatalf("instructions were prepended, not appended:\n%s", system)
 	}
 }
 
-// Blank instructions must not add an empty section to a cached prompt.
 func TestBlankInstructionsLeaveThePromptUnchanged(t *testing.T) {
 	plain := &model{responses: []string{workingProgram}}
 	if _, err := Run(context.Background(), &mode{}, plain, "list my todos", Options{Runner: newRunner(t)}); err != nil {
@@ -242,8 +234,6 @@ func TestBlankInstructionsLeaveThePromptUnchanged(t *testing.T) {
 	}
 }
 
-// newRunner builds the JavaScript engine for tests. Run requires an explicit
-// Runner: the library builds nothing from the environment on a caller's behalf.
 func newRunner(t *testing.T) sandbox.Runner {
 	t.Helper()
 	runner, err := goja.New(sandbox.Options{})
@@ -254,7 +244,6 @@ func newRunner(t *testing.T) sandbox.Runner {
 	return runner
 }
 
-// The requirement is part of the contract, so it has its own test.
 func TestRunRequiresARunner(t *testing.T) {
 	_, err := Run(context.Background(), &mode{}, &model{}, "list my todos", Options{})
 	if err == nil {
@@ -265,9 +254,7 @@ func TestRunRequiresARunner(t *testing.T) {
 	}
 }
 
-// fingerprinted is a mode that can report its capability set, which is what
-// makes caching possible. The bare mode above deliberately cannot, so the
-// existing tests exercise the uncached path.
+// fingerprinted is a mode that reports its capability set, enabling caching.
 type fingerprinted struct {
 	*mode
 	fingerprint string
@@ -275,9 +262,7 @@ type fingerprinted struct {
 
 func (runtime fingerprinted) Fingerprint() string { return runtime.fingerprint }
 
-// exactEmbedder maps a request to a vector that is close to itself and far from
-// anything else, so cache hits in these tests are decided by the request text
-// rather than by embedding quality.
+// exactEmbedder makes cache hits depend only on exact request text.
 func exactEmbedder() capability.Embedder {
 	return capability.Embedder{
 		Model: "test/exact",
@@ -315,8 +300,6 @@ func TestRunCachesTheProgramAndReusesIt(t *testing.T) {
 		t.Fatal("the first run reported a cache hit")
 	}
 
-	// The model has no responses left, so a second run can only succeed from
-	// the cache.
 	second, err := Run(context.Background(), runtime, author, "list my todos", options)
 	if err != nil {
 		t.Fatalf("second Run returned error: %v", err)
@@ -342,8 +325,6 @@ func TestRunDoesNotReuseAProgramAcrossCapabilitySets(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	// The registry changed. The cached program was written against the old one,
-	// so it must not be served, even for the identical request.
 	after := fingerprinted{mode: &mode{}, fingerprint: "registry-2"}
 	result, err := Run(context.Background(), after, author, "list my todos",
 		Options{Runner: newRunner(t), Cache: cache})
@@ -360,8 +341,6 @@ func TestRunForgetsACachedProgramThatNoLongerRuns(t *testing.T) {
 	cache := newCache(t)
 	runtime := fingerprinted{mode: &mode{}, fingerprint: "registry-1"}
 
-	// Seed the cache with a program that calls a capability this runtime does
-	// not have, standing in for one that has since been removed.
 	stale := program.Key{Request: "list my todos", Language: "javascript", Capabilities: "registry-1"}
 	if err := cache.Put(ctx, stale, `return codemode.execute("todos.purge", {});`); err != nil {
 		t.Fatalf("Put returned error: %v", err)
@@ -379,7 +358,6 @@ func TestRunForgetsACachedProgramThatNoLongerRuns(t *testing.T) {
 		t.Fatalf("answer = %#v, want %q", result.Answer, "write docs")
 	}
 
-	// The stale entry is gone, replaced by the program that worked.
 	entry, found, err := cache.Lookup(ctx, stale)
 	if err != nil || !found {
 		t.Fatalf("Lookup = (found %v, err %v), want (true, nil)", found, err)
@@ -390,9 +368,6 @@ func TestRunForgetsACachedProgramThatNoLongerRuns(t *testing.T) {
 }
 
 func TestRunWithoutAFingerprintDoesNotCache(t *testing.T) {
-	// A CodeMode that cannot fingerprint its capability set gives no way to
-	// tell that a cached program has gone stale, so caching stays off rather
-	// than becoming unsafe.
 	author := &model{responses: []string{workingProgram, workingProgram}}
 	options := Options{Runner: newRunner(t), Cache: newCache(t)}
 
@@ -427,8 +402,6 @@ func TestRunReportsWhereTheTimeWent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run returned error: %v", err)
 	}
-	// The point of the cache: a hit pays for a lookup and a sandbox run, and
-	// for neither of the two stages that cost a network round trip.
 	if cached.Timing.Generate != 0 {
 		t.Errorf("cache hit spent %s generating", cached.Timing.Generate)
 	}
@@ -457,9 +430,7 @@ func TestRunReportsTimingWhenItGivesUp(t *testing.T) {
 	}
 }
 
-// A wrapper that forwards Fingerprint but has nothing to forward to reports an
-// empty one. Caching on that would scope every capability set to the same key,
-// which is the reuse the fingerprint exists to prevent.
+// An empty fingerprint must disable caching.
 func TestRunTreatsAnEmptyFingerprintAsNoCache(t *testing.T) {
 	runtime := fingerprinted{mode: &mode{}, fingerprint: ""}
 	author := &model{responses: []string{workingProgram, workingProgram}}

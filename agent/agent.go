@@ -1,10 +1,6 @@
 // Package agent runs one code mode request end to end: search for relevant
 // capabilities, ask a model for a program that composes them, and run that
 // program in the sandbox.
-//
-// The model only ever learns the capabilities that search selected. The
-// executable allowlist stays with the code mode runtime, so a program that asks
-// for a capability outside the registry is rejected regardless of the prompt.
 package agent
 
 import (
@@ -24,62 +20,20 @@ import (
 
 // Options tunes one request.
 type Options struct {
-	// Limit is the maximum number of capabilities described to the model.
-	// Zero applies DefaultLimit.
+	// Limit is the maximum number of capabilities described to the model; zero applies DefaultLimit.
 	Limit int
-	// Attempts is how many programs may be generated before giving up. Each
-	// attempt after the first is told why the previous one failed. Zero
-	// applies DefaultAttempts.
+	// Attempts is how many programs may be generated before giving up; zero applies DefaultAttempts.
 	Attempts int
-	// Runner isolates and evaluates each generated program. Required: this
-	// package builds nothing from the environment on your behalf, so the
-	// engine your programs run in is always a decision you made.
-	//
-	// Build one with an engine package directly — goja.New(sandbox.Options{}) —
-	// or with sandbox.NewFromEnv if you want SANDBOX_ENGINE consulted. The
-	// caller closes it.
+	// Runner evaluates each generated program. Required; the caller closes it.
 	Runner sandbox.Runner
-
-	// Instructions are appended to the system prompt, after the engine's own
-	// rules and the capability declarations. This is where domain guidance
-	// goes: house style for the answer, a policy the program must respect, a
-	// hint about which capability to prefer.
-	//
-	// The engine's rules are not replaceable, because they describe the
-	// language and the single binding the program is evaluated against; a
-	// prompt without them produces code the sandbox cannot run. To take over
-	// the prompt entirely, drive the loop yourself — Runner.Prompt gives you
-	// the same base to build on.
+	// Instructions are appended to the system prompt after the engine's rules.
 	Instructions string
-
-	// Cache serves the program for a request that has been answered before,
-	// skipping search and generation entirely. Nil disables caching.
-	//
-	// This is where nearly all the latency of a repeated request is: writing a
-	// program costs a model call, running one costs microseconds. A hit is
-	// scoped to the engine's dialect, the runtime's capability fingerprint,
-	// and CacheCaller, so a cached program is never served into a world it was
-	// not written for.
-	//
-	// The caller closes it. See package program.
+	// Cache serves programs for repeated requests; nil disables caching. The caller closes it.
 	Cache program.Cache
-
-	// CacheCaller separates cache entries that must not be shared, such as a
-	// role or a tenant. Leave it empty only when every caller of this agent
-	// sees the same capabilities and the same data.
+	// CacheCaller separates cache entries that must not be shared, such as a role or tenant.
 	CacheCaller string
-
-	// OnChunk receives the program as the model writes it, when the model
-	// supports streaming. Nil, or a model that does not implement llm.Streamer,
-	// means the program arrives in one piece instead.
-	//
-	// It does not make the answer arrive sooner. It makes the several seconds
-	// a model takes visible, which is the difference between a blank screen
-	// and a page filling in. A repair attempt streams too, so a caller showing
-	// the program should reset its display when Attempts changes.
-	//
-	// It runs on the goroutine driving the request and must not block: the
-	// stream is not read while it runs.
+	// OnChunk receives the program as the model streams it, including repair
+	// attempts; nil disables streaming. It must not block.
 	OnChunk func(string)
 }
 
@@ -108,42 +62,23 @@ func (options Options) checked() (Options, error) {
 
 // Result records what one request produced.
 type Result struct {
-	// Answer is the value the program returned, decoded into Go types.
 	Answer any
-	// Source is the program that produced Answer.
 	Source string
-	// Matches are the capabilities that were described to the model.
+	// Matches are the capabilities described to the model; empty on a cache hit.
 	Matches []capability.Match
-	// Attempts is how many programs were generated, including the one that
-	// succeeded. A cached answer generated nothing, so it reports zero.
+	// Attempts is how many programs were generated; zero on a cache hit.
 	Attempts int
-	// Cached reports that Source came from the cache. Matches is empty in that
-	// case: a cache hit skips capability search along with generation.
-	Cached bool
-	// Timing is where the request spent its time.
-	Timing Timing
+	Cached   bool
+	Timing   Timing
 }
 
-// Timing breaks a request down by stage, so a deployment can see what its
-// latency is actually made of rather than assume.
-//
-// The stages are measured because they are the ones that differ by orders of
-// magnitude: Generate is a network round trip to a model, Search and Cache are
-// an embedding call and a query, and Run is an in-process interpreter. A cache
-// hit is Cache plus Run and nothing else, which is the whole point of the
-// cache and the easiest thing to confirm from these numbers.
+// Timing breaks a request's latency down by stage.
 type Timing struct {
-	// Total is the whole call, including the parts below and the work between
-	// them.
-	Total time.Duration
-	// Cache is the cache lookup, zero when no cache is configured.
-	Cache time.Duration
-	// Search is the capability search, zero on a cache hit.
-	Search time.Duration
-	// Generate is every model call added up, zero on a cache hit.
+	Total    time.Duration
+	Cache    time.Duration
+	Search   time.Duration
 	Generate time.Duration
-	// Run is every sandbox run added up, including a cached program that
-	// turned out to be stale and the attempts that failed.
+	// Run sums every sandbox run, including stale cached programs and failed attempts.
 	Run time.Duration
 }
 
@@ -172,9 +107,6 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 
 	runner := options.Runner
 	var timing Timing
-	// Every path out of here reports its timing, including the failures: a
-	// request that gave up after three attempts is exactly the one worth
-	// knowing the shape of.
 	finish := func(result Result, err error) (Result, error) {
 		timing.Total = time.Since(started)
 		result.Timing = timing
@@ -203,9 +135,7 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 		return finish(result, err)
 	}
 	if caching {
-		// A cache write that fails costs the next identical request a model
-		// call it would have paid anyway, so it must not fail a request that
-		// has already been answered.
+		// A failed cache write must not fail an answered request.
 		_ = options.Cache.Put(ctx, key, result.Source)
 	}
 	return finish(result, nil)
@@ -215,8 +145,6 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 // so the next attempt can correct it. Sandbox errors are the model's to fix;
 // transport errors are not.
 func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, matches []capability.Match, options Options, timing *Timing) (Result, error) {
-	// The engine that will evaluate the program writes the instructions for
-	// producing it, so switching engines switches dialects with no other change.
 	system := options.Runner.Prompt(matches)
 	if instructions := strings.TrimSpace(options.Instructions); instructions != "" {
 		system += "\nAdditional instructions:\n" + instructions + "\n"
@@ -249,12 +177,8 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 	return result, fmt.Errorf("gave up after %d attempts: %w", options.Attempts, lastErr)
 }
 
-// cacheKey builds the key a cached program is stored under, and reports
-// whether caching is possible at all. It is not when no cache is configured,
-// and not when the runtime cannot fingerprint its capability set: without a
-// fingerprint there is no way to tell that a cached program was written for a
-// registry that has since changed, and serving it anyway is worse than not
-// caching.
+// cacheKey builds the cache key, reporting false when there is no cache or the
+// runtime cannot fingerprint its capability set.
 func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, options Options) (program.Key, bool) {
 	if options.Cache == nil {
 		return program.Key{}, false
@@ -263,10 +187,7 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 	if !ok {
 		return program.Key{}, false
 	}
-	// An empty fingerprint is the same as none. A wrapper that forwards the
-	// method but has nothing to forward to reports one, and scoping every
-	// capability set to the same empty string is exactly the reuse the
-	// fingerprint exists to prevent.
+	// An empty fingerprint would scope every capability set together.
 	fingerprint := fingerprinter.Fingerprint()
 	if fingerprint == "" {
 		return program.Key{}, false
@@ -279,10 +200,7 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 	}, true
 }
 
-// fromCache answers request with a previously generated program. A miss, a
-// cache that errors, and a cached program that no longer runs all report no
-// hit, so the caller falls through to generation — the cache is an
-// optimization, and nothing about it may fail a request.
+// fromCache answers with a cached program; any cache failure reports a miss.
 func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner, timing *Timing) (Result, bool) {
 	lookup := time.Now()
 	entry, found, err := cache.Lookup(ctx, key)
@@ -294,18 +212,14 @@ func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache,
 	answer, err := runner.Run(ctx, mode, entry.Source)
 	timing.Run += time.Since(running)
 	if err != nil {
-		// The world moved under this program: a capability it called changed
-		// shape, or the data it assumed is gone. Drop it rather than serve it
-		// again, and let generation produce one that fits.
+		// Stale program: drop it and regenerate.
 		_ = cache.Forget(ctx, entry.ID)
 		return Result{}, false
 	}
 	return Result{Answer: answer, Source: entry.Source, Cached: true}, true
 }
 
-// complete asks the model for a program, streaming it when both the caller
-// wants chunks and the model can produce them. A model that cannot stream is
-// not an error — the caller simply sees the program arrive all at once.
+// complete asks the model for a program, streaming when both sides support it.
 func complete(ctx context.Context, model llm.Client, system, prompt string, chunk func(string)) (string, error) {
 	if chunk != nil {
 		if streamer, ok := model.(llm.Streamer); ok {
@@ -322,8 +236,6 @@ func Program(response string) string {
 	if !strings.HasPrefix(source, "```") {
 		return source
 	}
-	// Drop the opening fence and its language tag, then everything from the
-	// closing fence onward.
 	if _, rest, found := strings.Cut(source, "\n"); found {
 		source = rest
 	}
@@ -334,8 +246,6 @@ func Program(response string) string {
 }
 
 func repairPrompt(request, source string, failure error) string {
-	// The failed program is included so the model corrects it rather than
-	// rewriting from scratch and repeating the mistake.
 	return fmt.Sprintf(`%s
 
 Your previous program failed.
@@ -349,8 +259,7 @@ Error:
 Reply with a corrected program.`, request, source, failure)
 }
 
-// Answer renders a result value for display. Strings pass through; anything
-// else is rendered as JSON so objects stay readable.
+// Answer renders a result value for display, as JSON unless it is a string.
 func Answer(value any) string {
 	if value == nil {
 		return "(no value returned)"

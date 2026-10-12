@@ -1,6 +1,3 @@
-// This file is the only place in the package that reads the process
-// environment. Everything else takes typed arguments.
-
 package capability
 
 import (
@@ -10,8 +7,7 @@ import (
 	"strings"
 )
 
-// Environment variables read by OpenStoreFromEnv. Backend-specific variables
-// live with their backend package.
+// Environment variables read by OpenStoreFromEnv.
 const (
 	// EnvBackend selects the backend: sqlite or postgres.
 	EnvBackend = "CAPABILITY_DB"
@@ -19,17 +15,8 @@ const (
 	EnvDSN = "CAPABILITY_DB_DSN"
 )
 
-// OpenStoreFromEnv builds the store named by CAPABILITY_DB from the registered
-// backends, using CAPABILITY_DB_DSN and whatever else that backend reads.
-//
-// This is the convenience path. To open a store from your own configuration,
-// call the backend package directly — pgstore.Open(ctx, dsn) or
-// sqlitestore.Open(ctx, path, extensionPath) — which takes typed arguments and
-// reads no environment.
-//
-// It returns ErrNoStore when nothing is configured at all, which a caller can
-// treat as "semantic search is off" rather than as a failure. The caller closes
-// the returned store.
+// OpenStoreFromEnv opens the registered backend named by CAPABILITY_DB using CAPABILITY_DB_DSN.
+// It returns ErrNoStore when nothing is configured; the caller closes the store.
 func OpenStoreFromEnv(ctx context.Context) (Store, error) {
 	name := strings.ToLower(strings.TrimSpace(os.Getenv(EnvBackend)))
 	dsn := strings.TrimSpace(os.Getenv(EnvDSN))

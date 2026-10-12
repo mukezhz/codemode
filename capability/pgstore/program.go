@@ -10,15 +10,8 @@ import (
 	"github.com/mukezhz/codemode/program"
 )
 
-// OpenProgramCache returns the program store held in the same database as
-// store, which must be one this package opened. Dimension must match the
-// embedding model the cache will be used with — capability.Store.Metadata
-// reports the one the capability index was built with, and using it here keeps
-// the two consistent.
-//
-// Wrap the result with program.New to get a program.Cache. Closing that closes
-// this, which does not close the capability store: they share a connection pool,
-// and the capability store owns it.
+// OpenProgramCache returns the program store in the same database as store, which this package must have opened.
+// Closing it does not close store, which owns the shared pool.
 func OpenProgramCache(ctx context.Context, store capability.Store, dimension int) (program.Store, error) {
 	backing, ok := store.(*pgStore)
 	if !ok {
@@ -39,11 +32,7 @@ type pgProgramStore struct {
 }
 
 func (store *pgProgramStore) migrate(ctx context.Context, dimension int) error {
-	// The vector column is typed by dimension, so a cache built for one
-	// embedding model cannot hold vectors from another. Rather than silently
-	// mixing them, an existing table at a different dimension is replaced: the
-	// cache is derived data, and rebuilding it costs one model call per
-	// request that comes back.
+	// A table at a different dimension is replaced; the cache is derived data.
 	var existing int
 	err := store.db.QueryRowContext(ctx, `
 		SELECT a.atttypmod
@@ -53,7 +42,6 @@ func (store *pgProgramStore) migrate(ctx context.Context, dimension int) error {
 	`).Scan(&existing)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		// No table yet.
 	case err != nil:
 		return fmt.Errorf("inspect program cache: %w", err)
 	case existing != dimension:
@@ -80,10 +68,7 @@ func (store *pgProgramStore) migrate(ctx context.Context, dimension int) error {
 }
 
 func (store *pgProgramStore) Nearest(ctx context.Context, scope string, vector []float32, limit int) ([]program.Hit, error) {
-	// <=> is pgvector's cosine distance operator, matching the capability
-	// index. The scope filter is part of the query rather than applied after,
-	// so a program written for another dialect, capability set, or caller can
-	// never be returned.
+	// Scope is filtered in the query so a program for another dialect, capability set, or caller is never returned.
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT id::text, source, embedding <=> $1 AS distance
 		FROM cached_programs
@@ -129,6 +114,5 @@ func (store *pgProgramStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Close is a no-op: the connection pool belongs to the capability store this
-// cache was opened from, and closing it here would close that too.
+// Close is a no-op: the connection pool belongs to the capability store.
 func (store *pgProgramStore) Close() error { return nil }

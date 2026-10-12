@@ -1,14 +1,4 @@
-// Package search ranks capabilities by word overlap with the request.
-//
-// It exists because this example has no embedding endpoint: DeepSeek publishes
-// no embeddings API, and requiring a second provider just to run a demo is a
-// poor trade. For a real deployment prefer capability.Index, which ranks by
-// meaning rather than by shared words — "what is late?" finds "overdue" there
-// and does not here.
-//
-// What this does get right is the part that matters: search only decides what
-// the model is *told about*. It never decides what may run. Ranking badly
-// produces a worse answer; it cannot produce an unauthorized call.
+// Package search ranks capabilities by word overlap with the request; it decides only what the model is told about, never what may run.
 package search
 
 import (
@@ -38,9 +28,7 @@ func New(registry capability.Registry) codemode.SearchFunc {
 				unmatched = append(unmatched, capability.Match{Capability: item.capability, Distance: 1})
 				continue
 			}
-			// Distance is "lower is closer", so it inverts the score. Staying on
-			// that convention means this ranker and capability.Index are
-			// interchangeable without the caller noticing.
+			// Distance is lower-is-closer, matching capability.Index.
 			scored = append(scored, capability.Match{
 				Capability: item.capability,
 				Distance:   1 / (1 + score),
@@ -54,17 +42,7 @@ func New(registry capability.Registry) codemode.SearchFunc {
 			return scored[i].Capability.Name < scored[j].Capability.Name
 		})
 
-		// Top up to the limit with whatever did not match.
-		//
-		// This is the important part, and it was missing. Ranking should decide
-		// the *order* a model sees capabilities in, not whether it sees enough
-		// of them to answer. One weak accidental match used to suppress
-		// everything else — "how many todos do I have" matched the word "many"
-		// in one description and offered that capability alone, so the model
-		// dutifully answered a question nobody asked.
-		//
-		// A model handed twelve capabilities and needing three will ignore nine.
-		// A model handed one will use the one.
+		// Top up to the limit with unmatched capabilities: one weak match must not suppress the rest.
 		scored = append(scored, unmatched...)
 		if limit > 0 && limit < len(scored) {
 			scored = scored[:limit]
@@ -74,11 +52,8 @@ func New(registry capability.Registry) codemode.SearchFunc {
 }
 
 type indexedCapability struct {
-	capability capability.Capability
-	// name holds the words in the capability name, which are the strongest
-	// signal: someone asking to "complete a task" means tasks.complete.
-	name map[string]bool
-	// description holds the words a contract author wrote for a reader.
+	capability  capability.Capability
+	name        map[string]bool
 	description map[string]bool
 }
 
@@ -90,10 +65,7 @@ func index(item capability.Capability) indexedCapability {
 	}
 }
 
-// split turns "reports.byProject" into "reports by Project" so that a request
-// mentioning a project reaches it. Without this the whole second half of every
-// capability name is one unmatchable token, which is exactly the half that says
-// what the capability does.
+// split turns "reports.byProject" into "reports by Project".
 func split(name string) string {
 	var builder strings.Builder
 	for _, symbol := range name {
@@ -110,9 +82,7 @@ func split(name string) string {
 	return builder.String()
 }
 
-// score weights a name hit above a description hit. Both sides are stemmed at
-// index time, so "reports" in a name and "report" in a request are the same
-// token by the time they are compared.
+// score weights a name hit above a description hit.
 func (item indexedCapability) score(words []string) float64 {
 	score := 0.0
 	for _, word := range words {
@@ -127,29 +97,17 @@ func (item indexedCapability) score(words []string) float64 {
 	return score
 }
 
-// stop words carry no signal about which capability is wanted, and matching
-// them would make every capability score alike.
-//
-// The quantity words matter more than they look. "how many" appears in the
-// description of a capability that counts one specific thing, so leaving "many"
-// in made every counting question match that one capability and nothing else.
+// stop words carry no signal; quantity words like "many" would otherwise skew matches.
 var stop = set([]string{
 	"a", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "do",
 	"does", "for", "from", "get", "give", "had", "has", "have", "how", "i",
 	"in", "is", "it", "me", "much", "my", "of", "on", "or", "please", "show",
 	"than", "that", "the", "then", "there", "these", "this", "those", "to",
 	"was", "we", "what", "when", "which", "with", "you",
-	// Quantity words. A request is almost always asking "how many" of
-	// something, so they separate no two capabilities.
 	"many", "lot", "lots", "some", "few", "several", "number", "total",
 })
 
-// synonyms map what a person says to what the contracts say. The gap is real
-// and it is the application's to close: this app calls them tasks, and half its
-// users will call them todos.
-//
-// An embedding index closes it without a table — "what is late?" finds
-// "overdue" there. This is the honest cost of ranking by shared words.
+// synonyms map what a person says to what the contracts say.
 var synonyms = map[string]string{
 	"todo":     "task",
 	"todos":    "task",
@@ -192,15 +150,7 @@ func tokenize(text string) []string {
 	return words
 }
 
-// stem is deliberately crude: it strips the few suffixes that separate a
-// request's phrasing from a contract's. A real stemmer would be better and a
-// real embedder better still.
-//
-// The trailing "e" matters more than it looks. Stripping "ed" from "completed"
-// gives "complet", so leaving "complete" alone meant the two never matched —
-// a request saying "finished work" reached tasks.complete and never
-// reports.completedBetween. Applying the same rule to both sides is what makes
-// a crude stemmer usable; applying it to one is worse than not stemming.
+// stem strips a few suffixes, applied identically to both sides; "complete" drops its "e" so it matches "completed".
 func stem(word string) string {
 	for _, suffix := range []string{"ing", "ed", "es", "s"} {
 		if trimmed, found := strings.CutSuffix(word, suffix); found && len(trimmed) > 2 {
@@ -222,8 +172,7 @@ func set(words []string) map[string]bool {
 	return result
 }
 
-// stemmedSet indexes the stem, so stemming happens once here rather than on
-// every query against every capability.
+// stemmedSet indexes stems once rather than per query.
 func stemmedSet(words []string) map[string]bool {
 	result := make(map[string]bool, len(words))
 	for _, word := range words {

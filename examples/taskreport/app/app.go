@@ -1,29 +1,4 @@
-// Package app is the trust boundary: it turns an RPC path the registry
-// resolved into a call on the application's own store.
-//
-// Everything that arrives here has already been checked against the registry,
-// so the path is one this application published. Nothing else is assumed: the
-// JSON is decoded strictly, the store validates its own arguments, and an
-// unknown path is an error rather than a fallthrough.
-//
-// # Who is asking
-//
-// The identity comes from the context, and every branch derives a store.Scope
-// from it before touching a row. No request message carries a user, because a
-// field a program can set is a field it can set to someone else's name.
-//
-// There are two layers here and they do different jobs:
-//
-//   - The registry decides which capabilities exist for this caller. main.go
-//     builds a narrower one for a member, so tasks.assign is not merely hidden
-//     from the model — it is absent from the map Execute resolves against.
-//   - The scope decides which rows those capabilities may touch. That cannot
-//     live in the registry, which knows the capability being called and nothing
-//     about the data behind it.
-//
-// The admin checks below are the second lock on a door the registry already
-// locked. They stay because the registry is assembled per request from a role,
-// and a bug in that assembly should fail closed.
+// Package app dispatches registry-resolved RPC paths to the store, scoping every call to the caller's identity.
 package app
 
 import (
@@ -44,8 +19,7 @@ type App struct {
 	admins map[string]bool
 }
 
-// New returns an App. Admins names the workspace administrators, which a real
-// application would read from its own user table.
+// New returns an App; admins names the workspace administrators.
 func New(store *store.Store, admins ...string) *App {
 	set := make(map[string]bool, len(admins))
 	for _, admin := range admins {
@@ -54,9 +28,7 @@ func New(store *store.Store, admins ...string) *App {
 	return &App{store: store, admins: set}
 }
 
-// RPC paths this application serves. Listing them as constants rather than
-// string literals in the switch means a rename in the proto surfaces as a
-// compile error somewhere, not as a capability that silently stops working.
+// RPC paths this application serves, as constants so proto renames surface at compile time.
 const (
 	taskCreate    = "task.v1.TaskService/Create"
 	taskGet       = "task.v1.TaskService/Get"
@@ -92,13 +64,11 @@ func (app *App) Execute(ctx context.Context, rpc string, input json.RawMessage) 
 		return nil, err
 	}
 
-	// A request with no identity is a wiring failure, and the safe response to
-	// wiring failure is to stop rather than to pick a default.
+	// No identity is a wiring failure: stop rather than pick a default.
 	identity, err := auth.From(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// An administrator reads the workspace; everyone else reads their own rows.
 	scope := store.Only(identity.User)
 	if identity.Admin() {
 		scope = store.Everyone()
@@ -290,11 +260,7 @@ func (app *App) Execute(ctx context.Context, rpc string, input json.RawMessage) 
 		}
 		return encode(map[string]any{"user": user{Name: identity.User, Role: string(identity.Role)}})
 
-	// ------------------------------------------------ administrators only
-	//
-	// The registry handed to a member does not contain these names, so reaching
-	// here already means either an administrator or a wiring bug. The checks
-	// make the second case fail closed.
+	// Administrators only: members' registries omit these; the checks fail closed on a wiring bug.
 
 	case userList:
 		if _, err := auth.RequireAdmin(ctx, "users.list"); err != nil {
@@ -361,8 +327,7 @@ type user struct {
 	Role string `json:"role"`
 }
 
-// members lists the workspace. A real application reads this from its own user
-// table; the demo derives it from who owns tasks plus the configured admin.
+// members lists the workspace: task owners plus the configured admins.
 func (app *App) members() []user {
 	owners, err := app.store.Owners()
 	if err != nil {
@@ -379,8 +344,6 @@ func (app *App) members() []user {
 	return members
 }
 
-// task and tasks keep every success path one line, so the switch above reads as
-// a routing table rather than as error handling.
 func task(item store.Task, err error) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
@@ -412,9 +375,7 @@ func decodeID(input []byte) (int64, error) {
 	return request.ID, nil
 }
 
-// decode is strict on purpose. A model that invents a field name should be told
-// so on the first call, while the error can still be fed back for repair,
-// rather than having the value silently dropped and the answer come out wrong.
+// decode rejects unknown fields so a model learns of invented fields on the first call.
 func decode(input []byte, target any) error {
 	if len(bytes.TrimSpace(input)) == 0 {
 		input = []byte("{}")

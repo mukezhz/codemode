@@ -11,8 +11,7 @@ import (
 )
 
 func New(registry capability.Registry) codemode.SearchFunc {
-	// ponytail: keyword ranking keeps the demo dependency-free; use
-	// capability.Index.Search when production semantic ranking is wired.
+	// ponytail: keyword ranking keeps the demo dependency-free.
 	return func(_ context.Context, query string, limit int) ([]capability.Match, error) {
 		query = strings.TrimSpace(strings.ToLower(query))
 		if query == "" {

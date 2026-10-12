@@ -6,9 +6,6 @@ import (
 	"github.com/mukezhz/codemode/llm"
 )
 
-// Anthropic rejects a temperature alongside extended thinking, so asking for
-// sampling control has to turn thinking off. Getting this wrong makes every
-// request fail with a 400 that names neither cause.
 func TestSamplingParametersDisableThinking(t *testing.T) {
 	for name, options := range map[string]Options{
 		"temperature": {Options: llm.Options{Temperature: llm.Float(0.2)}},
@@ -22,8 +19,6 @@ func TestSamplingParametersDisableThinking(t *testing.T) {
 	}
 }
 
-// Without sampling parameters the model's own default must stand, so an
-// unconfigured client still gets adaptive thinking.
 func TestThinkingDefaultsToTheModelsOwnBehaviour(t *testing.T) {
 	config := thinkingConfig(Options{})
 	if config.OfDisabled != nil || config.OfAdaptive != nil || config.OfEnabled != nil {
@@ -31,8 +26,6 @@ func TestThinkingDefaultsToTheModelsOwnBehaviour(t *testing.T) {
 	}
 }
 
-// An explicit choice wins, even against sampling parameters: the caller has
-// said what they want and the API error is theirs to see.
 func TestExplicitThinkingWinsOverInference(t *testing.T) {
 	config := thinkingConfig(Options{
 		Options:  llm.Options{Temperature: llm.Float(0.2)},
@@ -43,9 +36,6 @@ func TestExplicitThinkingWinsOverInference(t *testing.T) {
 	}
 }
 
-// New must ignore the environment entirely: a caller who passed a Model has
-// decided, and one who passed none gets the package default, never whatever
-// ANTHROPIC_MODEL happens to be.
 func TestNewIgnoresTheEnvironment(t *testing.T) {
 	t.Setenv(EnvModel, "claude-from-env")
 	t.Setenv(EnvAPIKey, "key-from-env")
@@ -71,7 +61,6 @@ func TestNewIgnoresTheEnvironment(t *testing.T) {
 	}
 }
 
-// OptionsFromEnv is where ANTHROPIC_* is read, and the caller still wins.
 func TestOptionsFromEnvReadsAnthropicVariables(t *testing.T) {
 	t.Setenv(EnvAPIKey, "key-from-env")
 	t.Setenv(EnvModel, "claude-sonnet-5")
@@ -97,7 +86,6 @@ func TestOptionsFromEnvReadsAnthropicVariables(t *testing.T) {
 	}
 }
 
-// LLM_BASE_URL names no provider, so it must not make Claude look configured.
 func TestOptionsFromEnvIgnoresTheSharedBaseURL(t *testing.T) {
 	t.Setenv(EnvAPIKey, "")
 	t.Setenv(EnvBaseURL, "")
@@ -110,8 +98,6 @@ func TestOptionsFromEnvIgnoresTheSharedBaseURL(t *testing.T) {
 	}
 }
 
-// Fallbacks are an api.anthropic.com beta; a custom endpoint may not implement
-// them, so they default off there and stay overridable.
 func TestFallbacksDefaultOffAgainstACustomEndpoint(t *testing.T) {
 	direct, err := New(Options{Options: llm.Options{APIKey: "test"}})
 	if err != nil {

@@ -38,13 +38,7 @@ func names(matches []capability.Match) []string {
 	return found
 }
 
-// The bug this file exists for. "how many todos do I have" matched the word
-// "many" in one description and returned that capability *alone*, so the model
-// was handed projects.list and asked how many todos there were. It answered
-// zero, correctly, for a question nobody asked.
-//
-// Ranking decides the order a model sees capabilities in. It must never decide
-// whether it sees enough of them to answer.
+// Regression: one weak match ("many") must not suppress the other capabilities.
 func TestSearchAlwaysFillsTheLimit(t *testing.T) {
 	registry := full(t)
 	find := search.New(registry)
@@ -65,15 +59,12 @@ func TestSearchAlwaysFillsTheLimit(t *testing.T) {
 		}
 	}
 
-	// A limit larger than the registry returns everything, not a padded list.
 	matches, _ := find(context.Background(), "anything", 999)
 	if len(matches) != len(registry.Capabilities) {
 		t.Errorf("returned %d, want all %d", len(matches), len(registry.Capabilities))
 	}
 }
 
-// Whatever the wording, a question about how much work there is must reach a
-// capability that can answer it.
 func TestCountingQuestionsReachACountingCapability(t *testing.T) {
 	find := search.New(full(t))
 
@@ -95,8 +86,6 @@ func TestCountingQuestionsReachACountingCapability(t *testing.T) {
 	}
 }
 
-// The vocabulary gap is the application's to close: this app says "task" and
-// half its users will say "todo".
 func TestSynonymsBridgeTheVocabularyGap(t *testing.T) {
 	find := search.New(full(t))
 
@@ -116,8 +105,6 @@ func TestSynonymsBridgeTheVocabularyGap(t *testing.T) {
 	}
 }
 
-// A quantity word appearing in one description must not make that capability
-// the answer to every counting question.
 func TestQuantityWordsDoNotRank(t *testing.T) {
 	find := search.New(full(t))
 	matches, err := find(context.Background(), "how many todos do I have", 3)

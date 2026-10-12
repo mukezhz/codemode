@@ -8,20 +8,14 @@ import (
 	"sync"
 )
 
-// memoryStore is a Store held in the process.
-//
-// ponytail: a full scan over a map. A process that has answered enough distinct
-// requests for that to matter has a database; use the SQLite or Postgres
-// backend there.
+// memoryStore is a Store held in the process, searched by full scan.
 type memoryStore struct {
 	mutex   sync.RWMutex
 	records map[string]Record
 	next    int64
 }
 
-// NewMemoryStore returns a Store held in memory, for tests, single-process
-// tools, and any deployment that is happy to lose the cache on restart. Wrap it
-// with New like any other Store.
+// NewMemoryStore returns a Store held in memory, lost on restart.
 func NewMemoryStore() Store {
 	return &memoryStore{records: map[string]Record{}}
 }
@@ -77,10 +71,7 @@ func (store *memoryStore) Close() error {
 	return nil
 }
 
-// cosineDistance is 1 - cosine similarity, the same ranking the SQL backends
-// ask their vector extension for. The bool is false when the vectors cannot be
-// compared, which is treated as no match rather than as an error: a mismatched
-// dimension means the entry was written by a different embedding model.
+// cosineDistance is 1 - cosine similarity; false when the vectors are not comparable.
 func cosineDistance(a, b []float32) (float64, bool) {
 	if len(a) == 0 || len(a) != len(b) {
 		return 0, false

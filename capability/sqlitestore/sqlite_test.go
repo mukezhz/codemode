@@ -13,8 +13,7 @@ import (
 	"github.com/mukezhz/codemode/program"
 )
 
-// TestVectorSearch exercises the sqlite-vector backend end to end. It skips
-// unless SQLITE_VECTOR_EXTENSION points at the library.
+// TestVectorSearch skips unless SQLITE_VECTOR_EXTENSION is set.
 func TestVectorSearch(t *testing.T) {
 	extension := os.Getenv("SQLITE_VECTOR_EXTENSION")
 	if extension == "" {
@@ -46,7 +45,6 @@ func TestVectorSearch(t *testing.T) {
 	}
 }
 
-// Blank-importing the package must make CAPABILITY_DB=sqlite selectable.
 func TestBackendRegistersItself(t *testing.T) {
 	t.Setenv("CAPABILITY_DB", capability.BackendSQLite)
 	t.Setenv("CAPABILITY_DB_DSN", filepath.Join(t.TempDir(), "capabilities.db"))
@@ -56,16 +54,12 @@ func TestBackendRegistersItself(t *testing.T) {
 	if err == nil {
 		t.Fatal("OpenStoreFromEnv succeeded without the vector extension")
 	}
-	// Reaching the extension check proves the backend was selected, rather
-	// than the import being missing.
 	if !strings.Contains(err.Error(), "sqlite-vector extension") {
 		t.Fatalf("error = %v, want the backend's own extension error", err)
 	}
 }
 
-// TestProgramCache exercises the cached-program table end to end, in the same
-// database file as the capability index. It skips unless
-// SQLITE_VECTOR_EXTENSION points at the library.
+// TestProgramCache skips unless SQLITE_VECTOR_EXTENSION is set.
 func TestProgramCache(t *testing.T) {
 	extension := os.Getenv("SQLITE_VECTOR_EXTENSION")
 	if extension == "" {
@@ -109,7 +103,6 @@ func TestProgramCache(t *testing.T) {
 		t.Fatalf("source = %q", entry.Source)
 	}
 
-	// A different scope must not see it, however close the request is.
 	elsewhere := key
 	elsewhere.Language = "lua"
 	if _, found, err := cache.Lookup(ctx, elsewhere); err != nil || found {
@@ -123,7 +116,6 @@ func TestProgramCache(t *testing.T) {
 		t.Fatal("a forgotten program was served again")
 	}
 
-	// The capability index still answers from the same database.
 	index, err := capability.Open(ctx, store, embedder)
 	if err != nil {
 		t.Fatal(err)

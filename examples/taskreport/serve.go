@@ -22,9 +22,7 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/web"
 )
 
-// logger builds the request logger. -log debug adds the whole prompt, the
-// generated program, and one line per capability call, which is what you want
-// open the first time an answer looks wrong.
+// logger builds the request logger; -log debug adds prompts, programs, and per-call lines.
 func logger(config config) *slog.Logger {
 	level := slog.LevelInfo
 	switch strings.ToLower(strings.TrimSpace(config.logLevel)) {
@@ -51,7 +49,6 @@ func serve(
 		fmt.Printf("frontend\n  not built — %v\n", err)
 	}
 
-	// A tighter budget than the command line uses: see server.chatCallBudget.
 	chatRunner, err := goja.New(sandbox.Options{MaxCalls: 25, Timeout: 30 * time.Second})
 	if err != nil {
 		return err
@@ -86,8 +83,6 @@ func serve(
 	}
 	fmt.Println()
 
-	// Shut down on interrupt rather than dropping in-flight requests, which is
-	// what makes the reload-the-page loop pleasant during development.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
@@ -107,6 +102,5 @@ func serve(
 	}
 }
 
-// assetsOrNil keeps the signature above honest: a missing build is a warning,
-// not a failure, because the API is still useful on its own.
+// assetsOrNil warns on a missing build rather than failing.
 var _ = fs.FS(nil)

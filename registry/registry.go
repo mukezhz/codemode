@@ -1,13 +1,5 @@
-// Package registry turns a protobuf descriptor set into a capability registry.
-//
-// The registry is the allowlist: it maps a capability name a model may call to
-// the RPC path the host will invoke. Generating it from descriptors rather than
-// from Go code means a service that is not annotated cannot become callable by
-// forgetting a line somewhere else.
-//
-// The codemode-registry command wraps this for build pipelines. Call Generate
-// directly to produce a registry in-process, such as from a go:generate program
-// or a test that asserts the surface has not grown.
+// Package registry turns a protobuf descriptor set into a capability registry,
+// the allowlist mapping capability names to RPC paths.
 package registry
 
 import (
@@ -31,9 +23,8 @@ type Capability = capability.Capability
 type TypeSchema = capability.TypeSchema
 
 // Generate builds a registry from a Buf descriptor set. Every service carrying
-// (codemode.namespace) contributes its methods; a method missing
-// (codemode.description) is an error, because the description is the only
-// thing search and the model ever see.
+// (codemode.namespace) contributes its methods, each of which must declare
+// (codemode.description).
 func Generate(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	return generateRegistry(files)
 }
@@ -89,9 +80,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
 				}
-				// A method's roles replace the service's rather than adding to
-				// them, so one method of a restricted service can be opened
-				// deliberately and visibly.
+				// Method roles replace service roles rather than adding to them.
 				roles := defaultRoles
 				if methodRoles, err := optionalRoles(method.GetOptions(), methodRolesOption); err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
@@ -123,9 +112,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				if file.GetPackage() != "" {
 					serviceName = file.GetPackage() + "." + serviceName
 				}
-				// The messages the request and response refer to. A model that
-				// cannot see them guesses field names, and a wrong guess reads
-				// as undefined rather than failing.
+				// Referenced messages, so the model need not guess field names.
 				types := map[string]TypeSchema{}
 				for _, root := range []string{method.GetInputType(), method.GetOutputType()} {
 					if err := collectTypes(root, messages, types); err != nil {
@@ -154,10 +141,8 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	return registry, nil
 }
 
-// optionalRoles reads a space-separated role list. It returns nil when the
-// option is absent, which is what lets a method fall back to its service, and
-// an empty non-nil slice is impossible: a declared-but-blank list is an error
-// rather than a silent "everyone".
+// optionalRoles reads a space-separated role list, nil when absent; a declared
+// but blank list is an error rather than a silent "everyone".
 func optionalRoles(options proto.Message, number protowire.Number) ([]string, error) {
 	if number == 0 {
 		return nil, nil
@@ -193,15 +178,8 @@ func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee st
 	return 0, fmt.Errorf("custom option %s is not defined", name)
 }
 
-// stringOption reads the custom option with the given field number.
-//
-// It has to handle the option arriving two ways. When the descriptors come from
-// a Buf descriptor set, codemode.proto's extensions are not linked into this
-// binary, so the option sits in the message's unknown fields as raw wire bytes.
-// When the descriptors come from generated Go — the registry.FromFiles path —
-// the consumer's generated codemode package registered the extension, so the
-// option is resolved and the unknown fields are empty. Reading only one way
-// silently produces an empty namespace for half of all callers.
+// stringOption reads the custom option with the given field number, whether
+// resolved as a linked extension or left in unknown fields (Buf descriptor sets).
 func stringOption(options proto.Message, number protowire.Number) (string, error) {
 	if options == nil {
 		return "", nil
@@ -293,17 +271,8 @@ func schemaFor(typeName string, messages map[string]*descriptorpb.DescriptorProt
 	return TypeSchema{Type: shortTypeName(typeName), Fields: fields}, nil
 }
 
-// neutralType renders a field in the registry's language-neutral notation,
-// which is protobuf's own: bool, string, bytes, number, a message or enum name,
-// "repeated T", and "map<K, V>". The registry is data read by three sandbox
-// dialects, so it must not commit to any one of their type syntaxes; each
-// dialect renders this form into its own in sandbox/prompt.go.
-//
-// Numeric scalars all collapse to "number" because every one of them crosses
-// the bridge as a JSON number.
-// collectTypes walks every message reachable from typeName and records its
-// shape. Recursion is bounded by the seen set in into, so a message that refers
-// to itself — a tree node, a threaded comment — terminates.
+// collectTypes records the shape of every message reachable from typeName;
+// into doubles as the visited set, so recursive messages terminate.
 func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorProto, into map[string]TypeSchema) error {
 	message, ok := messages[typeName]
 	if !ok {
@@ -325,8 +294,7 @@ func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorP
 			continue
 		}
 		referenced := field.GetTypeName()
-		// A map is a synthetic entry message. Its shape is already carried by
-		// the map<K, V> notation, so follow the value and skip the entry.
+		// Map entries are carried by map<K, V>; follow the value instead.
 		if entry := messages[referenced]; entry != nil && entry.GetOptions().GetMapEntry() {
 			value := entry.Field[1]
 			if value.GetType() != descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
@@ -341,6 +309,8 @@ func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorP
 	return nil
 }
 
+// neutralType renders a field in protobuf-style language-neutral notation;
+// all numeric scalars become "number".
 func neutralType(field *descriptorpb.FieldDescriptorProto, messages map[string]*descriptorpb.DescriptorProto) (string, error) {
 	if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 		if message := messages[field.GetTypeName()]; message != nil && message.GetOptions().GetMapEntry() {

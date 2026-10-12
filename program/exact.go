@@ -9,11 +9,6 @@ import (
 
 // exactCache reuses a program only for a request it has already seen, matched
 // on the text after trimming and case folding.
-//
-// It needs no embedding model, which is what makes it the right cache for a
-// deployment that has none — and the right one to start with anywhere, because
-// it cannot serve the wrong program for a similar-looking request. A semantic
-// cache hits more often; this one never has to be talked out of a bad hit.
 type exactCache struct {
 	mutex   sync.RWMutex
 	entries map[string]Entry  // scope + request -> entry
@@ -22,8 +17,7 @@ type exactCache struct {
 }
 
 // NewExactCache returns a Cache that reuses a program only for a repeat of the
-// same request, ignoring surrounding whitespace and letter case. It holds
-// entries in memory and needs no embedder and no database.
+// same request, ignoring surrounding whitespace and letter case.
 func NewExactCache() Cache {
 	return &exactCache{entries: map[string]Entry{}, ids: map[string]string{}}
 }

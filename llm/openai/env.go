@@ -1,6 +1,3 @@
-// This file is the only place in the package that reads the process
-// environment. New and NewEmbedder take an Options and consult nothing else.
-
 package openai
 
 import (
@@ -21,13 +18,7 @@ const (
 	EnvEmbeddingBaseURL = "EMBEDDING_BASE_URL"
 )
 
-// OptionsFromEnv reads OPENAI_* into an llm.Options and reports whether any of
-// them were set. Nothing is applied for you: override any field before passing
-// it to New.
-//
-// A bare LLM_BASE_URL also counts as configured here, because most self-hosted
-// and third-party endpoints speak this protocol — but it is llm.OptionsFromEnv
-// that supplies the value, so precedence stays in one place.
+// OptionsFromEnv reads OPENAI_* into an llm.Options and reports whether any were set; a bare LLM_BASE_URL also counts.
 func OptionsFromEnv() (llm.Options, bool, error) {
 	options := llm.Options{
 		Provider: llm.ProviderOpenAI,
@@ -50,9 +41,7 @@ func NewFromEnv(options Options) (llm.Client, error) {
 	return New(options)
 }
 
-// EmbedOptionsFromEnv reads EMBEDDING_*, falling back to OPENAI_* and then
-// LLM_BASE_URL for anything the embedding variables leave unset. An application
-// that configured only the OpenAI values should not have to repeat them.
+// EmbedOptionsFromEnv reads EMBEDDING_*, falling back to OPENAI_* and then LLM_BASE_URL.
 func EmbedOptionsFromEnv() (EmbedOptions, error) {
 	options := EmbedOptions{
 		APIKey:  strings.TrimSpace(os.Getenv(EnvEmbeddingAPIKey)),

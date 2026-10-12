@@ -17,24 +17,10 @@ type Capability struct {
 	Input       TypeSchema `json:"input"`
 	Output      TypeSchema `json:"output"`
 
-	// Types are the message shapes Input and Output refer to, transitively.
-	//
-	// Without these a model is told that a call returns "repeated GroupCount"
-	// and nothing about what a GroupCount holds, so it guesses field names —
-	// and a program that reads group.project when the field is group.name
-	// produces "undefined" rather than an error. The guess is invisible until
-	// someone reads the answer.
-	//
-	// Keyed by unqualified type name, which is how the field strings refer to
-	// them.
+	// Types are the message shapes Input and Output refer to transitively, keyed by unqualified name.
 	Types map[string]TypeSchema `json:"types,omitempty"`
 
-	// Roles are the caller roles allowed to use this capability, from the
-	// (codemode.roles) option or the service's (codemode.default_roles). Empty
-	// means unrestricted.
-	//
-	// The policy lives in the contract rather than in a list in the host so
-	// that adding an RPC and forgetting to restrict it is hard. See ForRole.
+	// Roles are the caller roles allowed to use this capability; empty means unrestricted.
 	Roles []string `json:"roles,omitempty"`
 }
 
@@ -51,8 +37,7 @@ func (capability Capability) AllowsRole(role string) bool {
 func (capability *Capability) EmbeddingText() string {
 	input, _ := json.Marshal(capability.Input)
 	output, _ := json.Marshal(capability.Output)
-	// Types are deliberately excluded: they are shared between capabilities, so
-	// embedding them would pull unrelated contracts towards each other.
+	// Types are excluded: they are shared, so embedding them would pull unrelated contracts together.
 	return strings.Join([]string{
 		capability.Name,
 		capability.Description,

@@ -1,18 +1,5 @@
 // Command codemode-registry turns a Buf descriptor set into registry.json,
 // the allowlist of capabilities a model may call.
-//
-// Install it, or run it without installing:
-//
-//	go run github.com/mukezhz/codemode/cmd/codemode-registry@latest -help
-//
-// A typical build step, from anywhere in your repository:
-//
-//	buf build --as-file-descriptor-set -o build/protoset.pb
-//	codemode-registry -descriptor build/protoset.pb -out internal/capabilities/registry.json
-//
-// To start a project, write out the options file your protos must import:
-//
-//	codemode-registry -print-proto > proto/codemode.proto
 package main
 
 import (

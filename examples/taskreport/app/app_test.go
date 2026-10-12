@@ -23,8 +23,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/store"
 )
 
-// full is the whole surface, assembled from both proto files exactly as
-// main.go does it.
 func full(t *testing.T) capability.Registry {
 	t.Helper()
 	tasks, err := coderegistry.FromFiles(taskv1.File_task_proto)
@@ -79,17 +77,13 @@ func run(t *testing.T, ctx context.Context, mode codemode.CodeMode, program stri
 	return value
 }
 
-// Every capability the registry publishes must actually be implemented. A
-// registry entry with no case in the switch is a capability the model will be
-// offered and cannot use, and nothing else in the system catches that.
+// Every published capability must have a dispatch case.
 func TestEveryPublishedCapabilityIsImplemented(t *testing.T) {
 	mode, _, ctx := newMode(t, auth.Identity{User: "grace", Role: auth.RoleAdmin})
 
 	for _, item := range full(t).Capabilities {
 		t.Run(item.Name, func(t *testing.T) {
 			_, err := mode.Execute(ctx, item.Name, json.RawMessage(`{}`))
-			// An empty request is invalid for most capabilities; what must not
-			// happen is the dispatcher not knowing the path at all.
 			if err != nil && strings.Contains(err.Error(), "is not implemented") {
 				t.Fatalf("%s is in the registry but has no implementation", item.Name)
 			}
@@ -97,7 +91,6 @@ func TestEveryPublishedCapabilityIsImplemented(t *testing.T) {
 	}
 }
 
-// The whole point of code mode: many calls, one turn, one answer out.
 func TestProgramComposesTheWholeWorkflow(t *testing.T) {
 	mode, tasks, ctx := member(t, "ada")
 
@@ -120,7 +113,6 @@ func TestProgramComposesTheWholeWorkflow(t *testing.T) {
 	if value != "2 open, 1 done, 1 overdue, 2 projects" {
 		t.Fatalf("answer = %#v", value)
 	}
-	// The program's writes are real: this is the application's own database.
 	stored, err := tasks.List(store.Everyone(), store.Filter{Status: "completed"})
 	if err != nil {
 		t.Fatal(err)
@@ -130,9 +122,7 @@ func TestProgramComposesTheWholeWorkflow(t *testing.T) {
 	}
 }
 
-// The security boundary. Search returning a capability is not what authorizes
-// it; the registry is. A name the registry does not hold fails a map lookup
-// before any application code runs.
+// Search does not authorize; a name absent from the registry is rejected before app code runs.
 func TestInventedCapabilityIsRejected(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second})
@@ -151,9 +141,6 @@ func TestInventedCapabilityIsRejected(t *testing.T) {
 	}
 }
 
-// A model that invents a field should be told on the first call, while the
-// error can still be fed back for repair, rather than having the value dropped
-// and the answer come out quietly wrong.
 func TestUnknownRequestFieldIsRejected(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 	_, err := mode.Execute(ctx, "tasks.create",
@@ -166,8 +153,7 @@ func TestUnknownRequestFieldIsRejected(t *testing.T) {
 	}
 }
 
-// Application errors must reach the program as failures, not as empty results,
-// or a report will confidently total the wrong thing.
+// Application errors must reach the program as failures, not empty results.
 func TestApplicationErrorsSurfaceInTheProgram(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second})
@@ -186,8 +172,6 @@ func TestApplicationErrorsSurfaceInTheProgram(t *testing.T) {
 	}
 }
 
-// The bound has to hold against a program that ignores it, because the program
-// is untrusted input.
 func TestCallBudgetStopsARunawayProgram(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second, MaxCalls: 5})
@@ -207,10 +191,6 @@ func TestCallBudgetStopsARunawayProgram(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- identity
-
-// Row scoping. A member's program sees only their own tasks, and the scoping
-// comes from the context — there is no request field it could have set.
 func TestOneMemberCannotSeeAnother(t *testing.T) {
 	mode, tasks, ctx := member(t, "ada")
 	if _, err := tasks.Create("linus", "Linus's secret", "docs", "high", "", nil); err != nil {
@@ -228,17 +208,14 @@ func TestOneMemberCannotSeeAnother(t *testing.T) {
 		t.Fatalf("tasks.list returned %#v, want only Ada's own", value)
 	}
 
-	// Reports are scoped the same way, or a total would leak what a listing
-	// does not.
+	// Reports must be scoped too, or totals leak.
 	counts := run(t, ctx, mode, `return codemode.execute("reports.statusCounts", {}).total;`)
 	if counts != int64(1) {
 		t.Fatalf("statusCounts total = %#v, want 1", counts)
 	}
 }
 
-// Knowing another user's task ID must not be enough to read or change it. The
-// answer is "not found" rather than "forbidden", so a program cannot map out
-// which IDs exist by probing them.
+// Another user's task ID reports "not found", not "forbidden".
 func TestKnowingAnIDIsNotAccess(t *testing.T) {
 	mode, tasks, ctx := member(t, "ada")
 	theirs, err := tasks.Create("linus", "Linus's task", "docs", "high", "", nil)
@@ -267,16 +244,12 @@ func TestKnowingAnIDIsNotAccess(t *testing.T) {
 		}
 	}
 
-	// The task is untouched.
 	still, err := tasks.Get(store.Everyone(), theirs.ID)
 	if err != nil || still.Title != "Linus's task" || still.Completed {
 		t.Fatalf("task = %+v, err = %v; want it unchanged", still, err)
 	}
 }
 
-// Capability scoping, the outer lock. A member's runtime does not contain the
-// admin capabilities at all, so the rejection happens at a map lookup before
-// any application code runs.
 func TestAdminCapabilitiesAreAbsentForMembers(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 
@@ -291,10 +264,8 @@ func TestAdminCapabilitiesAreAbsentForMembers(t *testing.T) {
 	}
 }
 
-// The inner lock. If the registry were wired wrongly and an admin capability
-// reached the dispatcher, it must still fail.
+// Admin checks still fail if a member is wrongly handed the full registry.
 func TestAdminCheckHoldsEvenWithAWideRegistry(t *testing.T) {
-	// Deliberately hand a member the *full* registry, as a wiring bug would.
 	tasks, err := store.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -317,8 +288,6 @@ func TestAdminCheckHoldsEvenWithAWideRegistry(t *testing.T) {
 	}
 }
 
-// An administrator sees the workspace, and users.me reflects the context rather
-// than anything the program supplied.
 func TestAdminSeesEveryoneAndMeReflectsTheContext(t *testing.T) {
 	mode, tasks, ctx := newMode(t, auth.Identity{User: "grace", Role: auth.RoleAdmin})
 	tasks.Create("ada", "Ada's task", "platform", "low", "", nil)
@@ -335,8 +304,6 @@ func TestAdminSeesEveryoneAndMeReflectsTheContext(t *testing.T) {
 	}
 }
 
-// A request that arrives with no identity is a wiring failure, and the safe
-// response to wiring failure is to stop rather than to pick a default.
 func TestNoIdentityIsRejected(t *testing.T) {
 	mode, _, _ := member(t, "ada")
 	if _, err := mode.Execute(context.Background(), "tasks.list", json.RawMessage(`{}`)); err == nil {
@@ -344,9 +311,6 @@ func TestNoIdentityIsRejected(t *testing.T) {
 	}
 }
 
-// Ownership is taken from the identity, so a program cannot file work under
-// someone else's name — there is no field for it, and the created task proves
-// the owner was not taken from the request.
 func TestCreatedTasksBelongToTheCaller(t *testing.T) {
 	mode, tasks, ctx := member(t, "ada")
 
@@ -360,22 +324,13 @@ func TestCreatedTasksBelongToTheCaller(t *testing.T) {
 		t.Fatalf("tasks = %+v, want one owned by ada", created)
 	}
 
-	// And the request has no owner field to try.
 	_, err = mode.Execute(ctx, "tasks.create", json.RawMessage(`{"title":"x","owner":"linus"}`))
 	if err == nil {
 		t.Fatal("tasks.create accepted an owner field")
 	}
 }
 
-// Withholding a capability is silent, and silence is the danger.
-//
-// A member asking about a colleague has no tasks.listFor, so the model reaches
-// for tasks.list — which returns the member's own rows, correctly scoped —
-// filters for the colleague, finds nothing, and reports that they have no work.
-// Every layer held and the answer was false.
-//
-// The prompt has to say what the caller can see, so an empty result is not read
-// as evidence of absence.
+// The prompt must say what the caller can see, so an empty result is not read as absence.
 func TestIdentityInstructionsDescribeTheCallersReach(t *testing.T) {
 	member := auth.Identity{User: "ada", Role: auth.RoleMember}.Instructions()
 
@@ -384,7 +339,6 @@ func TestIdentityInstructionsDescribeTheCallersReach(t *testing.T) {
 			t.Errorf("a member's instructions omit %q:\n%s", want, member)
 		}
 	}
-	// The specific trap: filtering your own rows by someone else's name.
 	if !strings.Contains(member, "empty result means you cannot see their work") {
 		t.Errorf("a member's instructions do not warn against reading an empty result as absence:\n%s", member)
 	}
@@ -398,9 +352,7 @@ func TestIdentityInstructionsDescribeTheCallersReach(t *testing.T) {
 	}
 }
 
-// The sandbox is handed no capability list, only one binding — so a program
-// cannot enumerate what exists, and a name it invents or remembers is resolved
-// on the host side of the bridge or not at all.
+// The sandbox gets one binding, no capability list.
 func TestSandboxHoldsOnlyTheBridge(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 
@@ -415,12 +367,7 @@ func TestSandboxHoldsOnlyTheBridge(t *testing.T) {
 	}
 }
 
-// Naming a withheld capability from inside the sandbox must fail, whether the
-// program asks politely, asks twice, or swallows the error.
-//
-// This is the property the whole design rests on: authorization happens on the
-// host side of the bridge, against the registry built for this caller, so no
-// program — however written — can reach past it.
+// Withheld capabilities fail from the sandbox however the program asks.
 func TestSandboxCannotReachWithheldCapabilities(t *testing.T) {
 	mode, tasks, ctx := member(t, "ada")
 	if _, err := tasks.Create("linus", "Linus's task", "docs", "high", "", nil); err != nil {
@@ -444,7 +391,6 @@ func TestSandboxCannotReachWithheldCapabilities(t *testing.T) {
 		}
 	}
 
-	// Swallowing the error changes nothing: there is no data behind it to leak.
 	value := run(t, ctx, mode, `
 		try {
 			return "leaked: " + JSON.stringify(codemode.execute("tasks.listFor", { owner: "linus" }));

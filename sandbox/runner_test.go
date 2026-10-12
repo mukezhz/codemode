@@ -10,8 +10,7 @@ import (
 	"github.com/mukezhz/codemode/codemode"
 )
 
-// stub is an engine registered only by this test, so the registration
-// mechanics can be exercised without linking a real interpreter.
+// stub is a test-only engine.
 type stub struct{ options Options }
 
 func (stub *stub) Run(context.Context, codemode.CodeMode, string) (any, error) { return nil, nil }
@@ -42,8 +41,6 @@ func TestNewSelectsARegisteredEngine(t *testing.T) {
 	}
 }
 
-// A missing blank import is the common failure of this design, so the error
-// has to name the package rather than say "unsupported".
 func TestNewNamesTheMissingImportForAShippedEngine(t *testing.T) {
 	_, err := New(Options{Engine: EngineLua})
 	if err == nil {
@@ -64,12 +61,10 @@ func TestNewRejectsAnUnknownEngine(t *testing.T) {
 	}
 }
 
-// New must not consult the environment; only NewFromEnv does.
 func TestNewIgnoresTheEnvironment(t *testing.T) {
 	t.Setenv(EnvEngine, "stub")
 	t.Setenv(EnvTimeout, "7s")
 
-	// SANDBOX_ENGINE says stub, but an unset Options.Engine means the default.
 	if _, err := New(Options{}); err == nil {
 		t.Fatal("New succeeded — it read SANDBOX_ENGINE instead of defaulting")
 	}
@@ -95,7 +90,6 @@ func TestNewFromEnvFillsOnlyZeroFields(t *testing.T) {
 		t.Fatalf("Name() = %q, want the environment timeout", runner.Name())
 	}
 
-	// An explicitly set field wins over the environment.
 	explicit, err := NewFromEnv(Options{Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatalf("NewFromEnv returned error: %v", err)

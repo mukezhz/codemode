@@ -29,15 +29,12 @@ func TestLoadFSReadsAnEmbeddedRegistry(t *testing.T) {
 	}
 }
 
-// An empty registry means every capability call will be rejected, which is a
-// configuration mistake worth catching at startup rather than per request.
 func TestLoadRejectsAnEmptyRegistry(t *testing.T) {
 	if _, err := capability.Load(strings.NewReader(`{"capabilities":[]}`)); err == nil {
 		t.Fatal("Load accepted a registry with no capabilities")
 	}
 }
 
-// A typo in a hand-edited registry is silent without this.
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	if _, err := capability.Load(strings.NewReader(`{"capabilities":[],"oops":1}`)); err == nil {
 		t.Fatal("Load accepted an unknown field")

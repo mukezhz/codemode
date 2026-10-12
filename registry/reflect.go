@@ -11,24 +11,7 @@ import (
 )
 
 // FromFiles builds a registry from file descriptors that are already compiled
-// into your binary.
-//
-// This is the short path, and usually the right one. Your generated code
-// carries its own descriptors, so if you already import the package that
-// implements a service, everything needed to describe it is linked in:
-//
-//	import todov1 "myapp/gen/todo/v1"
-//
-//	registry, err := registry.FromFiles(todov1.File_todo_v1_todo_proto)
-//
-// No descriptor set to build, no JSON to generate, embed, or keep in step —
-// the registry cannot drift from the contracts because it is derived from them
-// at startup. Dependencies are followed automatically, so passing the file that
-// declares the service is enough.
-//
-// Prefer the codemode-registry command instead when you want the registry as a
-// reviewable artifact: a diff on registry.json in a pull request is a diff on
-// what a model is allowed to call.
+// into the binary, following their imports.
 func FromFiles(files ...protoreflect.FileDescriptor) (Registry, error) {
 	if len(files) == 0 {
 		return Registry{}, fmt.Errorf("no file descriptors given")
@@ -42,18 +25,9 @@ func FromFiles(files ...protoreflect.FileDescriptor) (Registry, error) {
 }
 
 // FromGlobalFiles builds a registry from every file descriptor linked into the
-// binary, which is what protoc-generated packages register from their init.
-//
-//	registry, err := registry.FromGlobalFiles()
-//
-// Only services carrying (codemode.namespace) contribute, so linking an
-// unrelated protobuf package cannot widen the registry. Even so, FromFiles is
-// the safer habit: it says in code exactly which contracts are exposed, and a
-// new transitive dependency cannot quietly add to them.
+// binary. Only services carrying (codemode.namespace) contribute.
 func FromGlobalFiles() (Registry, error) {
-	// RangeFiles walks a map, so its order changes between runs of the same
-	// binary. Sorting by path first makes the registry — and therefore the
-	// prompt built from it — byte-stable, which is what prompt caching needs.
+	// RangeFiles order is random; sort so the prompt is byte-stable for caching.
 	var files []protoreflect.FileDescriptor
 	protoregistry.GlobalFiles.RangeFiles(func(file protoreflect.FileDescriptor) bool {
 		files = append(files, file)
@@ -73,8 +47,6 @@ func FromGlobalFiles() (Registry, error) {
 }
 
 // collect appends file and everything it imports, depth first and once each.
-// Imports matter for two reasons: the request and response messages may live in
-// another file, and codemode.proto is where the custom options are declared.
 func collect(file protoreflect.FileDescriptor, set *descriptorpb.FileDescriptorSet, seen map[string]bool) {
 	path := file.Path()
 	if seen[path] {

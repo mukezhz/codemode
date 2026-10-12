@@ -7,8 +7,6 @@ import (
 
 var testDefaults = Defaults{Model: "default-model", MaxTokens: 1000}
 
-// WithDefaults must not consult the environment: an application that set a
-// field has decided, and a deployment variable must not override it.
 func TestWithDefaultsIgnoresTheEnvironment(t *testing.T) {
 	t.Setenv("LLM_MAX_TOKENS", "9999")
 	t.Setenv("LLM_TEMPERATURE", "0.9")
@@ -44,8 +42,6 @@ func TestWithDefaultsRejectsNegativeBounds(t *testing.T) {
 	}
 }
 
-// Merge is how a caller layers their own configuration over a set read from the
-// environment, so the receiver has to win every field it sets.
 func TestMergeKeepsTheReceiversSetFields(t *testing.T) {
 	mine := Options{Model: "mine", Temperature: Float(0)}
 	theirs := Options{
@@ -61,7 +57,6 @@ func TestMergeKeepsTheReceiversSetFields(t *testing.T) {
 	if *merged.Temperature != 0 {
 		t.Errorf("Temperature = %v, want the receiver's explicit 0", *merged.Temperature)
 	}
-	// Everything the receiver left zero comes from the other side.
 	if merged.Provider != "claude" || merged.APIKey != "key" || merged.BaseURL != "url" {
 		t.Errorf("merged = %+v, want the unset fields filled", merged)
 	}
@@ -73,7 +68,6 @@ func TestMergeKeepsTheReceiversSetFields(t *testing.T) {
 	}
 }
 
-// Temperature 0 is a real setting, so unset has to be a distinct state.
 func TestSamplingDistinguishesZeroFromUnset(t *testing.T) {
 	if (Options{}).Sampling() {
 		t.Error("Sampling() = true for a zero Options")

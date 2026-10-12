@@ -1,16 +1,4 @@
-// Package server puts the task application behind HTTP.
-//
-// Two surfaces, and the split is the point:
-//
-//   - /api/tasks and friends are an ordinary REST API. The board in the browser
-//     uses these. No model is involved, because creating a task does not need
-//     one.
-//   - /api/chat takes a sentence, and one model turn produces one program that
-//     composes capabilities and returns a view document to render.
-//
-// A real product looks like this. Code mode is not a replacement for the app's
-// own API; it is the thing that answers the questions the API has no endpoint
-// for.
+// Package server serves the task app's REST API and the code-mode /api/chat endpoint.
 package server
 
 import (
@@ -41,17 +29,14 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/view"
 )
 
-// Options configures the server. Everything is supplied by the caller; nothing
-// here reads the environment.
+// Options configures the server; nothing here reads the environment.
 type Options struct {
 	Store *store.Store
-	// Full is the whole capability surface. It is narrowed per request from
-	// the caller's role.
+	// Full is the whole capability surface, narrowed per request by role.
 	Full capability.Registry
 	// Admins names the workspace administrators.
 	Admins []string
-	// Model answers chat requests. Nil disables /api/chat with a clear error
-	// rather than a panic, so the board still works without credentials.
+	// Model answers chat requests; nil disables /api/chat.
 	Model llm.Client
 	// Runner evaluates the generated programs. Required.
 	Runner sandbox.Runner
@@ -59,22 +44,13 @@ type Options struct {
 	Limit int
 	// Attempts is how many programs may be generated before giving up.
 	Attempts int
-	// Assets serves the built frontend. Nil serves a message explaining how to
-	// build it.
+	// Assets serves the built frontend; nil serves build instructions.
 	Assets fs.FS
-	// Programs receives each generated program, formatted for reading. Nil
-	// prints none.
+	// Programs receives each generated program; nil prints none.
 	Programs io.Writer
-	// Logger records every step of a request. Nil discards them.
+	// Logger records request steps; nil discards them.
 	Logger *slog.Logger
-	// Cache reuses the program a request produced the last time it was asked,
-	// which removes the model call — the six seconds — from the repeat. Nil
-	// disables it.
-	//
-	// This demo has no embedding endpoint, so New installs an exact-match
-	// cache: the same question asked twice is free, and a differently worded
-	// one is not. A deployment with an embedder should pass program.New over
-	// its capability store instead, which also reuses across rewordings.
+	// Cache reuses programs across repeated requests; nil disables it.
 	Cache program.Cache
 }
 
@@ -103,8 +79,6 @@ func New(options Options) (*Server, error) {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	// Wrapped once here rather than per request: a Runner is safe to share, and
-	// each Run creates a fresh interpreter.
 	options.Runner = trace.Runner(options.Runner, logger, options.Programs)
 
 	return &Server{
@@ -128,18 +102,14 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/chat", server.chat)
 	mux.HandleFunc("POST /api/chat/stream", server.chatStream)
 
-	// The frontend is a single-page app, so any unmatched path serves the
-	// shell and lets the router decide.
+	// SPA: unmatched paths serve the shell.
 	mux.Handle("/", server.assets())
 
 	return server.withIdentity(mux)
 }
 
 // withIdentity resolves who is asking, once, for the whole request.
-//
-// A real deployment verifies a session cookie or a bearer token here. The demo
-// reads two headers so a browser can switch users from a dropdown — which is
-// exactly the shortcut a real one must not take.
+// Demo reads headers; a real deployment must verify a session or token here.
 func (server *Server) withIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		user := strings.TrimSpace(request.Header.Get("X-Demo-User"))
@@ -156,27 +126,20 @@ func (server *Server) withIdentity(next http.Handler) http.Handler {
 	})
 }
 
-// scoped builds the runtime this request may use: the registry narrowed to the
-// caller's role, and search built over that same narrowed set so the model is
-// never told about something it cannot call.
+// scoped narrows the registry to the caller's role and builds search over that same set.
 func (server *Server) scoped(ctx context.Context) (codemode.CodeMode, capability.Registry, error) {
 	identity, err := auth.From(ctx)
 	if err != nil {
 		return nil, capability.Registry{}, err
 	}
-	// The policy comes from (codemode.roles) in the contracts, so this server
-	// holds no list of privileged capability names.
+	// Policy comes from (codemode.roles) in the protos, not a list here.
 	allowed := server.options.Full.ForRole(string(identity.Role))
 	mode, err := codemode.New(allowed, search.New(allowed), server.app.Execute)
 	if err != nil {
 		return nil, capability.Registry{}, err
 	}
-	// Wrapping here rather than inside the library is the point: the seam is an
-	// interface, so observing it needs no change to the thing observed.
 	return trace.CodeMode(mode, server.log.With("user", identity.User, "role", string(identity.Role))), allowed, nil
 }
-
-// ---------------------------------------------------------------- the API
 
 func (server *Server) session(writer http.ResponseWriter, request *http.Request) {
 	identity, err := auth.From(request.Context())
@@ -206,9 +169,6 @@ func (server *Server) modelName() string {
 	return server.options.Model.Name()
 }
 
-// The board's endpoints go through the same App as the capabilities do, so
-// there is one implementation of what "complete a task" means and one place
-// that scopes it to the caller.
 func (server *Server) listTasks(writer http.ResponseWriter, request *http.Request) {
 	input := map[string]any{}
 	for _, field := range []string{"project", "status", "priority", "tag"} {
@@ -253,9 +213,7 @@ func (server *Server) summary(writer http.ResponseWriter, request *http.Request)
 	server.execute(writer, request, "reports.statusCounts", map[string]any{})
 }
 
-// execute runs one capability for the board. It goes through CodeMode rather
-// than calling the store directly, so the registry authorizes these calls
-// exactly as it authorizes a program's.
+// execute runs one capability for the board through CodeMode so the registry authorizes it.
 func (server *Server) execute(writer http.ResponseWriter, request *http.Request, name string, input map[string]any) {
 	mode, _, err := server.scoped(request.Context())
 	if err != nil {
@@ -276,8 +234,6 @@ func (server *Server) execute(writer http.ResponseWriter, request *http.Request,
 	writer.Write(output)
 }
 
-// ---------------------------------------------------------------- the chat
-
 type chatRequest struct {
 	Request string `json:"request"`
 }
@@ -289,22 +245,11 @@ type chatResponse struct {
 	Used     []capability.Match `json:"used"`
 	Took     string             `json:"took"`
 	// Cached reports that the program was reused rather than written again.
-	Cached bool `json:"cached"`
-	// Timing is where the time went, so a slow answer is diagnosable from the
-	// browser rather than only from the server log.
+	Cached bool         `json:"cached"`
 	Timing agent.Timing `json:"timing"`
 }
 
-// chatCallBudget bounds one answer.
-//
-// It is deliberately close to what a report needs. A model that cannot answer
-// directly will otherwise find a way around: asked for every task with only a
-// search capability, one wrote a loop calling search once per letter of the
-// alphabet and reassembled the list from the results. Thirty-six calls, a
-// correct-looking answer, and a pattern nobody wants in production.
-//
-// A budget this size makes that fail, and the failure reaches the model as
-// something it can act on: the repair attempt is told the budget was exhausted.
+// chatCallBudget bounds capability calls per answer, so workarounds like per-letter search loops fail.
 const chatCallBudget = 25
 
 func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
@@ -320,14 +265,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	send(writer, response)
 }
 
-// chatStream answers over server-sent events, emitting the program as the model
-// writes it and then the finished document.
-//
-// The model call is several seconds and nothing here makes it shorter. What
-// this changes is what those seconds look like: the program appears a line at a
-// time instead of the page sitting blank until all of it exists. A cached
-// answer skips straight to the result, which is the visible difference between
-// the two paths.
+// chatStream answers over server-sent events, streaming the program then the document.
 func (server *Server) chatStream(writer http.ResponseWriter, request *http.Request) {
 	body, identity, mode, ok := server.chatRequest(writer, request)
 	if !ok {
@@ -336,8 +274,6 @@ func (server *Server) chatStream(writer http.ResponseWriter, request *http.Reque
 
 	flusher, streamable := writer.(http.Flusher)
 	if !streamable {
-		// Nothing downstream can push bytes early, so streaming would only
-		// buffer the same response and deliver it later.
 		fail(writer, http.StatusInternalServerError, errors.New("this server cannot stream"))
 		return
 	}
@@ -345,8 +281,7 @@ func (server *Server) chatStream(writer http.ResponseWriter, request *http.Reque
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Cache-Control", "no-cache")
 	writer.Header().Set("Connection", "keep-alive")
-	// Without this a reverse proxy may buffer the whole stream, which turns
-	// streaming back into waiting.
+	// Stop reverse proxies from buffering the stream.
 	writer.Header().Set("X-Accel-Buffering", "no")
 	writer.WriteHeader(http.StatusOK)
 
@@ -359,8 +294,6 @@ func (server *Server) chatStream(writer http.ResponseWriter, request *http.Reque
 		flusher.Flush()
 	}
 
-	// Tell the browser the request is alive before the model has said anything,
-	// so the first paint does not wait on the provider.
 	event("start", map[string]string{"request": body.Request})
 
 	response, status, err := server.answer(request.Context(), body, identity, mode, func(piece string) {
@@ -373,8 +306,7 @@ func (server *Server) chatStream(writer http.ResponseWriter, request *http.Reque
 	event("result", response)
 }
 
-// chatRequest performs the checks every chat path shares. It writes the failure
-// itself and reports false, so a handler that gets false is done.
+// chatRequest runs shared checks, writing any failure itself and returning false.
 func (server *Server) chatRequest(writer http.ResponseWriter, request *http.Request) (chatRequest, auth.Identity, codemode.CodeMode, bool) {
 	var body chatRequest
 	if server.options.Model == nil {
@@ -403,8 +335,7 @@ func (server *Server) chatRequest(writer http.ResponseWriter, request *http.Requ
 	return body, identity, mode, true
 }
 
-// answer runs one request to a rendered document. OnChunk, when set, receives
-// the program as the model writes it.
+// answer runs one request to a rendered document; OnChunk receives the program as it streams.
 func (server *Server) answer(
 	parent context.Context,
 	body chatRequest,
@@ -412,23 +343,18 @@ func (server *Server) answer(
 	mode codemode.CodeMode,
 	onChunk func(string),
 ) (chatResponse, int, error) {
-	// The model call is the slow part, so the deadline lives here rather than
-	// on the sandbox, which bounds only the program.
 	ctx, cancel := context.WithTimeout(parent, 3*time.Minute)
 	defer cancel()
 
 	log := server.log.With("request", body.Request)
 	started := time.Now()
 	result, err := agent.Run(ctx, mode, trace.Model(server.options.Model, log), body.Request, agent.Options{
-		Runner:   server.options.Runner,
-		Limit:    server.options.Limit,
-		Attempts: server.options.Attempts,
-		// Two things the model cannot work out for itself: the shape of the
-		// answer, and the shape of its own access.
+		Runner:       server.options.Runner,
+		Limit:        server.options.Limit,
+		Attempts:     server.options.Attempts,
 		Instructions: view.Instructions + "\n\n" + identity.Instructions(),
 		Cache:        server.options.Cache,
-		// A program is written against one role's capabilities, so it may only
-		// ever be reused for that role.
+		// A program targets one role's capabilities, so cache per role.
 		CacheCaller: string(identity.Role),
 		OnChunk:     onChunk,
 	})
@@ -439,17 +365,12 @@ func (server *Server) answer(
 
 	document, err := view.Parse(result.Answer)
 	if err != nil {
-		// The program ran but produced something unrenderable. Returning the
-		// source with the error is what makes this debuggable rather than
-		// mysterious.
 		server.log.Error("unrenderable result", "error", err, "program", result.Source)
 		return chatResponse{}, http.StatusBadGateway, err
 	}
 
 	if document.Refused() {
-		// A refusal is a successful request with an unhappy answer, not a
-		// server failure, so it comes back as one — the browser renders it
-		// differently, and the program is still attached for inspection.
+		// A refusal is a successful response, not a server error.
 		log.Info("step=answer", "refused", document.Unavailable, "attempts", result.Attempts)
 	} else {
 		log.Info("step=answer",
@@ -472,8 +393,6 @@ func (server *Server) answer(
 	}, http.StatusOK, nil
 }
 
-// ---------------------------------------------------------------- assets
-
 func (server *Server) assets() http.Handler {
 	if server.options.Assets == nil {
 		return http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -487,9 +406,7 @@ func (server *Server) assets() http.Handler {
 
 	files := http.FileServerFS(server.options.Assets)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		// A single-page app owns its own routing, so a path with no file
-		// behind it serves the shell rather than a 404 — otherwise reloading
-		// /chat breaks.
+		// SPA: serve the shell for unknown paths so reloading /chat works.
 		if request.URL.Path != "/" && !strings.Contains(request.URL.Path, ".") {
 			request = request.Clone(request.Context())
 			request.URL.Path = "/"
@@ -498,12 +415,9 @@ func (server *Server) assets() http.Handler {
 	})
 }
 
-// ---------------------------------------------------------------- helpers
-
 func send(writer http.ResponseWriter, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
-		// The status is already written by now, so logging is all that is left.
 		return
 	}
 }

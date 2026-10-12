@@ -1,37 +1,5 @@
-// Package llm turns a code mode prompt into a model-authored program.
-//
-// The provider sits behind the Client interface, so the rest of the system
-// depends on it rather than on a vendor SDK.
-//
-// # Configuration
-//
-// Everything is configured through llm.Options. This package reads no
-// environment variable of its own: your application already has a way to
-// configure itself, and a library that reaches into os.Getenv fights it.
-//
-//	model, err := llm.New(llm.Options{
-//		Provider: llm.ProviderClaude,
-//		APIKey:   config.AnthropicKey,
-//	})
-//
-// If you do want the environment consulted, ask for it: OptionsFromEnv returns
-// an Options you can inspect and override, and NewFromEnv is the one-liner. The
-// rule holds across the whole library — only a name containing FromEnv reads
-// the environment.
-//
-// # Choosing a provider
-//
-// This package holds the interface, not the SDKs. Blank-import the providers
-// you want and they register themselves, so a binary links only the SDKs it can
-// actually call:
-//
-//	import (
-//		"github.com/mukezhz/codemode/llm"
-//		_ "github.com/mukezhz/codemode/llm/claude"
-//	)
-//
-// Importing a provider directly and calling its own New skips this package's
-// selection entirely, and is the most explicit form.
+// Package llm turns a code mode prompt into a model-authored program via a
+// pluggable Client; providers live in subpackages and register from init.
 package llm
 
 import (
@@ -43,68 +11,45 @@ import (
 	"sync"
 )
 
-// Client completes a single prompt. System states the rules and the available
-// capabilities; user carries the request being served.
+// Client completes a single prompt.
 type Client interface {
-	// Complete returns the model's response text. Ctx carries the request
-	// deadline and cancellation.
+	// Complete returns the model's response text.
 	Complete(ctx context.Context, system, user string) (string, error)
 
-	// Name identifies the provider and model, for logs and error messages.
+	// Name identifies the provider and model.
 	Name() string
 }
 
-// Streamer is an optional interface a Client may also implement, delivering
-// the response in pieces as the model writes it.
-//
-// It exists for latency that cannot be removed: a model call takes seconds, and
-// nothing the caller does makes it take less. Streaming does not make the
-// answer arrive sooner — it makes the wait visible, which is the difference
-// between a blank screen and a page filling in.
-//
-// Every caller must still work against a Client that does not implement it, so
-// this is an optional interface rather than a method on Client. Check for it:
-//
-//	if streamer, ok := client.(llm.Streamer); ok { ... }
+// Streamer is an optional Client extension that delivers the response in pieces.
 type Streamer interface {
 	// CompleteStream returns the same text Complete would, calling chunk with
-	// each piece as it arrives. Chunks are fragments, not whole lines or
-	// tokens; concatenating every chunk gives the returned text.
-	//
-	// Chunk runs on the calling goroutine and must not block for long — the
-	// stream is not read while it runs. It may be nil, which is the same as
-	// Complete.
+	// each fragment; chunk runs on the calling goroutine, must not block, and may be nil.
 	CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error)
 }
 
-// ErrNoProvider reports that no provider is configured. Callers that have a
-// fallback path, such as demos, can check for it with errors.Is.
+// ErrNoProvider reports that no provider is configured.
 var ErrNoProvider = errors.New("no LLM provider configured")
 
 // Provider describes one registered model backend.
 type Provider struct {
-	// Name is the canonical name that selects it, such as "claude".
+	// Name is the canonical name that selects it.
 	Name string
-	// Aliases are other accepted spellings, such as "anthropic".
+	// Aliases are other accepted spellings.
 	Aliases []string
 	// New builds a Client from options.
 	New func(Options) (Client, error)
-	// FromEnv reads this provider's own environment variables and reports
-	// whether any were set. Only OptionsFromEnv calls it; a provider that
-	// leaves it nil is selectable by name but never found by env detection.
+	// FromEnv reads this provider's environment variables and reports whether
+	// any were set; nil excludes it from env detection.
 	FromEnv func() (Options, bool, error)
-	// Priority orders env detection when more than one provider is configured.
-	// Lower wins. It is explicit rather than registration order, because
-	// import order is not something a caller should have to reason about.
+	// Priority orders env detection; lower wins.
 	Priority int
 }
 
-// Providers this module ships, and the package that registers each.
+// Providers this module ships.
 const (
-	// ProviderClaude speaks the Anthropic API. Package llm/claude.
+	// ProviderClaude speaks the Anthropic API (llm/claude).
 	ProviderClaude = "claude"
-	// ProviderOpenAI speaks the OpenAI API, which most self-hosted and
-	// third-party endpoints also speak. Package llm/openai.
+	// ProviderOpenAI speaks the OpenAI-compatible API (llm/openai).
 	ProviderOpenAI = "openai"
 )
 
@@ -118,8 +63,7 @@ var (
 	providers      = map[string]Provider{}
 )
 
-// RegisterProvider makes provider selectable by New. Provider packages call it
-// from init, so blank-importing one is enough.
+// RegisterProvider makes provider selectable by New; registering a name twice panics.
 func RegisterProvider(provider Provider) {
 	if provider.Name == "" || provider.New == nil {
 		panic("llm: provider needs a name and a constructor")
@@ -134,8 +78,7 @@ func RegisterProvider(provider Provider) {
 	}
 }
 
-// RegisteredProviders lists the canonical names of every registered provider,
-// sorted.
+// RegisteredProviders lists the canonical names of every registered provider, sorted.
 func RegisteredProviders() []string {
 	providersMutex.RLock()
 	defer providersMutex.RUnlock()
@@ -151,9 +94,7 @@ func RegisteredProviders() []string {
 	return names
 }
 
-// New builds the client named by options.Provider. It reads no environment
-// variable; every value comes from options. Use OptionsFromEnv first if you
-// want the environment consulted.
+// New builds the client named by options.Provider without reading the environment.
 func New(options Options) (Client, error) {
 	name := strings.ToLower(strings.TrimSpace(options.Provider))
 	if name == "" {
@@ -210,14 +151,9 @@ func unregisteredProvider(name string) error {
 }
 
 // Embedder turns text into a vector for capability search.
-//
-// Embedders are not registered the way providers are: only one embedding
-// protocol is in play, the OpenAI one, so llm/openai's NewEmbedder is the only
-// constructor and any compatible endpoint is reached by base URL.
 type Embedder struct {
-	// Model is recorded in the capability index, so a later search with a
-	// different model is rejected rather than silently mismatched.
+	// Model is recorded in the capability index so mismatched searches are rejected.
 	Model string
-	// Embed produces the vector. Ctx carries cancellation.
+	// Embed produces the vector.
 	Embed func(ctx context.Context, text string) ([]float32, error)
 }

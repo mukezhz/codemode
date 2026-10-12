@@ -11,8 +11,7 @@ import (
 	"github.com/mukezhz/codemode/capability/pgstore"
 )
 
-// TestPostgresSearch exercises the pgvector backend end to end. It skips
-// unless CAPABILITY_TEST_POSTGRES_DSN points at a database with pgvector.
+// TestPostgresSearch skips unless CAPABILITY_TEST_POSTGRES_DSN is set.
 func TestPostgresSearch(t *testing.T) {
 	dsn := os.Getenv("CAPABILITY_TEST_POSTGRES_DSN")
 	if dsn == "" {
@@ -48,13 +47,11 @@ func TestPostgresSearch(t *testing.T) {
 	if matches[0].Distance > matches[1].Distance {
 		t.Fatalf("matches are not ordered closest first: %v", matches)
 	}
-	// Schemas must survive the JSON round trip through the database.
 	if matches[0].Capability.RPC != "invoice.v1.InvoiceService/ListUnpaid" {
 		t.Fatalf("rpc = %q", matches[0].Capability.RPC)
 	}
 }
 
-// Blank-importing the package must make CAPABILITY_DB=postgres selectable.
 func TestBackendRegistersItself(t *testing.T) {
 	t.Setenv("CAPABILITY_DB", capability.BackendPostgres)
 	t.Setenv("CAPABILITY_DB_DSN", "")

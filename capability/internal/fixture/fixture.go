@@ -1,5 +1,4 @@
-// Package fixture holds test doubles shared by the capability package and its
-// store backends. It is internal: nothing here is part of the library's API.
+// Package fixture holds test doubles shared by the capability package and its store backends.
 package fixture
 
 import (
@@ -11,9 +10,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// Memory is an in-memory Store, so the Index logic is testable without a
-// database or a vector extension. It ranks by cosine distance, as the real
-// backends do.
+// Memory is an in-memory Store that ranks by cosine distance.
 type Memory struct {
 	model     string
 	dimension int
@@ -67,7 +64,6 @@ func cosineDistance(a, b []float32) float64 {
 }
 
 func sqrt(value float64) float64 {
-	// Newton's method keeps this file free of an import used once.
 	guess := value
 	for range 20 {
 		guess = (guess + value/guess) / 2

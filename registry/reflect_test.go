@@ -6,15 +6,11 @@ import (
 
 	"github.com/mukezhz/codemode/registry"
 
-	// The registry's own fixture, so a library test does not reach into an
-	// example. Both files are linked, which is what lets FromGlobalFiles see
-	// more than FromFiles is handed.
+	// Both fixture files are linked so FromGlobalFiles sees more than FromFiles.
 	fixturev1 "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1"
 	shippingv1 "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/shipping/v1"
 )
 
-// FromFiles is the short path: generated code already carries its descriptors,
-// so a consumer needs no descriptor set, no JSON, and no build step.
 func TestFromFilesReadsLinkedDescriptors(t *testing.T) {
 	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
@@ -39,9 +35,6 @@ func TestFromFilesReadsLinkedDescriptors(t *testing.T) {
 	}
 }
 
-// The descriptions and schemas are the whole point — search matches on one and
-// the model reads the other. The fixture carries one field of every shape the
-// neutral type renderer handles.
 func TestFromFilesCarriesDescriptionsAndSchemas(t *testing.T) {
 	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
@@ -64,8 +57,6 @@ func TestFromFilesCarriesDescriptionsAndSchemas(t *testing.T) {
 	}
 }
 
-// FromFiles scans only what it is handed, which is what makes it the safer
-// habit: a new transitive dependency cannot widen the registry.
 func TestFromFilesScansOnlyTheFilesGiven(t *testing.T) {
 	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
@@ -77,7 +68,6 @@ func TestFromFilesScansOnlyTheFilesGiven(t *testing.T) {
 		}
 	}
 
-	// Handed both, it returns both.
 	pair, err := registry.FromFiles(fixturev1.File_orders_proto, shippingv1.File_shipping_proto)
 	if err != nil {
 		t.Fatal(err)
@@ -87,8 +77,6 @@ func TestFromFilesScansOnlyTheFilesGiven(t *testing.T) {
 	}
 }
 
-// Every linked file is scanned, but only annotated services contribute — so
-// linking an unrelated protobuf package cannot widen the registry.
 func TestFromGlobalFilesFindsEveryAnnotatedService(t *testing.T) {
 	built, err := registry.FromGlobalFiles()
 	if err != nil {
@@ -99,8 +87,6 @@ func TestFromGlobalFilesFindsEveryAnnotatedService(t *testing.T) {
 			t.Errorf("namespace %q is missing from %v", want, built.Namespaces())
 		}
 	}
-	// codemode.proto is linked too and declares no service, so it must
-	// contribute nothing rather than error.
 	if len(built.Capabilities) != 4 {
 		t.Fatalf("capabilities = %d, want 4: %v", len(built.Capabilities), built.Names())
 	}
@@ -112,8 +98,6 @@ func TestFromFilesRejectsNoInput(t *testing.T) {
 	}
 }
 
-// The same binary must produce the same registry every run, or the prompt built
-// from it stops being cacheable. RangeFiles walks a map, so this is a real risk.
 func TestFromGlobalFilesIsDeterministic(t *testing.T) {
 	first, err := registry.FromGlobalFiles()
 	if err != nil {
@@ -130,9 +114,6 @@ func TestFromGlobalFilesIsDeterministic(t *testing.T) {
 	}
 }
 
-// A model told only that a call returns "repeated Order" has to guess what an
-// Order holds, and a wrong guess reads as undefined rather than failing. The
-// referenced shapes travel with the capability so it never has to guess.
 func TestFromFilesCarriesReferencedShapes(t *testing.T) {
 	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {
@@ -159,8 +140,7 @@ func TestFromFilesCarriesReferencedShapes(t *testing.T) {
 				t.Errorf("Order.%s = %q, want %q", field, order.Fields[field], want)
 			}
 		}
-		// The request and response themselves are already spelled out by Input
-		// and Output; repeating them would only pad the prompt.
+		// Input and Output types are excluded from Types.
 		if _, repeated := item.Types["ListOrdersResponse"]; repeated {
 			t.Error("the response type is repeated in Types")
 		}

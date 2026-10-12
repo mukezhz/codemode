@@ -1,11 +1,4 @@
-// Package claude speaks the Anthropic API.
-//
-// Blank-import it to make LLM_PROVIDER=claude available:
-//
-//	import _ "github.com/mukezhz/codemode/llm/claude"
-//
-// Anthropic publishes no embeddings API, so capability search always uses
-// llm/openai's embedder, whichever provider writes the programs.
+// Package claude implements llm.Client for the Anthropic API.
 package claude
 
 import (
@@ -33,45 +26,36 @@ func init() {
 // DefaultModel is used when neither Options.Model nor ANTHROPIC_MODEL is set.
 const DefaultModel = "claude-opus-5"
 
-// DefaultMaxTokens bounds thinking and response text together. Claude Opus 5
-// thinks by default, so a budget sized only for the program would truncate it.
+// DefaultMaxTokens bounds thinking and response text together.
 const DefaultMaxTokens = 16000
 
 // Thinking selects the extended-thinking mode.
 type Thinking int
 
 const (
-	// ThinkingDefault leaves the model's own default in place, which is
-	// adaptive thinking on current models. Setting Temperature or TopP
-	// overrides this to ThinkingOff, because Anthropic rejects sampling
-	// parameters alongside thinking.
+	// ThinkingDefault keeps the model default, or ThinkingOff when Temperature or TopP is set.
 	ThinkingDefault Thinking = iota
-	// ThinkingOff disables extended thinking. Programs are measurably worse
-	// without it; choose this only when you need sampling control.
+	// ThinkingOff disables extended thinking.
 	ThinkingOff
 	// ThinkingAdaptive asks the model to decide how much to think.
 	ThinkingAdaptive
 )
 
-// Options configures the Claude client. The embedded llm.Options carries
-// everything portable; the fields beside it are Anthropic-specific.
+// Options configures the Claude client with Anthropic-specific fields.
 type Options struct {
 	llm.Options
 
-	// Thinking selects the extended-thinking mode. See Thinking.
+	// Thinking selects the extended-thinking mode.
 	Thinking Thinking
 
-	// Fallbacks lets a request be served by a recommended fallback model when
-	// a safety classifier declines it. Nil enables it against api.anthropic.com
-	// and disables it against a custom endpoint, which may not implement the
-	// beta. Use llm.Bool-style explicitness only if you need to force it.
+	// Fallbacks enables server-side fallback models; nil enables it only
+	// without a custom BaseURL.
 	Fallbacks *bool
 
 	// Betas are additional beta headers to send.
 	Betas []anthropic.AnthropicBeta
 
-	// Request are raw SDK request options — retries, headers, an HTTP client.
-	// The escape hatch for anything this struct does not model.
+	// Request are raw SDK request options.
 	Request []option.RequestOption
 }
 
@@ -84,11 +68,7 @@ type client struct {
 	thinking  anthropic.BetaThinkingConfigParamUnion
 }
 
-// New builds a Claude client from options. It reads no environment variable;
-// Model and MaxTokens fall back to this package's defaults, and everything else
-// is exactly what you passed.
-//
-// Use OptionsFromEnv to read ANTHROPIC_* from the environment first.
+// New builds a Claude client from options without reading the environment.
 func New(options Options) (llm.Client, error) {
 	resolved, err := options.Options.WithDefaults(llm.Defaults{
 		Model:     DefaultModel,
@@ -111,8 +91,7 @@ func New(options Options) (llm.Client, error) {
 		requestOptions = append(requestOptions, option.WithRequestTimeout(resolved.Timeout))
 	}
 
-	// Fallbacks default off against a custom endpoint, which may not implement
-	// the beta at all.
+	// A custom endpoint may not implement the fallback beta.
 	fallbacks := resolved.BaseURL == ""
 	if options.Fallbacks != nil {
 		fallbacks = *options.Fallbacks
@@ -128,10 +107,7 @@ func New(options Options) (llm.Client, error) {
 	}, nil
 }
 
-// thinkingConfig resolves the thinking mode, honouring the rule that Anthropic
-// rejects a temperature or top_p alongside extended thinking. Asking for
-// sampling control is taken as asking for thinking to be off, because the
-// alternative is a request that always fails.
+// thinkingConfig resolves the thinking mode; Anthropic rejects sampling params alongside thinking.
 func thinkingConfig(options Options) anthropic.BetaThinkingConfigParamUnion {
 	mode := options.Thinking
 	if mode == ThinkingDefault && options.Sampling() {
@@ -153,16 +129,14 @@ func thinkingConfig(options Options) anthropic.BetaThinkingConfigParamUnion {
 
 func (client *client) Name() string { return "claude/" + client.model }
 
-// request builds the message parameters shared by Complete and CompleteStream,
-// so the two cannot drift in what they ask the model for.
+// request builds the message parameters shared by Complete and CompleteStream.
 func (client *client) request(system, user string) anthropic.BetaMessageNewParams {
 	params := anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(client.model),
 		MaxTokens: client.maxTokens,
 		System: []anthropic.BetaTextBlockParam{{
 			Text: system,
-			// The capability declarations are stable across a session, so
-			// caching them keeps repeated requests cheap.
+			// Declarations are stable across a session, so cache them.
 			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}},
 		Messages: []anthropic.BetaMessageParam{
@@ -181,8 +155,6 @@ func (client *client) request(system, user string) anthropic.BetaMessageNewParam
 	}
 	params.Betas = client.params.Betas
 	if client.fallbacks {
-		// A safety classifier may decline; the recommended fallback model
-		// serves the request instead of the call failing.
 		params.Fallbacks = anthropic.BetaFallbacksParamOfDefault()
 		params.Betas = append(params.Betas, anthropic.AnthropicBetaServerSideFallback2026_07_01)
 	}
@@ -217,8 +189,6 @@ func (client *client) CompleteStream(ctx context.Context, system, user string, c
 	stream := client.client.Beta.Messages.NewStreaming(ctx, client.request(system, user))
 	defer stream.Close()
 
-	// Accumulate rather than assemble by hand: the SDK knows which deltas
-	// belong to which block, and only text blocks are the answer.
 	var message anthropic.BetaMessage
 	var builder strings.Builder
 	for stream.Next() {

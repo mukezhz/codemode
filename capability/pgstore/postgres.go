@@ -1,12 +1,4 @@
-// Package pgstore indexes capabilities in PostgreSQL using the pgvector
-// extension.
-//
-// Blank-import it to make CAPABILITY_DB=postgres available:
-//
-//	import _ "github.com/mukezhz/codemode/capability/pgstore"
-//
-// It is pure Go, so it builds with CGO_ENABLED=0. The database must allow
-// CREATE EXTENSION vector, or have it installed already.
+// Package pgstore indexes capabilities in PostgreSQL using the pgvector extension.
 package pgstore
 
 import (
@@ -23,24 +15,19 @@ import (
 
 func init() {
 	capability.RegisterBackend(capability.Backend{
-		Name:    capability.BackendPostgres,
-		Aliases: []string{"postgresql", "pgx"},
-		DSN:     "the Postgres connection URL",
-		// Open needs nothing but the DSN, so there is no separate env path.
+		Name:        capability.BackendPostgres,
+		Aliases:     []string{"postgresql", "pgx"},
+		DSN:         "the Postgres connection URL",
 		OpenFromEnv: func(ctx context.Context, dsn string) (capability.Store, error) { return Open(ctx, dsn) },
 	})
 }
 
-// store indexes capabilities in PostgreSQL using the pgvector
-// extension. The database must allow CREATE EXTENSION vector, or have it
-// installed already.
+// store indexes capabilities in PostgreSQL using pgvector.
 type pgStore struct {
 	db *sql.DB
 }
 
-// Open connects to the Postgres index named by dsn, a libpq connection string
-// or URL such as postgres://user:pass@host:5432/db. Ctx carries cancellation.
-// The caller closes the store. It reads no environment variable.
+// Open connects to the Postgres index named by dsn; the caller closes the store.
 func Open(ctx context.Context, dsn string) (capability.Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -66,8 +53,7 @@ func (store *pgStore) Rebuild(ctx context.Context, model string, dimension int, 
 	}
 	defer tx.Rollback()
 
-	// The vector column is typed by dimension, so a rebuild at a new dimension
-	// has to recreate the table rather than truncate it.
+	// The vector column is typed by dimension, so a new dimension recreates the table.
 	if _, err := tx.ExecContext(ctx, `
 		DROP TABLE IF EXISTS capabilities;
 		DROP TABLE IF EXISTS capability_index_meta;
@@ -130,7 +116,6 @@ func (store *pgStore) Metadata(ctx context.Context) (string, int, error) {
 }
 
 func (store *pgStore) Search(ctx context.Context, vector []float32, limit int) ([]capability.Match, error) {
-	// <=> is pgvector's cosine distance operator, matching the SQLite backend.
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT name, rpc, description, input_json, output_json, embedding <=> $1 AS distance
 		FROM capabilities

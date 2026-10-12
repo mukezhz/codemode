@@ -20,10 +20,7 @@ import (
 	taskstore "github.com/mukezhz/codemode/examples/taskreport/store"
 )
 
-// This application derives its registry at startup, but `make generate` also
-// writes registry.json from the same contracts. If the two disagreed, a project
-// that reviews the JSON in a pull request would be reviewing something other
-// than what runs.
+// Startup-derived registry must match the generated registry.json.
 func TestDerivedRegistryMatchesTheGeneratedFile(t *testing.T) {
 	generated, err := capability.LoadFile("registry.json")
 	if err != nil {
@@ -43,8 +40,6 @@ func TestDerivedRegistryMatchesTheGeneratedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Compared by name: the two paths visit files in different orders, and
-	// order is not part of what a registry means.
 	want := byName(t, generated)
 	got := byName(t, derived)
 	if len(want) != len(got) {
@@ -70,8 +65,6 @@ func byName(t *testing.T, built capability.Registry) map[string]string {
 	return byName
 }
 
-// The whole surface this application publishes, in one assertion. A capability
-// appearing or vanishing should be a deliberate edit to this list.
 func TestPublishedCapabilities(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)
@@ -89,13 +82,7 @@ func TestPublishedCapabilities(t *testing.T) {
 	}
 }
 
-// The prompt is the only thing a model sees. A capability withheld from a role
-// must not appear in it — not as a signature, not as a name in a description,
-// not anywhere — because a model told that tasks.assign exists will try it, and
-// a request that fails is a worse answer than one that never reaches for it.
-//
-// This is the assertion that matches the design: search is built over the
-// narrowed registry, so withholding is one decision rather than two.
+// A withheld capability must not appear anywhere in a role's prompt.
 func TestWithheldCapabilitiesNeverReachThePrompt(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)
@@ -118,7 +105,6 @@ func TestWithheldCapabilitiesNeverReachThePrompt(t *testing.T) {
 		t.Fatal("the fixture withholds nothing")
 	}
 
-	// Questions chosen to pull hardest towards the admin capabilities.
 	for _, question := range []string{
 		"who on the team has the most overdue work?",
 		"list everyone in the workspace",
@@ -137,8 +123,6 @@ func TestWithheldCapabilitiesNeverReachThePrompt(t *testing.T) {
 		}
 	}
 
-	// An administrator's prompt does carry them, or the narrowing would be
-	// withholding from everyone.
 	matches, _ := search.New(full)(context.Background(), "who has the most overdue work?", 12)
 	adminPrompt := runner.Prompt(matches)
 	if !strings.Contains(adminPrompt, "reports.byOwner") {
@@ -146,9 +130,7 @@ func TestWithheldCapabilitiesNeverReachThePrompt(t *testing.T) {
 	}
 }
 
-// Out of scope and non-existent must be indistinguishable. A distinct
-// "forbidden" would let a program discover which capabilities exist by naming
-// them, one at a time, and reading the errors.
+// Out-of-scope and non-existent capabilities must be indistinguishable.
 func TestWithheldAndInventedCapabilitiesFailAlike(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)
@@ -182,10 +164,7 @@ func TestWithheldAndInventedCapabilitiesFailAlike(t *testing.T) {
 	}
 }
 
-// The policy lives in the contracts, so the set of unrestricted capabilities is
-// something to assert rather than assume. If a privileged RPC is added and its
-// (codemode.roles) forgotten, it lands here and this test says so — which is
-// the failure mode a list in the host could not catch.
+// Catches a privileged RPC whose (codemode.roles) annotation was forgotten.
 func TestOnlyTheIntendedCapabilitiesAreUnrestricted(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)
@@ -206,8 +185,7 @@ func TestOnlyTheIntendedCapabilitiesAreUnrestricted(t *testing.T) {
 	}
 }
 
-// An unknown role gets the unrestricted surface and nothing more, rather than
-// everything or an error. A typo in a role name must fail closed.
+// An unknown role gets only the unrestricted surface.
 func TestUnknownRoleGetsOnlyTheUnrestrictedSurface(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)

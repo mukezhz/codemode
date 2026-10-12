@@ -10,8 +10,6 @@ import (
 	"github.com/mukezhz/codemode/capability/internal/fixture"
 )
 
-// A backend registered only by this test, so registration mechanics are
-// exercised without linking a real driver.
 func init() {
 	capability.RegisterBackend(capability.Backend{
 		Name:    "stub",
@@ -98,8 +96,6 @@ func TestOpenStoreFromEnvSelectsARegisteredBackend(t *testing.T) {
 	}
 }
 
-// A missing blank import is the common failure of this design, so the error
-// has to name the package rather than say "unsupported".
 func TestOpenStoreFromEnvNamesTheMissingImportForAShippedBackend(t *testing.T) {
 	for backend, want := range map[string]string{
 		capability.BackendSQLite:   "capability/sqlitestore",
@@ -153,8 +149,6 @@ func TestOpenStoreFromEnvReportsMissingConfiguration(t *testing.T) {
 	}
 }
 
-// ErrNoStore is the signal a caller treats as "semantic search is off", so it
-// must survive the wrapping OpenStore does.
 func TestOpenStoreFromEnvReportsErrNoStoreWhenUnconfigured(t *testing.T) {
 	t.Setenv("CAPABILITY_DB", "")
 	t.Setenv("CAPABILITY_DB_DSN", "")
@@ -163,5 +157,4 @@ func TestOpenStoreFromEnvReportsErrNoStoreWhenUnconfigured(t *testing.T) {
 	}
 }
 
-// The test double must satisfy the interface the real backends implement.
 var _ capability.Store = (*fixture.Memory)(nil)

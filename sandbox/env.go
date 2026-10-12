@@ -1,6 +1,3 @@
-// This file is the only place in the package that reads the process
-// environment. New takes an Options and consults nothing else.
-
 package sandbox
 
 import (
@@ -15,18 +12,13 @@ import (
 const (
 	// EnvEngine selects the interpreter: goja, starlark, or lua.
 	EnvEngine = "SANDBOX_ENGINE"
-	// EnvTimeout stops a program once it has run this long, as a Go duration.
+	// EnvTimeout bounds a run, as a Go duration.
 	EnvTimeout = "SANDBOX_TIMEOUT"
-	// EnvMaxCalls limits how many capability calls a program may make.
+	// EnvMaxCalls limits capability calls per run.
 	EnvMaxCalls = "SANDBOX_MAX_CALLS"
 )
 
-// OptionsFromEnv fills every zero field of options from the environment,
-// leaving set fields alone. Your configuration wins; the environment is the
-// fallback.
-//
-//	options, err := sandbox.OptionsFromEnv(sandbox.Options{MaxCalls: 20})
-//	runner, err := sandbox.New(options)   // MaxCalls stays 20
+// OptionsFromEnv fills every zero field of options from the environment.
 func OptionsFromEnv(options Options) (Options, error) {
 	if options.Engine == "" {
 		options.Engine = strings.ToLower(strings.TrimSpace(os.Getenv(EnvEngine)))

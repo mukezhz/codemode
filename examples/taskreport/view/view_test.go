@@ -8,7 +8,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/view"
 )
 
-// decoded mimics what the sandbox hands back: JSON already decoded into Go.
 func decoded(t *testing.T, source string) any {
 	t.Helper()
 	var value any
@@ -37,8 +36,6 @@ func TestParseAcceptsEveryBlockKind(t *testing.T) {
 	}
 }
 
-// A model that answers in prose is not wrong enough to fail on; the reader
-// still gets their answer.
 func TestParseWrapsAPlainString(t *testing.T) {
 	document, err := view.Parse("Nothing is overdue.")
 	if err != nil {
@@ -49,8 +46,6 @@ func TestParseWrapsAPlainString(t *testing.T) {
 	}
 }
 
-// Every rejection here is one the repair loop can act on, which is why they are
-// errors rather than a blank panel in the browser.
 func TestParseRejectsMalformedDocuments(t *testing.T) {
 	for name, test := range map[string]struct{ source, want string }{
 		"unknown block type": {`{"blocks":[{"type":"pie","series":[{"label":"a","value":1}]}]}`, "unknown type"},
@@ -76,8 +71,6 @@ func TestParseRejectsMalformedDocuments(t *testing.T) {
 	}
 }
 
-// A ragged row renders as a broken table with no way to tell which cell went
-// missing, so it has to fail where the model can still fix it.
 func TestParseRejectsARaggedTable(t *testing.T) {
 	_, err := view.Parse(decoded(t, `{"blocks":[{"type":"table",
 		"columns":["Task","Due"],"rows":[["Ship it","2026-08-09"],["Only one"]]}]}`))
@@ -95,10 +88,6 @@ func TestParseRejectsNothing(t *testing.T) {
 	}
 }
 
-// A model with no way to say "I cannot" answers anyway. It reaches for the
-// capabilities it does have, gets its own data, and titles it with someone
-// else's name — or calls a search capability once per letter of the alphabet to
-// rebuild a list it was not given. Both look like answers.
 func TestParseAcceptsARefusal(t *testing.T) {
 	document, err := view.Parse(decoded(t, `{"unavailable":"I can only see your own tasks."}`))
 	if err != nil {
@@ -112,8 +101,6 @@ func TestParseAcceptsARefusal(t *testing.T) {
 	}
 }
 
-// Declining and answering at once is the failure worth catching: the reader
-// gets whichever the renderer happens to show.
 func TestParseRejectsARefusalWithBlocks(t *testing.T) {
 	_, err := view.Parse(decoded(t, `{"unavailable":"no","blocks":[{"type":"text","text":"but here is a guess"}]}`))
 	if err == nil {
@@ -124,8 +111,6 @@ func TestParseRejectsARefusalWithBlocks(t *testing.T) {
 	}
 }
 
-// The error for an empty document points at the refusal, so the repair attempt
-// is told what to do rather than only what went wrong.
 func TestEmptyDocumentSuggestsRefusing(t *testing.T) {
 	_, err := view.Parse(decoded(t, `{"blocks":[]}`))
 	if err == nil {
@@ -136,8 +121,6 @@ func TestEmptyDocumentSuggestsRefusing(t *testing.T) {
 	}
 }
 
-// The instructions have to forbid the two specific improvisations, or the
-// refusal is available and unused.
 func TestInstructionsForbidImprovising(t *testing.T) {
 	for _, want := range []string{
 		`{"unavailable":`,

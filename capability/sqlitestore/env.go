@@ -1,6 +1,3 @@
-// This file is the only place in the package that reads the process
-// environment. Open takes typed arguments and consults nothing else.
-
 package sqlitestore
 
 import (
@@ -11,9 +8,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// EnvExtension names the sqlite-vector library. There is no default: loading an
-// arbitrary extension found by search would be a code-execution hole, so the
-// path is always explicit.
+// EnvExtension names the sqlite-vector library; there is no default, since searching for one would allow loading arbitrary code.
 const EnvExtension = "SQLITE_VECTOR_EXTENSION"
 
 func init() {
@@ -25,8 +20,7 @@ func init() {
 	})
 }
 
-// OpenFromEnv opens the SQLite index at path, taking the vector library from
-// SQLITE_VECTOR_EXTENSION. Call Open instead to pass the path yourself.
+// OpenFromEnv opens the SQLite index at path, taking the vector library from SQLITE_VECTOR_EXTENSION.
 func OpenFromEnv(ctx context.Context, path string) (capability.Store, error) {
 	return Open(ctx, path, strings.TrimSpace(os.Getenv(EnvExtension)))
 }

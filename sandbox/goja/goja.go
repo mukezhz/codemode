@@ -22,19 +22,12 @@ func init() {
 	})
 }
 
-// gojaRunner evaluates programs in an in-process JavaScript interpreter.
-//
-// ponytail: goja is not a security boundary. It denies ambient capabilities
-// (no require, no fetch, no filesystem) and bounds time and call count, which
-// is enough for code this host asked a model to write. Implement Runner over a
-// subprocess or container before running code supplied by end users; the bridge
-// shape does not change, only the transport.
+// gojaRunner evaluates JavaScript in-process; it denies ambient capabilities but is not a security boundary for end-user code.
 type gojaRunner struct {
 	options sandbox.Options
 }
 
-// New returns a Runner backed by the in-process goja interpreter. Blank-import
-// this package instead to have sandbox.New select it from SANDBOX_ENGINE.
+// New returns a Runner backed by the in-process goja interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
@@ -43,9 +36,7 @@ func New(options sandbox.Options) (sandbox.Runner, error) {
 	return &gojaRunner{options: options}, nil
 }
 
-// javascriptTypes renders registry types as TypeScript. Bytes are shown as a
-// base64 string rather than Uint8Array because that is what actually arrives:
-// the bridge decodes protojson, which encodes bytes as base64 text.
+// javascriptTypes renders registry types as TypeScript; bytes show as base64 strings because protojson encodes them so.
 var javascriptTypes = prompt.Types{
 	Scalar: map[string]string{
 		"bool":  "boolean",
@@ -99,8 +90,7 @@ func (runner *gojaRunner) Name() string {
 		runner.options.Timeout, runner.options.MaxCalls)
 }
 
-// Close is a no-op: the interpreter is created per run and owns no resource
-// that outlives it.
+// Close is a no-op: the interpreter is created per run.
 func (runner *gojaRunner) Close() error { return nil }
 
 func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, source string) (any, error) {
@@ -111,13 +101,11 @@ func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, sourc
 	ctx, cancel := context.WithTimeout(ctx, runner.options.Timeout)
 	defer cancel()
 
-	// A fresh interpreter per run. Its globals are exactly what Set installs,
-	// so the program has no filesystem, network, or module access.
+	// Fresh interpreter per run; its only globals are what Set installs.
 	vm := gojavm.New()
 	calls := 0
 
-	// The entire host bridge. The capability name is an argument rather than a
-	// binding, so this stays one function no matter how large the registry is.
+	// The entire host bridge; the capability name is an argument, not a binding.
 	execute := func(name string, input map[string]any) any {
 		calls++
 		if calls > runner.options.MaxCalls {

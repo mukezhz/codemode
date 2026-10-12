@@ -11,25 +11,13 @@ import (
 	"github.com/mukezhz/codemode/llm"
 )
 
-// DefaultEmbeddingModel is used when neither EmbedOptions.Model nor
-// EMBEDDING_MODEL is set.
+// DefaultEmbeddingModel is used when neither EmbedOptions.Model nor EMBEDDING_MODEL is set.
 const DefaultEmbeddingModel = "text-embedding-3-small"
 
-// EmbedOptions configures the embedder. Only Model, APIKey, BaseURL, and
-// Timeout are read; sampling parameters have no meaning for an embeddings
-// request.
+// EmbedOptions configures the embedder; only Model, APIKey, BaseURL, and Timeout are read.
 type EmbedOptions = llm.Options
 
-// NewEmbedder builds an embedder over the OpenAI embeddings protocol from
-// options. Anthropic publishes no embeddings API, so this is the embedder
-// whichever provider writes the programs; point BaseURL at any compatible
-// endpoint to embed locally.
-//
-// It reads no environment variable — use EmbedOptionsFromEnv for that. Only
-// Model, APIKey, BaseURL, and Timeout are read; sampling parameters have no
-// meaning for an embeddings request.
-//
-// It returns llm.ErrNoProvider when neither a key nor a base URL is set.
+// NewEmbedder builds an OpenAI-protocol embedder; it returns llm.ErrNoProvider when neither a key nor a base URL is set.
 func NewEmbedder(options EmbedOptions) (llm.Embedder, error) {
 	resolved, err := options.WithDefaults(llm.Defaults{Model: DefaultEmbeddingModel})
 	if err != nil {

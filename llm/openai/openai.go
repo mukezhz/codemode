@@ -1,13 +1,4 @@
-// Package openai speaks the OpenAI API.
-//
-// Blank-import it to make LLM_PROVIDER=openai available:
-//
-//	import _ "github.com/mukezhz/codemode/llm/openai"
-//
-// Most self-hosted and third-party endpoints speak this protocol, so pointing
-// OPENAI_BASE_URL at one reaches it without another provider. It also holds
-// NewEmbedder, which capability search uses regardless of which provider
-// writes the programs.
+// Package openai implements llm.Client and an embedder for OpenAI-compatible APIs.
 package openai
 
 import (
@@ -31,29 +22,23 @@ func init() {
 	})
 }
 
-// DefaultModel is used when neither Options.Model nor OPENAI_MODEL is set. Set
-// one of those to pin whichever model your account is entitled to.
+// DefaultModel is used when neither Options.Model nor OPENAI_MODEL is set.
 const DefaultModel = "gpt-5"
 
 // DefaultMaxTokens bounds reasoning and response text together.
 const DefaultMaxTokens = 16000
 
-// Options configures the OpenAI client. The embedded llm.Options carries
-// everything portable; the fields beside it are OpenAI-specific.
+// Options configures the OpenAI client with OpenAI-specific fields.
 type Options struct {
 	llm.Options
 
-	// ReasoningEffort tunes how much a reasoning model thinks before
-	// answering: "minimal", "low", "medium", or "high". Empty leaves the
-	// model's default. Ignored by endpoints that do not implement it.
+	// ReasoningEffort tunes reasoning depth; empty keeps the model default.
 	ReasoningEffort string
 
-	// Seed asks for reproducible sampling where the endpoint supports it.
-	// Nil leaves it unset.
+	// Seed asks for reproducible sampling where supported; nil leaves it unset.
 	Seed *int64
 
-	// Request are raw SDK request options — retries, headers, an HTTP client.
-	// The escape hatch for anything this struct does not model.
+	// Request are raw SDK request options.
 	Request []option.RequestOption
 }
 
@@ -63,11 +48,7 @@ type client struct {
 	params Options
 }
 
-// New builds an OpenAI client from options. It reads no environment variable;
-// Model and MaxTokens fall back to this package's defaults, and everything else
-// is exactly what you passed.
-//
-// Use OptionsFromEnv to read OPENAI_* from the environment first.
+// New builds an OpenAI client from options without reading the environment.
 func New(options Options) (llm.Client, error) {
 	resolved, err := options.Options.WithDefaults(llm.Defaults{
 		Model:     DefaultModel,
@@ -99,8 +80,7 @@ func New(options Options) (llm.Client, error) {
 
 func (client *client) Name() string { return "openai/" + client.model }
 
-// request builds the completion parameters shared by Complete and
-// CompleteStream, so the two cannot drift in what they ask the model for.
+// request builds the completion parameters shared by Complete and CompleteStream.
 func (client *client) request(system, user string) openaisdk.ChatCompletionNewParams {
 	params := openaisdk.ChatCompletionNewParams{
 		Model:               client.model,

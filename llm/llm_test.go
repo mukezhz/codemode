@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// Two providers registered only by this test, so the selection rules can be
-// exercised without linking a vendor SDK.
+// Test-only providers, so selection is exercised without a vendor SDK.
 type stub struct{ name string }
 
 func (stub *stub) Complete(context.Context, string, string) (string, error) { return "", nil }
@@ -29,7 +28,6 @@ func init() {
 		FromEnv:  func() (Options, bool, error) { return Options{}, os.Getenv("STUB_SECOND") != "", nil },
 		Priority: 2,
 	})
-	// No Configured func: selectable by name, never self-selected.
 	RegisterProvider(Provider{
 		Name: "manual",
 		New:  func(Options) (Client, error) { return &stub{name: "manual"}, nil },
@@ -53,8 +51,6 @@ func TestNewSelectsARegisteredProvider(t *testing.T) {
 	}
 }
 
-// New must not fall back to the environment. A caller who passed no provider
-// gets an error, not whatever happens to be set in the process.
 func TestNewDoesNotConsultTheEnvironment(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("LLM_PROVIDER", "first")
@@ -65,7 +61,6 @@ func TestNewDoesNotConsultTheEnvironment(t *testing.T) {
 	}
 }
 
-// Priority, not import order, decides which configured provider wins.
 func TestOptionsFromEnvPrefersTheLowestPriorityConfiguredProvider(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("STUB_FIRST", "yes")
@@ -79,8 +74,6 @@ func TestOptionsFromEnvPrefersTheLowestPriorityConfiguredProvider(t *testing.T) 
 	}
 }
 
-// A provider with no FromEnv func must never be picked implicitly, or
-// registering one would change which provider an existing deployment uses.
 func TestOptionsFromEnvNeverSelfSelectsAProviderWithoutDetection(t *testing.T) {
 	clearEnv(t)
 	if _, err := OptionsFromEnv(); !errors.Is(err, ErrNoProvider) {
@@ -88,8 +81,6 @@ func TestOptionsFromEnvNeverSelfSelectsAProviderWithoutDetection(t *testing.T) {
 	}
 }
 
-// The whole point of returning Options rather than a Client: the caller sees
-// what the environment said and can override it.
 func TestOptionsFromEnvReturnsAnOverridableValue(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("STUB_FIRST", "yes")
@@ -113,7 +104,6 @@ func TestOptionsFromEnvReturnsAnOverridableValue(t *testing.T) {
 	}
 }
 
-// A typo in a deployment variable should fail at startup, not be ignored.
 func TestOptionsFromEnvRejectsUnparseableValues(t *testing.T) {
 	for name, value := range map[string]string{
 		"LLM_MAX_TOKENS":  "lots",
@@ -132,8 +122,6 @@ func TestOptionsFromEnvRejectsUnparseableValues(t *testing.T) {
 	}
 }
 
-// A missing blank import is the common failure of this design, so the error
-// has to name the package rather than say "unsupported".
 func TestNewNamesTheMissingImportForAShippedProvider(t *testing.T) {
 	for provider, want := range map[string]string{
 		ProviderClaude: "llm/claude",
@@ -166,8 +154,6 @@ func TestNewRejectsAnUnknownProvider(t *testing.T) {
 	}
 }
 
-// LLM_BASE_URL applies to whichever provider is chosen, so it must fill in
-// only where the provider's own variable did not.
 func TestOptionsFromEnvLayersTheSharedBaseURL(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("STUB_FIRST", "yes")

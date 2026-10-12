@@ -1,24 +1,4 @@
-// Command taskreport is a task tracker with reporting, driven in code mode.
-//
-// It is a complete application: tasks live in SQLite, eighteen capabilities
-// are generated from protobuf contracts, and a model answers questions by
-// writing one JavaScript program that composes them. The program runs in goja
-// with a single host binding, and only its final answer comes back.
-//
-// The model is reached over the OpenAI protocol, so any endpoint speaking it
-// works — DeepSeek, a local server, or OpenAI itself:
-//
-//	go run ./examples/taskreport \
-//	  -base-url https://api.deepseek.com/v1 \
-//	  -api-key  sk-... \
-//	  -model    deepseek-chat \
-//	  -request  "which projects are behind, and what should I do first?"
-//
-// With no key it still runs end to end: search still selects capabilities, and
-// a fixed program stands in for the model so the mechanism is inspectable.
-//
-// Note how configuration flows. This command reads flags and the environment;
-// the library reads neither. Everything below is handed an explicit Options.
+// Command taskreport is a SQLite task tracker with reporting, answered in code mode by a model over the OpenAI protocol.
 package main
 
 import (
@@ -49,9 +29,7 @@ import (
 )
 
 func main() {
-	// Before the flags are parsed, so the file can supply their defaults. The
-	// path is fixed rather than a flag for that reason; -env would have to be
-	// read before flag.Parse to be useful.
+	// Loaded before flag parsing so the file can supply flag defaults.
 	if err := loadEnvFile(envFile()); err != nil {
 		fmt.Fprintln(os.Stderr, "taskreport:", err)
 		os.Exit(1)
@@ -103,7 +81,6 @@ type config struct {
 }
 
 func run(ctx context.Context, config config) error {
-	// 1. The application's own database. The library never sees it.
 	tasks, err := store.Open(config.database)
 	if err != nil {
 		return err
@@ -120,9 +97,7 @@ func run(ctx context.Context, config config) error {
 		}
 	}
 
-	// 2. Who is asking. In a service this comes from a verified token; here
-	// from flags. It goes on the context and nowhere else — no capability
-	// takes a user, so a program cannot name one.
+	// Identity goes on the context only; no capability takes a user, so a program cannot name one.
 	role, err := auth.ParseRole(config.role)
 	if err != nil {
 		return err
@@ -130,9 +105,6 @@ func run(ctx context.Context, config config) error {
 	identity := auth.Identity{User: config.user, Role: role}
 	ctx = auth.NewContext(ctx, identity)
 
-	// 3. The registry: what may run. One call per proto file, joined here.
-	// This is how a larger surface is assembled — a CRM would list contacts,
-	// deals, and billing the same way, each owning its own namespace.
 	full, err := capabilities()
 	if err != nil {
 		return err
@@ -142,30 +114,21 @@ func run(ctx context.Context, config config) error {
 		return err
 	}
 
-	// 4. Narrowed to this caller's role. A member's runtime does not contain
-	// tasks.assign at all: it is absent from the map Execute resolves against,
-	// not merely hidden from the model.
+	// A member's runtime lacks admin capabilities entirely, not just hidden from the model.
 	allowed := forRole(full, identity)
 
-	// 5. The runtime. Search shapes what the model knows about; the registry
-	// shapes what may execute. Two separate lists, and only the second is a
-	// security boundary.
+	// Search shapes what the model sees; only the registry is a security boundary.
 	mode, err := codemode.New(allowed, search.New(allowed), app.New(tasks, adminsOf(config)...).Execute)
 	if err != nil {
 		return err
 	}
 
-	// 6. The sandbox. goja, bounded: this program may make at most 60
-	// capability calls and run for at most 30 seconds.
 	runner, err := goja.New(sandbox.Options{MaxCalls: 60, Timeout: 30 * time.Second})
 	if err != nil {
 		return err
 	}
 	defer runner.Close()
 
-	// Wrapped so the program that reaches the interpreter is printed. This is
-	// the code the model actually produced, after the agent stripped whatever
-	// markdown fences it wrapped it in.
 	runner = trace.Runner(runner, logger(config), os.Stderr)
 
 	withheld := len(full.Capabilities) - len(allowed.Capabilities)
@@ -177,10 +140,8 @@ func run(ctx context.Context, config config) error {
 	}
 	fmt.Printf("\n\nsandbox\n  %s\n\n", runner.Name())
 
-	// 7. The model, configured entirely from this command's own flags.
 	if config.apiKey == "" && config.baseURL == "" {
 		if config.serve != "" {
-			// The board works without a model; only the chat needs one.
 			return serve(ctx, config, tasks, full, nil)
 		}
 		return offline(ctx, mode, runner, config)
@@ -215,8 +176,7 @@ func run(ctx context.Context, config config) error {
 	return nil
 }
 
-// envFile is the dotfile this command reads. TASKREPORT_ENV moves it, for
-// running several configurations without editing one file.
+// envFile is the dotfile this command reads; TASKREPORT_ENV overrides it.
 func envFile() string {
 	if path := strings.TrimSpace(os.Getenv("TASKREPORT_ENV")); path != "" {
 		return path
@@ -224,9 +184,7 @@ func envFile() string {
 	return "examples/taskreport/.env"
 }
 
-// capabilities assembles the whole surface from every proto file the
-// application publishes. Merge rejects a name claimed twice, so two subsystems
-// colliding on a namespace is a startup failure rather than a routing surprise.
+// capabilities merges every proto file's registry; a name claimed twice fails startup.
 func capabilities() (capability.Registry, error) {
 	tasks, err := coderegistry.FromFiles(taskv1.File_task_proto)
 	if err != nil {
@@ -239,13 +197,7 @@ func capabilities() (capability.Registry, error) {
 	return capability.Merge(tasks, users)
 }
 
-// restrict makes the named capabilities admin-only at runtime.
-//
-// The contract is the right home for a policy that is part of the design. This
-// is for the other kind: checking what a member actually experiences when a
-// capability is withheld, without editing a proto and regenerating to find out.
-//
-//	go run ./examples/taskreport -serve :8080 -restrict tasks.list,tasks.search
+// restrict makes the named capabilities admin-only at runtime, for experiments without editing protos.
 func restrict(full capability.Registry, names string) (capability.Registry, error) {
 	names = strings.TrimSpace(names)
 	if names == "" {
@@ -256,8 +208,7 @@ func restrict(full capability.Registry, names string) (capability.Registry, erro
 		wanted[index] = strings.TrimSpace(name)
 	}
 
-	// A typo would silently restrict nothing, which is the opposite of what an
-	// experiment in withholding wants to find out.
+	// Unknown names would silently restrict nothing.
 	known := map[string]bool{}
 	for _, item := range full.Capabilities {
 		known[item.Name] = true
@@ -274,15 +225,7 @@ func restrict(full capability.Registry, names string) (capability.Registry, erro
 	return restricted, nil
 }
 
-// forRole returns the registry this caller may execute against.
-//
-// There is no policy here to keep in step with the protos: the roles are
-// declared by (codemode.roles) beside each RPC, so adding a privileged method
-// restricts it, and forgetting to edit this file cannot expose it.
-//
-// Building a registry per request is cheap — a slice and a map — so the
-// narrowing happens here rather than as a check deep inside the application.
-// The checks inside stay anyway; this is the outer of two locks.
+// forRole returns the registry this caller may execute against, from (codemode.roles) in the protos.
 func forRole(full capability.Registry, identity auth.Identity) capability.Registry {
 	return full.ForRole(string(identity.Role))
 }
@@ -291,13 +234,10 @@ func adminsOf(config config) []string {
 	if strings.EqualFold(config.role, string(auth.RoleAdmin)) {
 		return []string{config.user}
 	}
-	// The seeded workspace has one administrator, so users.list can show a
-	// role that is not "member" for everyone.
 	return []string{"grace"}
 }
 
-// temperature converts the flag's sentinel into the library's tri-state. A
-// temperature of 0 is a real setting, so "unset" cannot be the zero value.
+// temperature converts the flag's sentinel into the library's tri-state, since 0 is a real setting.
 func temperature(value float64) *float64 {
 	if value < 0 {
 		return nil
@@ -316,14 +256,10 @@ func report(result agent.Result, verbose bool, runner sandbox.Runner) {
 			fmt.Printf("system prompt\n%s\n\n", indent(runner.Prompt(result.Matches)))
 		}
 	}
-	// The program itself is printed by trace.Runner as it reaches the sandbox,
-	// so repeating it here would only make the two drift.
 	fmt.Printf("timing\n  %s\n\n", result.Timing)
 }
 
-// offline runs without a model so the whole path stays inspectable without
-// credentials. Everything except the program's authorship is unchanged: search
-// still ranks, the registry still authorizes, the sandbox still calls the host.
+// offline runs the full path with a fixed program in place of the model.
 func offline(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner, config config) error {
 	fmt.Println("model\n  none — pass -api-key and -base-url to have one write the program")
 
@@ -348,10 +284,6 @@ func offline(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner,
 }
 
 // fixedProgram is what a model would plausibly write for the default request.
-// It is the argument for code mode in one screen: eight capability calls, all
-// the filtering and totalling done in the sandbox, and one string returned. As
-// ordinary tool use that is eight round trips with every intermediate result
-// re-entering the model's context.
 const fixedProgram = `
 const counts = codemode.execute("reports.statusCounts", {});
 const projects = codemode.execute("reports.byProject", {}).groups;
@@ -391,8 +323,7 @@ lines.push("Completed in the last 7 days: " + week + ".");
 return lines.join("\n");
 `
 
-// seed writes a sample backlog on first run, dated relative to today so the
-// overdue and throughput reports have something to say.
+// seed writes a sample backlog on first run, dated relative to today.
 func seed(tasks *store.Store) (int, error) {
 	existing, err := tasks.List(store.Everyone(), store.Filter{Limit: 1})
 	if err != nil {
@@ -406,8 +337,6 @@ func seed(tasks *store.Store) (int, error) {
 		return time.Now().AddDate(0, 0, offset).Format("2006-01-02")
 	}
 
-	// Three owners, so scoping is visible: run as ada and you see four tasks,
-	// run as an admin and you see all twelve.
 	samples := []struct {
 		owner     string
 		title     string

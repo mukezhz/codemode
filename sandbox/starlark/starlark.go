@@ -25,20 +25,12 @@ func init() {
 	})
 }
 
-// starlarkRunner evaluates programs in Starlark, a small Python dialect built
-// for configuration. It has no ambient I/O at all: the interpreter ships
-// without file, network, or clock builtins, so the sandbox is subtractive by
-// construction rather than by removal. Recursion and while loops are disallowed
-// by default, which also bounds a class of runaway program.
-//
-// ponytail: like goja, this runs in-process and is not a defence against a
-// determined attacker sharing the process.
+// starlarkRunner evaluates Starlark in-process; it has no I/O builtins but is not a boundary against a determined attacker.
 type starlarkRunner struct {
 	options sandbox.Options
 }
 
-// New returns a Runner backed by the in-process Starlark interpreter. Blank-import
-// this package instead to have sandbox.New select it from SANDBOX_ENGINE.
+// New returns a Runner backed by the in-process Starlark interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
@@ -47,9 +39,7 @@ func New(options sandbox.Options) (sandbox.Runner, error) {
 	return &starlarkRunner{options: options}, nil
 }
 
-// starlarkTypes renders registry types as Starlark values. Numbers stay open
-// between int and float because the registry collapses every protobuf numeric
-// scalar into one, and Starlark keeps the two apart.
+// starlarkTypes renders registry types as Starlark; numbers stay int-or-float because the registry merges numeric scalars.
 var starlarkTypes = prompt.Types{
 	Scalar: map[string]string{
 		"number": "int|float",
@@ -116,8 +106,7 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 	defer cancel()
 
 	thread := &starlarkvm.Thread{Name: "codemode"}
-	// Printing is the one builtin Starlark keeps; drop it so the program has no
-	// output channel other than its return value.
+	// Drop print so the return value is the only output channel.
 	thread.Print = func(*starlarkvm.Thread, string) {}
 
 	calls := 0
@@ -154,22 +143,18 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 		return toStarlark(output)
 	}
 
-	// A struct, not a dict: only a struct supports codemode.execute attribute
-	// access, which is what keeps the call spelled the same in every dialect.
+	// A struct, not a dict, so codemode.execute attribute access works.
 	api := starlarkstruct.FromStringDict(starlarkstruct.Default, starlarkvm.StringDict{
 		"execute": starlarkvm.NewBuiltin("execute", execute),
 	})
 
-	// Starlark has no top-level return, so the program body becomes the body of
-	// a function this host defines and calls.
+	// Starlark has no top-level return, so wrap the body in a function.
 	program := "def __main():\n" + indentLines(source) + "\n__result = __main()\n"
 
 	stop := context.AfterFunc(ctx, func() { thread.Cancel(ctx.Err().Error()) })
 	defer stop()
 
-	// The zero FileOptions is the restrictive one: no while loops, no
-	// recursion, no top-level control flow. That matches the prompt's rules and
-	// removes a class of runaway program at the language level.
+	// Zero FileOptions forbids while loops, recursion, and top-level control flow.
 	globals, err := starlarkvm.ExecFileOptions(
 		&syntax.FileOptions{},
 		thread,
@@ -195,8 +180,7 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 	return fromStarlark(result)
 }
 
-// indentLines indents every line by four spaces so the model can write a body
-// at column zero in an indentation-sensitive language.
+// indentLines indents every line by four spaces to form a function body.
 func indentLines(source string) string {
 	lines := strings.Split(strings.TrimRight(source, "\n"), "\n")
 	for i, line := range lines {

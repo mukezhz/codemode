@@ -1,6 +1,4 @@
-// Package providertest holds the cross-provider behaviour tests. It lives
-// beside the providers rather than inside llm so that package keeps its
-// property of linking no vendor SDK.
+// Package providertest holds cross-provider tests outside llm so llm links no vendor SDK.
 package providertest
 
 import (
@@ -9,14 +7,10 @@ import (
 
 	"github.com/mukezhz/codemode/llm"
 
-	// Both providers, so llm.OptionsFromEnv can select either.
 	_ "github.com/mukezhz/codemode/llm/claude"
 	_ "github.com/mukezhz/codemode/llm/openai"
 )
 
-// The environment path has to select the right provider and carry its own
-// variables through. Everything here goes through OptionsFromEnv, because that
-// is the only function in the library that reads the environment.
 func TestOptionsFromEnvSelectsTheProvider(t *testing.T) {
 	for name, test := range map[string]struct {
 		env  map[string]string
@@ -29,8 +23,7 @@ func TestOptionsFromEnvSelectsTheProvider(t *testing.T) {
 		"claude wins on both": {map[string]string{"ANTHROPIC_API_KEY": "test", "OPENAI_API_KEY": "test"}, "claude/claude-opus-5"},
 		"model override":      {map[string]string{"LLM_PROVIDER": "claude", "ANTHROPIC_API_KEY": "test", "ANTHROPIC_MODEL": "claude-sonnet-5"}, "claude/claude-sonnet-5"},
 
-		// A base URL stands in for credentials: local endpoints often do not
-		// authenticate, and most of them speak the OpenAI protocol.
+		// A base URL stands in for credentials.
 		"base URL alone":       {map[string]string{"LLM_BASE_URL": "http://localhost:11434/v1", "OPENAI_MODEL": "llama3"}, "openai/llama3"},
 		"openai base URL":      {map[string]string{"OPENAI_BASE_URL": "http://localhost:8000/v1"}, "openai/gpt-5"},
 		"anthropic base URL":   {map[string]string{"ANTHROPIC_BASE_URL": "http://localhost:8000"}, "claude/claude-opus-5"},
@@ -66,8 +59,6 @@ func TestOptionsFromEnvReportsMissingCredentials(t *testing.T) {
 	}
 }
 
-// Configuration set in code must survive the environment, whichever provider
-// the environment picked.
 func TestCallerConfigurationWinsOverTheEnvironment(t *testing.T) {
 	setEnv(t, map[string]string{
 		"ANTHROPIC_API_KEY": "test",
@@ -93,7 +84,6 @@ func TestCallerConfigurationWinsOverTheEnvironment(t *testing.T) {
 	}
 }
 
-// New itself must never read the environment, whichever provider is selected.
 func TestNewIgnoresTheEnvironmentEntirely(t *testing.T) {
 	setEnv(t, map[string]string{
 		"LLM_PROVIDER":      "claude",
@@ -125,7 +115,6 @@ func TestNewRejectsAnUnknownProvider(t *testing.T) {
 }
 
 // setEnv clears every variable the FromEnv path reads, then applies env.
-// t.Setenv restores the previous values when the test ends.
 func setEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	for _, name := range []string{

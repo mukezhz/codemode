@@ -16,34 +16,20 @@ import (
 // CodeMode discovers application capabilities and executes an explicitly named
 // capability through a trusted transport.
 type CodeMode interface {
-	// Search finds the capabilities most relevant to query. Ctx carries the
-	// request deadline and cancellation; limit is the maximum number of matches
-	// to return. Matches are ordered from closest to least close; a lower
-	// Match.Distance means a stronger match.
+	// Search returns at most limit capabilities relevant to query, closest first.
 	Search(ctx context.Context, query string, limit int) ([]capability.Match, error)
 
-	// Execute invokes the registered capability named name, such as
-	// "todos.complete". Ctx carries the request deadline and cancellation; input
-	// is the capability request encoded as JSON. The returned RawMessage is its
-	// JSON response. The runtime resolves name to the trusted protobuf RPC path
-	// before calling the configured ExecuteFunc.
+	// Execute invokes the registered capability name with JSON input; unregistered names are rejected.
 	Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error)
 }
 
 // Fingerprinter reports a stable identifier for the capability set a runtime
-// will execute. A program written against one capability set must not be reused
-// against another, so anything that caches programs scopes them by this.
-//
-// The runtime New returns implements it. A CodeMode of your own does not have
-// to, but a caller that caches will have to be told the fingerprint some other
-// way.
+// will execute, used to scope cached programs.
 type Fingerprinter interface {
 	Fingerprint() string
 }
 
 // Fingerprint hashes the name and RPC path of every registered capability.
-// Adding, removing, or repointing one changes it, which is exactly when a
-// program written against the old set stops being safe to reuse.
 func (runtime *runtime) Fingerprint() string {
 	names := make([]string, 0, len(runtime.capabilities))
 	for name, item := range runtime.capabilities {
@@ -54,12 +40,10 @@ func (runtime *runtime) Fingerprint() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// SearchFunc implements capability ranking. Query describes the user's intent,
-// ctx carries cancellation, and limit is the maximum number of matches.
+// SearchFunc implements capability ranking.
 type SearchFunc func(ctx context.Context, query string, limit int) ([]capability.Match, error)
 
-// ExecuteFunc invokes a trusted transport. RPC is the protobuf path resolved
-// from the registry, ctx carries cancellation, and input is the JSON request.
+// ExecuteFunc invokes a trusted transport with the protobuf RPC path resolved from the registry.
 type ExecuteFunc func(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error)
 
 type runtime struct {

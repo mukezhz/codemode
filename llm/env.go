@@ -1,11 +1,3 @@
-// This file is the only place in the package that reads the process
-// environment. Everything else takes an Options, so an application that
-// configures itself some other way — flags, a config file, a secret mount —
-// never has the environment consulted behind its back.
-//
-// The convention holds library-wide: a name containing FromEnv reads the
-// environment, and nothing else does.
-
 package llm
 
 import (
@@ -16,13 +8,11 @@ import (
 	"time"
 )
 
-// Environment variables read by OptionsFromEnv. Provider-specific variables
-// live with their provider package.
+// Environment variables read by OptionsFromEnv.
 const (
 	// EnvProvider selects the provider: claude or openai.
 	EnvProvider = "LLM_PROVIDER"
-	// EnvBaseURL applies to whichever provider is selected. A provider's own
-	// base URL variable wins over it.
+	// EnvBaseURL applies to any provider; a provider's own variable wins.
 	EnvBaseURL = "LLM_BASE_URL"
 	// EnvMaxTokens bounds thinking and response text together.
 	EnvMaxTokens = "LLM_MAX_TOKENS"
@@ -33,18 +23,8 @@ const (
 	EnvTimeout = "LLM_TIMEOUT"
 )
 
-// OptionsFromEnv reads configuration from the process environment and returns
-// it as an Options. Nothing is applied for you: inspect it, override any field,
-// and pass it to New.
-//
-//	options, err := llm.OptionsFromEnv()
-//	options.Model = "claude-sonnet-5"   // your config wins
-//	model, err := llm.New(options)
-//
-// LLM_PROVIDER selects the provider. When it is unset, the registered provider
-// with the lowest Priority whose own variables are set is chosen, so a single
-// API key is enough to get started. It returns ErrNoProvider when nothing is
-// configured.
+// OptionsFromEnv reads Options from the environment; without LLM_PROVIDER it
+// picks the lowest-Priority configured provider, else returns ErrNoProvider.
 func OptionsFromEnv() (Options, error) {
 	shared, err := sharedFromEnv()
 	if err != nil {
@@ -64,8 +44,6 @@ func OptionsFromEnv() (Options, error) {
 		return options.Merge(shared), nil
 	}
 
-	// Unset means "whichever provider is configured", so a single variable is
-	// enough to get started.
 	for _, provider := range byPriority() {
 		if provider.FromEnv == nil {
 			continue
@@ -88,8 +66,7 @@ func OptionsFromEnv() (Options, error) {
 		ErrNoProvider, EnvProvider, EnvBaseURL)
 }
 
-// NewFromEnv is OptionsFromEnv followed by New, for callers with no
-// configuration of their own to layer on top.
+// NewFromEnv is OptionsFromEnv followed by New.
 func NewFromEnv() (Client, error) {
 	options, err := OptionsFromEnv()
 	if err != nil {
@@ -136,8 +113,7 @@ func sharedFromEnv() (Options, error) {
 	return options, nil
 }
 
-// Env returns the trimmed value of name, or fallback when it is unset or
-// blank. Provider packages use it in their own FromEnv.
+// Env returns the trimmed value of name, or fallback when it is unset or blank.
 func Env(name, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
 		return value
@@ -145,9 +121,7 @@ func Env(name, fallback string) string {
 	return fallback
 }
 
-// EnvInt parses name as an integer, returning zero when it is unset. An
-// unparseable value is an error rather than a silent zero, because a typo in a
-// deployment variable should fail at startup.
+// EnvInt parses name as an integer, returning zero when it is unset.
 func EnvInt(name string) (int, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
@@ -160,8 +134,7 @@ func EnvInt(name string) (int, error) {
 	return parsed, nil
 }
 
-// EnvFloat parses name as a float, reporting whether it was set at all. The
-// distinction matters: a temperature of 0 is a real setting.
+// EnvFloat parses name as a float, reporting whether it was set.
 func EnvFloat(name string) (float64, bool, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {

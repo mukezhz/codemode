@@ -1,36 +1,4 @@
-// Package trace makes one request legible.
-//
-// Code mode has a lot of moving parts between a sentence and an answer: search
-// ranks, a prompt is built, a model writes a program, the program calls back
-// through a bridge several times, and something is rendered. When an answer is
-// wrong, the useful question is *which of those* went wrong — and without a
-// trace the honest reply is a shrug.
-//
-// So every step logs, in order, with timings:
-//
-//	step=search      query="how many todos do I have" matched=12 offered=[tasks.list ...]
-//	step=model       provider=openai/deepseek-chat system_bytes=3401
-//	step=model.done  took=4.1s bytes=612
-//	step=sandbox     engine=javascript lines=9
-//
-//	  ── program (javascript) ──────────────────────────────────
-//	   1  const counts = codemode.execute("reports.statusCounts", {});
-//	   2  const tasks  = codemode.execute("tasks.list", {}).tasks;
-//	   …
-//	  ──────────────────────────────────────────────────────────
-//
-//	step=execute     name=tasks.list input={} took=311µs output=248
-//	step=sandbox.done took=6ms calls=2
-//	step=answer      blocks=3 attempts=1 took=4.3s
-//
-// Every one of these comes from a decorator around an interface rather than
-// from inside the library, which is the point: the seams are interfaces, so
-// observing them needs no change to the thing being observed.
-//
-// The program prints as a block rather than a log field on purpose. It is the
-// single most useful artifact when an answer looks wrong, and slog would render
-// it as one line with the newlines escaped — technically the same bytes, and
-// unreadable.
+// Package trace logs each step of a request through decorators around the library's interfaces.
 package trace
 
 import (
@@ -49,11 +17,7 @@ import (
 	"github.com/mukezhz/codemode/sandbox"
 )
 
-// CodeMode wraps a runtime so every capability call is logged.
-//
-// It logs failures at Error and successes at Debug, because a working request
-// making forty calls is noise until something breaks — and then it is exactly
-// what you want.
+// CodeMode wraps a runtime so every capability call is logged, failures at Error and successes at Debug.
 func CodeMode(inner codemode.CodeMode, log *slog.Logger) codemode.CodeMode {
 	return &tracedMode{inner: inner, log: log}
 }
@@ -63,14 +27,7 @@ type tracedMode struct {
 	log   *slog.Logger
 }
 
-// Fingerprint forwards the wrapped runtime's capability fingerprint, when it
-// has one.
-//
-// A wrapper has to forward this explicitly. A runtime stored in an interface
-// loses the methods that interface does not name, so a traced runtime that did
-// not implement codemode.Fingerprinter would turn program caching off for
-// everything behind the trace — silently, because the agent treats a missing
-// fingerprint as "caching is not safe here" rather than as an error.
+// Fingerprint forwards the wrapped runtime's fingerprint; without it, program caching silently turns off.
 func (mode *tracedMode) Fingerprint() string {
 	fingerprinter, ok := mode.inner.(codemode.Fingerprinter)
 	if !ok {
@@ -104,9 +61,7 @@ func (mode *tracedMode) Execute(ctx context.Context, name string, input json.Raw
 	started := time.Now()
 	output, err := mode.inner.Execute(ctx, name, input)
 	if err != nil {
-		// A rejected capability is the security boundary doing its job, and a
-		// failing one is usually why an answer looks wrong. Both are worth
-		// seeing without turning the level up.
+		// Rejected or failing calls log without raising the level; they usually explain a wrong answer.
 		mode.log.Error("step=execute",
 			"name", name,
 			"input", truncate(string(input), 200),
@@ -139,8 +94,6 @@ func (model *tracedModel) Complete(ctx context.Context, system, user string) (st
 		"provider", model.inner.Name(),
 		"system_bytes", len(system),
 		"user", truncate(user, 300))
-	// The whole prompt is one Debug line rather than several, so copying it out
-	// of a terminal gives you something you can replay.
 	model.log.Debug("step=prompt", "system", system)
 
 	started := time.Now()
@@ -154,12 +107,7 @@ func (model *tracedModel) Complete(ctx context.Context, system, user string) (st
 	return response, nil
 }
 
-// CompleteStream implements llm.Streamer when the wrapped model does.
-//
-// The wrapper has to forward it explicitly: a client stored in an interface
-// loses the methods the interface does not name, so a traced model that did not
-// implement Streamer would silently turn streaming off for everything behind
-// the trace.
+// CompleteStream implements llm.Streamer when the wrapped model does; forwarding keeps streaming enabled.
 func (model *tracedModel) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
 	streamer, ok := model.inner.(llm.Streamer)
 	if !ok {
@@ -177,8 +125,6 @@ func (model *tracedModel) CompleteStream(ctx context.Context, system, user strin
 	first := time.Duration(0)
 	response, err := streamer.CompleteStream(ctx, system, user, func(piece string) {
 		if first == 0 {
-			// Time to first chunk is the number streaming actually improves,
-			// so it is the one worth logging next to the total.
 			first = time.Since(started)
 		}
 		chunk(piece)
@@ -195,16 +141,7 @@ func (model *tracedModel) CompleteStream(ctx context.Context, system, user strin
 	return response, nil
 }
 
-// Runner wraps a sandbox engine so the program it is asked to evaluate is
-// printed before it runs.
-//
-// This is the seam worth watching. trace.Model sees what the model *said*,
-// which still has its markdown fences; Runner sees what actually reaches the
-// interpreter after the agent has stripped them. When those differ, the second
-// is the one that explains the answer.
-//
-// Out receives the formatted program. Nil prints nothing, which is what a test
-// wants.
+// Runner wraps a sandbox engine so the program is printed, after fence stripping, before it runs; nil Out prints nothing.
 func Runner(inner sandbox.Runner, log *slog.Logger, out io.Writer) sandbox.Runner {
 	return &tracedRunner{inner: inner, log: log, out: out}
 }
@@ -227,8 +164,6 @@ func (runner *tracedRunner) Run(ctx context.Context, mode codemode.CodeMode, sou
 	runner.log.Info("step=sandbox", "engine", runner.inner.Language(), "lines", lines)
 	runner.print(source)
 
-	// Counting through a wrapper rather than reading a field keeps this honest:
-	// it is the calls the program actually made, not what it intended.
 	counter := &callCounter{CodeMode: mode}
 	started := time.Now()
 	value, err := runner.inner.Run(ctx, counter, source)
@@ -241,15 +176,13 @@ func (runner *tracedRunner) Run(ctx context.Context, mode codemode.CodeMode, sou
 	return value, nil
 }
 
-// print renders the program with line numbers, so an error naming line 7 can be
-// read against line 7.
+// print renders the program with line numbers.
 func (runner *tracedRunner) print(source string) {
 	if runner.out == nil {
 		return
 	}
 	const width = 68
-	// Repeat by rune count, never slice: the box-drawing character is three
-	// bytes, so a byte slice cuts one in half and the terminal shows mojibake.
+	// Repeat by rune count: box-drawing chars are multibyte.
 	header := fmt.Sprintf("┌─ program (%s) ", runner.inner.Language())
 	var block strings.Builder
 	fmt.Fprintf(&block, "\n  %s%s\n", header,

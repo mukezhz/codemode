@@ -13,22 +13,15 @@ import (
 	"github.com/mukezhz/codemode/sandbox/starlark"
 )
 
-// engine pairs a runner with a program written in its dialect, so every engine
-// can be held to the same behaviour with the same assertions.
 type engine struct {
 	name string
 	new  func(sandbox.Options) (sandbox.Runner, error)
 
-	// compose reads a list, filters it, calls again, and returns a string.
-	compose string
-	// unregistered calls a capability that is not in the registry.
+	compose      string
 	unregistered string
-	// budget calls a capability far more often than the budget allows.
-	budget string
-	// forever never terminates on its own.
-	forever string
-	// nothing returns no value.
-	nothing string
+	budget       string
+	forever      string
+	nothing      string
 }
 
 func engines() []engine {
@@ -57,8 +50,7 @@ return "done: " + pending[0]["title"]`,
 			budget: `for i in range(100):
     codemode.execute("todos.list", {})
 return "unreachable"`,
-			// Starlark has no while loop; a long range is the runaway shape it
-			// does allow.
+			// Starlark has no while loop; a long range is its runaway shape.
 			forever: `total = 0
 for i in range(100000000):
     total = total + i
@@ -203,8 +195,6 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 		Output:      capability.TypeSchema{Fields: map[string]string{"todo": "Todo"}},
 	}}}
 
-	// Each engine must name the capability, describe it, and do so in syntax
-	// its own interpreter would accept.
 	want := map[string][]string{
 		"goja":     {"todos.complete", "Mark a todo as complete", "/**", "id: number"},
 		"starlark": {"todos.complete", "Mark a todo as complete", "#", `"id": int|float`},
@@ -225,8 +215,6 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 					t.Fatalf("prompt is missing %q:\n%s", fragment, prompt)
 				}
 			}
-			// The example in the prompt must be written in the same dialect the
-			// engine evaluates, or it teaches the model the wrong syntax.
 			if _, err := runner.Run(context.Background(), newFake(), exampleOf(t, runner)); err != nil {
 				t.Fatalf("the dialect's own example does not run: %v", err)
 			}
@@ -234,11 +222,6 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 	}
 }
 
-// TestEnginesRenderNeutralTypesInTheirOwnNotation covers every shape the
-// registry can emit. The protos in this repository happen to use none of the
-// compound ones, so without this the map and bytes paths would ship untried.
-// It reads the rendered prompt rather than the dialect's type table, so it
-// tests the path a model actually sees.
 func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
 	matches := []capability.Match{{Capability: capability.Capability{
 		Name:        "shapes.all",
@@ -273,9 +256,7 @@ func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
 	}
 }
 
-// exampleOf pulls the worked example out of a rendered prompt. Taking it from
-// the prompt rather than the engine's own variable is the point: what gets
-// tested is the text a model is actually shown.
+// exampleOf extracts the worked example from a rendered prompt.
 func exampleOf(t *testing.T, runner sandbox.Runner) string {
 	t.Helper()
 	const marker = "Example of the shape expected:\n\n"
@@ -310,16 +291,12 @@ func TestNewBuildsEveryEngine(t *testing.T) {
 	}
 }
 
-// Every engine constructor must return the interface callers depend on.
 var (
 	_ func(sandbox.Options) (sandbox.Runner, error) = goja.New
 	_ func(sandbox.Options) (sandbox.Runner, error) = starlark.New
 	_ func(sandbox.Options) (sandbox.Runner, error) = lua.New
 )
 
-// The shapes a declaration refers to must reach the prompt, in the dialect's
-// own notation. Without them a model guesses field names, and a wrong guess is
-// silent: reading group.project when the field is group.name yields undefined.
 func TestEnginesDeclareReferencedShapes(t *testing.T) {
 	matches := []capability.Match{{Capability: capability.Capability{
 		Name:        "reports.byProject",
@@ -355,8 +332,6 @@ func TestEnginesDeclareReferencedShapes(t *testing.T) {
 	}
 }
 
-// A capability referring to nothing must not leave an empty section behind: it
-// would be prompt spent on a heading with no content.
 func TestEnginesOmitTheShapesSectionWhenEmpty(t *testing.T) {
 	matches := []capability.Match{{Capability: capability.Capability{
 		Name:        "tasks.count",

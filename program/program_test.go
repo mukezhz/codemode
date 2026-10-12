@@ -9,10 +9,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// wordEmbedder is a bag-of-words embedder: one dimension per distinct word,
-// each set to 1 if the request contains that word. It is crude, but it puts
-// requests that share words close together and requests that do not far apart,
-// which is the only property these tests are about.
+// wordEmbedder is a bag-of-words embedder over vocabulary.
 func wordEmbedder(vocabulary ...string) capability.Embedder {
 	index := map[string]int{}
 	for position, word := range vocabulary {
@@ -34,7 +31,6 @@ func wordEmbedder(vocabulary ...string) capability.Embedder {
 	}
 }
 
-// vocabulary is shared by the tests so every request embeds into the same space.
 var vocabulary = []string{"list", "delete", "complete", "my", "all", "todos", "notes"}
 
 func newCache(t *testing.T, threshold float64) Cache {
@@ -74,14 +70,8 @@ func TestLookupReturnsTheProgramForTheSameRequest(t *testing.T) {
 	}
 }
 
-// The threshold is the whole safety story of a semantic cache: too generous and
-// the program written for one request answers a different one. These are the
-// pairs that matter — a paraphrase must hit, and a request that differs only in
-// its verb must not, at the same threshold.
 func TestThresholdSeparatesParaphrasesFromDifferentRequests(t *testing.T) {
 	ctx := context.Background()
-	// Wide enough that dropping a word still hits. The default is far stricter;
-	// this is the loosest a deployment would plausibly configure.
 	const threshold = 0.25
 	cache := newCache(t, threshold)
 
@@ -89,10 +79,6 @@ func TestThresholdSeparatesParaphrasesFromDifferentRequests(t *testing.T) {
 		t.Fatalf("Put returned error: %v", err)
 	}
 
-	// Only a dropped word, because a bag of words cannot tell a harmless
-	// substitution from a dangerous one — "my" for "all" moves a request
-	// exactly as far as "list" for "delete". A real embedder can; this one is
-	// here to exercise the threshold, not to stand in for one.
 	hits := []string{"list todos"}
 	for _, request := range hits {
 		entry, found, err := cache.Lookup(ctx, key(request))
@@ -125,9 +111,6 @@ func TestThresholdSeparatesParaphrasesFromDifferentRequests(t *testing.T) {
 	}
 }
 
-// A program is written for one dialect, one capability set, and one caller.
-// Reusing it outside any of those runs code against a world it was not written
-// for, so each has to partition the cache on its own.
 func TestScopeIsolatesEntries(t *testing.T) {
 	ctx := context.Background()
 	cache := newCache(t, 0)
@@ -147,7 +130,6 @@ func TestScopeIsolatesEntries(t *testing.T) {
 			t.Errorf("Lookup from %s = (found %v, err %v), want (false, nil)", name, found, err)
 		}
 	}
-	// The original scope still has it.
 	if _, found, _ := cache.Lookup(ctx, stored); !found {
 		t.Error("the entry disappeared from its own scope")
 	}
@@ -189,8 +171,6 @@ func TestForgetDropsAnEntry(t *testing.T) {
 	if _, found, _ := cache.Lookup(ctx, key("list my todos")); found {
 		t.Fatal("a forgotten program was served again")
 	}
-	// Forgetting it twice is not an error: two requests can fail on the same
-	// stale entry concurrently.
 	if err := cache.Forget(ctx, entry.ID); err != nil {
 		t.Fatalf("second Forget returned error: %v", err)
 	}
@@ -215,9 +195,6 @@ func TestNewRejectsAnUnusableConfiguration(t *testing.T) {
 	}
 }
 
-// The exact cache is the one a deployment without an embedding model uses, so
-// it has to hold the same contract: same request hits, anything else misses,
-// scopes stay apart, and a forgotten entry stays forgotten.
 func TestExactCacheMatchesOnlyTheSameRequest(t *testing.T) {
 	ctx := context.Background()
 	cache := NewExactCache()
@@ -235,8 +212,6 @@ func TestExactCacheMatchesOnlyTheSameRequest(t *testing.T) {
 		t.Fatalf("source = %q", entry.Source)
 	}
 
-	// A near-miss is a miss: without an embedding there is nothing to justify
-	// calling two different sentences the same request.
 	if _, found, _ := cache.Lookup(ctx, key("list todos")); found {
 		t.Error("a different request hit the exact cache")
 	}

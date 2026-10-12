@@ -22,8 +22,7 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/view"
 )
 
-// model returns a fixed program and records the system prompt it was given, so
-// the chat path is testable without a provider.
+// model returns a fixed program and records its system prompt.
 type model struct {
 	program string
 	system  string
@@ -36,8 +35,6 @@ func (model *model) Complete(_ context.Context, system, _ string) (string, error
 	return model.program, nil
 }
 
-// CompleteStream implements llm.Streamer, handing the program over in pieces so
-// the streaming path is exercised the way a real provider drives it.
 func (model *model) CompleteStream(_ context.Context, system, _ string, chunk func(string)) (string, error) {
 	model.system = system
 	for _, piece := range strings.Split(model.program, "\n") {
@@ -119,8 +116,6 @@ func decode[T any](t *testing.T, recorder *httptest.ResponseRecorder) T {
 	return value
 }
 
-// The session tells the browser what it may show, and it must agree with what
-// the server will actually run — otherwise the UI offers buttons that fail.
 func TestSessionReportsTheScopedSurface(t *testing.T) {
 	handler := newServer(t, nil)
 
@@ -147,8 +142,6 @@ func TestSessionReportsTheScopedSurface(t *testing.T) {
 	}
 }
 
-// The board is scoped the same way the programs are, because both go through
-// the same runtime rather than one bypassing it.
 func TestBoardIsScopedToTheCaller(t *testing.T) {
 	handler := newServer(t, nil)
 
@@ -172,7 +165,6 @@ func TestBoardIsScopedToTheCaller(t *testing.T) {
 	}
 }
 
-// Knowing another user's task ID is not access, over HTTP either.
 func TestBoardRejectsAnotherUsersTask(t *testing.T) {
 	handler := newServer(t, nil)
 
@@ -196,7 +188,6 @@ func TestBoardRejectsAnotherUsersTask(t *testing.T) {
 	}
 }
 
-// The whole point of the chat: one turn, one program, a document to render.
 func TestChatRendersAViewDocument(t *testing.T) {
 	author := &model{program: `
 		const counts = codemode.execute("reports.statusCounts", {});
@@ -234,33 +225,25 @@ func TestChatRendersAViewDocument(t *testing.T) {
 	if result.Document.Title != "Where things stand" || len(result.Document.Blocks) != 4 {
 		t.Fatalf("document = %+v", result.Document)
 	}
-	// Values came from the caller's own rows, not the workspace.
 	stats := result.Document.Blocks[0]
 	if stats.Items[0].Value != 2 || stats.Items[1].Value != 1 {
 		t.Fatalf("stats = %+v, want ada's two open and one overdue", stats.Items)
 	}
-	// The program is returned so a wrong answer is debuggable.
 	if !strings.Contains(result.Program, "reports.statusCounts") {
 		t.Fatalf("program = %q", result.Program)
 	}
 
-	// The view instructions have to reach the model, or it answers in prose.
 	if !strings.Contains(author.system, `{"type":"bar"`) {
 		t.Fatalf("system prompt is missing the view schema:\n%s", author.system)
 	}
-	// And so do the caller's, or a withheld capability produces a confident
-	// wrong answer instead of an honest refusal.
 	if !strings.Contains(author.system, "You are answering for ada, a member") {
 		t.Fatalf("system prompt does not tell the model whose data this is:\n%s", author.system)
 	}
-	// And the engine's own rules must survive alongside them.
 	if !strings.Contains(author.system, "codemode.execute") {
 		t.Fatalf("the view instructions displaced the engine's rules:\n%s", author.system)
 	}
 }
 
-// A program that returns something unrenderable must fail loudly with the
-// source attached, not paint a blank panel.
 func TestChatRejectsAnUnrenderableResult(t *testing.T) {
 	handler := newServer(t, &model{program: `return { blocks: [{ type: "pie", series: [] }] };`})
 
@@ -273,8 +256,6 @@ func TestChatRejectsAnUnrenderableResult(t *testing.T) {
 	}
 }
 
-// A member's program cannot reach an admin capability even by naming it: the
-// registry the chat runs against was narrowed before the program ran.
 func TestChatCannotReachWithheldCapabilities(t *testing.T) {
 	handler := newServer(t, &model{program: `
 		const groups = codemode.execute("reports.byOwner", {}).groups;
@@ -289,14 +270,11 @@ func TestChatCannotReachWithheldCapabilities(t *testing.T) {
 		t.Fatalf("body = %s, want it to name the rejected capability", response.Body)
 	}
 
-	// The same program is fine for an administrator.
 	if code := do(t, handler, "POST", "/api/chat", `{"request":"team workload"}`, "grace", "admin").Code; code != http.StatusOK {
 		t.Fatalf("an admin got %d for reports.byOwner", code)
 	}
 }
 
-// Without a provider the board still works; only the chat is unavailable, and
-// it says so rather than failing obscurely.
 func TestChatIsUnavailableWithoutAModel(t *testing.T) {
 	handler := newServer(t, nil)
 	response := do(t, handler, "POST", "/api/chat", `{"request":"hi"}`, "ada", "member")
@@ -308,8 +286,6 @@ func TestChatIsUnavailableWithoutAModel(t *testing.T) {
 	}
 }
 
-// The two instruction sets are per role, so a member and an administrator are
-// told different things about their own reach.
 func TestSystemPromptDescribesTheCallersReach(t *testing.T) {
 	program := `return { blocks: [{ type: "text", text: "ok" }] };`
 
@@ -331,9 +307,6 @@ func TestSystemPromptDescribesTheCallersReach(t *testing.T) {
 	}
 }
 
-// The streaming path has to deliver the program as it is written and still end
-// with the same document the plain path returns. A frontend that gets one
-// without the other is worse off than one that waited.
 func TestChatStreamEmitsChunksThenTheResult(t *testing.T) {
 	author := &model{program: `
 		const counts = codemode.execute("reports.statusCounts", {});
@@ -357,8 +330,6 @@ func TestChatStreamEmitsChunksThenTheResult(t *testing.T) {
 			t.Fatalf("stream did not emit %q:\n%s", name, body)
 		}
 	}
-	// The program has to arrive before the answer does, or the chunks are
-	// decoration rather than progress.
 	if strings.Index(body, "event: chunk") > strings.Index(body, "event: result") {
 		t.Fatal("the result arrived before the program was streamed")
 	}
@@ -389,7 +360,6 @@ func TestChatStreamEmitsChunksThenTheResult(t *testing.T) {
 		}
 	}
 
-	// Every chunk concatenated is the program the sandbox was given.
 	if !strings.Contains(chunks.String(), "reports.statusCounts") {
 		t.Fatalf("chunks did not carry the program:\n%s", chunks.String())
 	}
@@ -401,7 +371,6 @@ func TestChatStreamEmitsChunksThenTheResult(t *testing.T) {
 	}
 }
 
-// A cache hit has no model call to stream, so it goes straight to the result.
 func TestChatStreamServesACachedProgramWithoutTheModel(t *testing.T) {
 	author := &model{program: `return { title: "Status", blocks: [{ type: "text", text: "ok" }] };`}
 	handler := newServer(t, author)
@@ -411,7 +380,6 @@ func TestChatStreamServesACachedProgramWithoutTheModel(t *testing.T) {
 		t.Fatalf("first stream returned %d", code)
 	}
 
-	// The model would panic on a nil program; the cache means it is never asked.
 	author.program = ""
 	response := do(t, handler, "POST", "/api/chat/stream", ask, "ada", "member")
 	if response.Code != http.StatusOK {
