@@ -1,6 +1,4 @@
-// Package agent runs one code mode request end to end: search for relevant
-// capabilities, ask a model for a program that composes them, and run that
-// program in the sandbox.
+// Package agent searches capabilities, has a model write a program composing them, and runs it in the sandbox.
 package agent
 
 import (
@@ -18,35 +16,32 @@ import (
 	"github.com/mukezhz/codemode/sandbox"
 )
 
-// Options tunes one request.
 type Options struct {
-	// Limit is the maximum number of capabilities described to the model; zero applies DefaultLimit.
-	Limit int
-	// Attempts is how many programs may be generated before giving up; zero applies DefaultAttempts.
+	Limit    int
 	Attempts int
-	// Runner evaluates each generated program. Required; the caller closes it.
-	Runner sandbox.Runner
-	// Instructions are appended to the system prompt after the engine's rules.
+	// Required; the caller closes it.
+	Runner       sandbox.Runner
 	Instructions string
-	// Cache serves programs for repeated requests; nil disables caching. The caller closes it.
+	// nil disables caching; the caller closes it.
 	Cache program.Cache
-	// CacheCaller separates cache entries that must not be shared, such as a role or tenant.
+	// Separates cache entries that must not be shared, such as a role or tenant.
 	CacheCaller string
-	// OnChunk receives the program as the model streams it, including repair
-	// attempts; nil disables streaming. It must not block.
+	// Includes repair attempts; nil disables streaming. It must not block.
 	OnChunk func(string)
 	// Plan records writes instead of executing them; review Result.Planned, then pass it to Apply.
 	// ponytail: a planned write returns {} to the program, so logic that reads a write's output plans wrongly.
 	Plan bool
+	// nil disables it. It must not block.
+	OnCall func(codemode.Call)
+	// Stops repair attempts once spent; zero disables. Only providers that report usage count.
+	MaxTokens int64
 }
 
-// Defaults applied when the matching Options field is zero.
 const (
 	DefaultLimit    = 5
 	DefaultAttempts = 3
 )
 
-// checked validates options and applies defaults.
 func (options Options) checked() (Options, error) {
 	if options.Limit < 0 || options.Attempts < 0 {
 		return options, errors.New("limit and attempts must not be negative")
@@ -63,27 +58,25 @@ func (options Options) checked() (Options, error) {
 	return options, nil
 }
 
-// Result records what one request produced.
 type Result struct {
 	Answer any
 	Source string
-	// Matches are the capabilities described to the model; empty on a cache hit.
+	// Empty on a cache hit.
 	Matches []capability.Match
-	// Attempts is how many programs were generated; zero on a cache hit.
+	// Zero on a cache hit.
 	Attempts int
 	Cached   bool
 	Timing   Timing
-	// Calls are every capability call made, across all attempts, in order.
-	Calls []codemode.Call
-	// Planned are the writes the answering program recorded in plan mode.
-	Planned []codemode.Call
+	Calls    []codemode.Call
+	Planned  []codemode.Call
+	Usage    llm.Usage
 }
 
-// ErrNotRetried reports a failed program that is not retried because a retry
-// could repeat a write or cannot fix the failure.
+var ErrTokenBudget = errors.New("token budget exhausted")
+
+// A retry could repeat a write or cannot fix the failure.
 var ErrNotRetried = errors.New("not retried")
 
-// Timing breaks a request's latency down by stage.
 type Timing struct {
 	Total    time.Duration
 	Cache    time.Duration
@@ -93,7 +86,6 @@ type Timing struct {
 	Run time.Duration
 }
 
-// String renders a timing breakdown for a log line.
 func (timing Timing) String() string {
 	return fmt.Sprintf("total=%s cache=%s search=%s generate=%s run=%s",
 		timing.Total.Round(time.Microsecond), timing.Cache.Round(time.Microsecond),
@@ -101,8 +93,6 @@ func (timing Timing) String() string {
 		timing.Run.Round(time.Microsecond))
 }
 
-// Run answers request by searching mode for capabilities, asking model for a
-// program, and running it against mode. Ctx carries cancellation.
 func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, options Options) (Result, error) {
 	started := time.Now()
 	if mode == nil || model == nil {
@@ -118,15 +108,18 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 
 	runner := options.Runner
 	var timing Timing
+	meter := &llm.Meter{}
+	ctx = llm.WithMeter(ctx, meter)
 	finish := func(result Result, err error) (Result, error) {
 		timing.Total = time.Since(started)
 		result.Timing = timing
+		result.Usage = meter.Usage()
 		return result, err
 	}
 
 	key, caching := cacheKey(mode, runner, request, options)
 	if caching {
-		if result, hit, err := fromCache(ctx, mode, options.Cache, key, runner, options.Plan, &timing); hit || err != nil {
+		if result, hit, err := fromCache(ctx, mode, key, options, &timing); hit || err != nil {
 			return finish(result, err)
 		}
 	}
@@ -152,9 +145,7 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	return finish(result, nil)
 }
 
-// generate asks the model for a program and runs it, feeding each failure back
-// so the next attempt can correct it. Sandbox errors are the model's to fix;
-// transport errors are not.
+// Sandbox errors are the model's to fix; transport errors are not.
 func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, matches []capability.Match, options Options, timing *Timing) (Result, error) {
 	system := options.Runner.Prompt(matches)
 	if instructions := strings.TrimSpace(options.Instructions); instructions != "" {
@@ -175,7 +166,7 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 		}
 		result.Source = Program(response)
 
-		answer, recorder, err := run(ctx, mode, options.Runner, result.Source, options.Plan, timing)
+		answer, recorder, err := run(ctx, mode, result.Source, options, timing)
 		result.Calls = append(result.Calls, recorder.Calls()...)
 		if err == nil {
 			result.Answer = answer
@@ -185,14 +176,15 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 		if stop := unretryable(recorder, err); stop != nil {
 			return result, stop
 		}
+		if used := llm.UsageFrom(ctx).Total(); options.MaxTokens > 0 && used >= options.MaxTokens {
+			return result, fmt.Errorf("%w: %d of %d tokens used: %w", ErrTokenBudget, used, options.MaxTokens, err)
+		}
 		lastErr = err
 		prompt = repairPrompt(request, result.Source, err)
 	}
 	return result, fmt.Errorf("gave up after %d attempts: %w", options.Attempts, lastErr)
 }
 
-// cacheKey builds the cache key, reporting false when there is no cache or the
-// runtime cannot fingerprint its capability set.
 func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, options Options) (program.Key, bool) {
 	if options.Cache == nil {
 		return program.Key{}, false
@@ -214,36 +206,32 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 	}, true
 }
 
-// fromCache answers with a cached program; any cache failure reports a miss.
-// A cached program that fails after writing is not regenerated.
-func fromCache(ctx context.Context, mode codemode.CodeMode, cache program.Cache, key program.Key, runner sandbox.Runner, plan bool, timing *Timing) (Result, bool, error) {
+// Any cache failure is a miss; a cached program that fails after writing is not regenerated.
+func fromCache(ctx context.Context, mode codemode.CodeMode, key program.Key, options Options, timing *Timing) (Result, bool, error) {
 	lookup := time.Now()
-	entry, found, err := cache.Lookup(ctx, key)
+	entry, found, err := options.Cache.Lookup(ctx, key)
 	timing.Cache = time.Since(lookup)
 	if err != nil || !found {
 		return Result{}, false, nil
 	}
-	answer, recorder, err := run(ctx, mode, runner, entry.Source, plan, timing)
+	answer, recorder, err := run(ctx, mode, entry.Source, options, timing)
 	result := Result{Answer: answer, Source: entry.Source, Cached: true, Calls: recorder.Calls()}
 	if err != nil {
-		// Stale program: drop it and regenerate.
-		_ = cache.Forget(ctx, entry.ID)
+		_ = options.Cache.Forget(ctx, entry.ID)
 		return result, false, unretryable(recorder, err)
 	}
 	result.Planned = planned(recorder)
 	return result, true, nil
 }
 
-// run evaluates source once, recording its calls.
-func run(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner, source string, plan bool, timing *Timing) (any, *codemode.Recorder, error) {
-	recorder := &codemode.Recorder{Plan: plan}
+func run(ctx context.Context, mode codemode.CodeMode, source string, options Options, timing *Timing) (any, *codemode.Recorder, error) {
+	recorder := &codemode.Recorder{Plan: options.Plan, OnCall: options.OnCall}
 	running := time.Now()
-	answer, err := runner.Run(codemode.WithRecorder(ctx, recorder), mode, source)
+	answer, err := options.Runner.Run(codemode.WithRecorder(ctx, recorder), mode, source)
 	timing.Run += time.Since(running)
 	return answer, recorder, err
 }
 
-// unretryable returns the error to stop with when a failed run must not be retried, else nil.
 func unretryable(recorder *codemode.Recorder, err error) error {
 	if permanent := recorder.Permanent(); permanent != nil {
 		return fmt.Errorf("%w: %w", ErrNotRetried, permanent)
@@ -264,8 +252,7 @@ func planned(recorder *codemode.Recorder) []codemode.Call {
 	return writes
 }
 
-// Apply executes planned writes in order, stopping at the first failure, and
-// returns the calls made. Each still passes the registry and the transport.
+// Stops at the first failure; each write still passes the registry and the transport.
 func Apply(ctx context.Context, mode codemode.CodeMode, planned []codemode.Call) ([]codemode.Call, error) {
 	recorder := &codemode.Recorder{}
 	ctx = codemode.WithRecorder(ctx, recorder)
@@ -277,7 +264,6 @@ func Apply(ctx context.Context, mode codemode.CodeMode, planned []codemode.Call)
 	return recorder.Calls(), nil
 }
 
-// complete asks the model for a program, streaming when both sides support it.
 func complete(ctx context.Context, model llm.Client, system, prompt string, chunk func(string)) (string, error) {
 	if chunk != nil {
 		if streamer, ok := model.(llm.Streamer); ok {
@@ -287,8 +273,7 @@ func complete(ctx context.Context, model llm.Client, system, prompt string, chun
 	return model.Complete(ctx, system, prompt)
 }
 
-// Program extracts a program from a model response, tolerating the markdown
-// fences models add even when told not to.
+// Tolerates the markdown fences models add even when told not to.
 func Program(response string) string {
 	source := strings.TrimSpace(response)
 	if !strings.HasPrefix(source, "```") {
@@ -317,7 +302,6 @@ Error:
 Reply with a corrected program.`, request, source, failure)
 }
 
-// Answer renders a result value for display, as JSON unless it is a string.
 func Answer(value any) string {
 	if value == nil {
 		return "(no value returned)"

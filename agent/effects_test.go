@@ -8,9 +8,9 @@ import (
 
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/llm"
 )
 
-// effects is a real runtime with one read, one write, and one denied capability.
 func effects(t *testing.T) (codemode.CodeMode, *[]string) {
 	t.Helper()
 	registry := capability.Registry{Capabilities: []capability.Capability{
@@ -103,5 +103,38 @@ func TestPlanRecordsWritesAndApplyRunsThem(t *testing.T) {
 	}
 	if len(calls) != 1 || len(*executed) != 2 || (*executed)[1] != "todo/Complete" {
 		t.Fatalf("calls = %+v, executed = %v", calls, *executed)
+	}
+}
+
+type metered struct{ model }
+
+func (metered *metered) Complete(ctx context.Context, system, user string) (string, error) {
+	llm.Report(ctx, llm.Usage{Input: 60, Output: 40})
+	return metered.model.Complete(ctx, system, user)
+}
+
+func TestRunStopsRepairingWhenTheTokenBudgetIsSpent(t *testing.T) {
+	mode, _ := effects(t)
+	author := &metered{model{responses: []string{`throw new Error("a")`, `throw new Error("b")`, `return "c";`}}}
+
+	result, err := Run(context.Background(), mode, author, "list", Options{Runner: newRunner(t), MaxTokens: 150})
+	if !errors.Is(err, ErrTokenBudget) || result.Attempts != 2 {
+		t.Fatalf("err = %v, attempts = %d; want the budget to stop the third attempt", err, result.Attempts)
+	}
+	if result.Usage.Total() != 200 {
+		t.Fatalf("usage = %+v, want 200 tokens", result.Usage)
+	}
+}
+
+func TestOnCallSeesEachCall(t *testing.T) {
+	mode, _ := effects(t)
+	author := &model{responses: []string{`codemode.execute("todos.list", {}); return codemode.execute("todos.list", {}).todos.length;`}}
+	var seen []string
+
+	_, err := Run(context.Background(), mode, author, "list", Options{Runner: newRunner(t), OnCall: func(call codemode.Call) {
+		seen = append(seen, call.Name)
+	}})
+	if err != nil || len(seen) != 2 {
+		t.Fatalf("seen = %v, err = %v", seen, err)
 	}
 }

@@ -76,3 +76,23 @@ is no more trusted than a direct call.
 `sandbox.Options.MaxResponseBytes` (default 1 MiB) rejects any single
 capability response larger than the limit. It bounds what a program is handed,
 not what it allocates; a hard memory limit needs a separate process.
+
+## Watching a run
+
+`Options.OnCall` receives each call as it completes — the hook for tracing,
+metrics, or a live progress view. Code mode imports no tracing SDK; start your
+OpenTelemetry span there, or wrap your `ExecuteFunc` and `llm.Client`.
+
+```go
+agent.Options{Runner: runner, OnCall: func(call codemode.Call) {
+	log.Printf("%s %s err=%q", call.Name, call.Duration, call.Error)
+}}
+```
+
+## Token budget
+
+`Result.Usage` reports the tokens the model consumed across every attempt.
+`Options.MaxTokens` stops repair attempts once that many are spent, failing
+with `agent.ErrTokenBudget`. It is checked between attempts, so one response may
+overshoot it. Both shipped providers report usage; a custom `llm.Client` does by
+calling `llm.Report(ctx, usage)`, and one that does not is never limited.

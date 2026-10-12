@@ -1,4 +1,3 @@
-// Package claude implements llm.Client for the Anthropic API.
 package claude
 
 import (
@@ -23,39 +22,29 @@ func init() {
 	})
 }
 
-// DefaultModel is used when neither Options.Model nor ANTHROPIC_MODEL is set.
 const DefaultModel = "claude-opus-5"
 
-// DefaultMaxTokens bounds thinking and response text together.
 const DefaultMaxTokens = 16000
 
-// Thinking selects the extended-thinking mode.
 type Thinking int
 
 const (
 	// ThinkingDefault keeps the model default, or ThinkingOff when Temperature or TopP is set.
 	ThinkingDefault Thinking = iota
-	// ThinkingOff disables extended thinking.
 	ThinkingOff
-	// ThinkingAdaptive asks the model to decide how much to think.
 	ThinkingAdaptive
 )
 
-// Options configures the Claude client with Anthropic-specific fields.
 type Options struct {
 	llm.Options
 
-	// Thinking selects the extended-thinking mode.
 	Thinking Thinking
 
-	// Fallbacks enables server-side fallback models; nil enables it only
-	// without a custom BaseURL.
+	// Fallbacks nil enables server-side fallback models only without a custom BaseURL.
 	Fallbacks *bool
 
-	// Betas are additional beta headers to send.
 	Betas []anthropic.AnthropicBeta
 
-	// Request are raw SDK request options.
 	Request []option.RequestOption
 }
 
@@ -73,7 +62,6 @@ var (
 	_ llm.Streamer = (*client)(nil)
 )
 
-// New builds a Claude client from options without reading the environment.
 func New(options Options) (llm.Client, error) {
 	resolved, err := options.Options.WithDefaults(llm.Defaults{
 		Model:     DefaultModel,
@@ -134,7 +122,6 @@ func thinkingConfig(options Options) anthropic.BetaThinkingConfigParamUnion {
 
 func (client *client) Name() string { return "claude/" + client.model }
 
-// request builds the message parameters shared by Complete and CompleteStream.
 func (client *client) request(system, user string) anthropic.BetaMessageNewParams {
 	params := anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(client.model),
@@ -173,6 +160,7 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 	if err != nil {
 		return "", fmt.Errorf("claude: %w", err)
 	}
+	llm.Report(ctx, usage(response.Usage))
 	if response.StopReason == anthropic.BetaStopReasonRefusal {
 		return "", errors.New("claude: request was declined")
 	}
@@ -189,7 +177,6 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 	return builder.String(), nil
 }
 
-// CompleteStream implements llm.Streamer.
 func (client *client) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
 	stream := client.client.Beta.Messages.NewStreaming(ctx, client.request(system, user))
 	defer stream.Close()
@@ -214,6 +201,7 @@ func (client *client) CompleteStream(ctx context.Context, system, user string, c
 			chunk(text.Text)
 		}
 	}
+	llm.Report(ctx, usage(message.Usage))
 	if err := stream.Err(); err != nil {
 		return "", fmt.Errorf("claude: %w", err)
 	}
@@ -224,4 +212,12 @@ func (client *client) CompleteStream(ctx context.Context, system, user string, c
 		return "", fmt.Errorf("claude: empty response (stop reason %q)", message.StopReason)
 	}
 	return builder.String(), nil
+}
+
+// usage counts cached input as input, since it is still billed and still fills the window.
+func usage(usage anthropic.BetaUsage) llm.Usage {
+	return llm.Usage{
+		Input:  usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens,
+		Output: usage.OutputTokens,
+	}
 }
