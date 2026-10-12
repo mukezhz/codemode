@@ -17,7 +17,6 @@ import (
 	_ "github.com/mukezhz/codemode/sandbox/starlark"
 )
 
-// fake records capability calls and answers them from a fixed script.
 type fake struct {
 	responses map[string]string
 	calls     []string

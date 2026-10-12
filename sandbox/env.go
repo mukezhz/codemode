@@ -8,17 +8,12 @@ import (
 	"time"
 )
 
-// Environment variables read by OptionsFromEnv.
 const (
-	// EnvEngine selects the interpreter: goja, starlark, or lua.
-	EnvEngine = "SANDBOX_ENGINE"
-	// EnvTimeout bounds a run, as a Go duration.
-	EnvTimeout = "SANDBOX_TIMEOUT"
-	// EnvMaxCalls limits capability calls per run.
+	EnvEngine   = "SANDBOX_ENGINE"
+	EnvTimeout  = "SANDBOX_TIMEOUT"
 	EnvMaxCalls = "SANDBOX_MAX_CALLS"
 )
 
-// OptionsFromEnv fills every zero field of options from the environment.
 func OptionsFromEnv(options Options) (Options, error) {
 	if options.Engine == "" {
 		options.Engine = strings.ToLower(strings.TrimSpace(os.Getenv(EnvEngine)))
@@ -44,7 +39,6 @@ func OptionsFromEnv(options Options) (Options, error) {
 	return options, nil
 }
 
-// NewFromEnv is OptionsFromEnv followed by New.
 func NewFromEnv(options Options) (Runner, error) {
 	options, err := OptionsFromEnv(options)
 	if err != nil {

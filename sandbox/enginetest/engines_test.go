@@ -256,7 +256,6 @@ func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
 	}
 }
 
-// exampleOf extracts the worked example from a rendered prompt.
 func exampleOf(t *testing.T, runner sandbox.Runner) string {
 	t.Helper()
 	const marker = "Example of the shape expected:\n\n"
@@ -276,7 +275,7 @@ func TestNewBuildsEveryEngine(t *testing.T) {
 		"starlark":   "starlark",
 		"python":     "starlark",
 		"lua":        "lua",
-		"":           "javascript", // the default
+		"":           "javascript",
 	} {
 		t.Run("alias="+alias, func(t *testing.T) {
 			runner, err := sandbox.New(sandbox.Options{Engine: alias})

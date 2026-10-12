@@ -23,7 +23,6 @@ func TestOptionsFromEnvSelectsTheProvider(t *testing.T) {
 		"claude wins on both": {map[string]string{"ANTHROPIC_API_KEY": "test", "OPENAI_API_KEY": "test"}, "claude/claude-opus-5"},
 		"model override":      {map[string]string{"LLM_PROVIDER": "claude", "ANTHROPIC_API_KEY": "test", "ANTHROPIC_MODEL": "claude-sonnet-5"}, "claude/claude-sonnet-5"},
 
-		// A base URL stands in for credentials.
 		"base URL alone":       {map[string]string{"LLM_BASE_URL": "http://localhost:11434/v1", "OPENAI_MODEL": "llama3"}, "openai/llama3"},
 		"openai base URL":      {map[string]string{"OPENAI_BASE_URL": "http://localhost:8000/v1"}, "openai/gpt-5"},
 		"anthropic base URL":   {map[string]string{"ANTHROPIC_BASE_URL": "http://localhost:8000"}, "claude/claude-opus-5"},
@@ -114,7 +113,6 @@ func TestNewRejectsAnUnknownProvider(t *testing.T) {
 	}
 }
 
-// setEnv clears every variable the FromEnv path reads, then applies env.
 func setEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	for _, name := range []string{

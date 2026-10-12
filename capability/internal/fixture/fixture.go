@@ -1,4 +1,3 @@
-// Package fixture holds test doubles shared by the capability package and its store backends.
 package fixture
 
 import (
@@ -10,7 +9,6 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// Memory is an in-memory Store that ranks by cosine distance.
 type Memory struct {
 	model     string
 	dimension int

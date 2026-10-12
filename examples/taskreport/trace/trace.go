@@ -1,4 +1,3 @@
-// Package trace logs each step of a request through decorators around the library's interfaces.
 package trace
 
 import (
@@ -17,7 +16,6 @@ import (
 	"github.com/mukezhz/codemode/sandbox"
 )
 
-// CodeMode wraps a runtime so every capability call is logged, failures at Error and successes at Debug.
 func CodeMode(inner codemode.CodeMode, log *slog.Logger) codemode.CodeMode {
 	return &tracedMode{inner: inner, log: log}
 }
@@ -77,7 +75,6 @@ func (mode *tracedMode) Execute(ctx context.Context, name string, input json.Raw
 	return output, nil
 }
 
-// Model wraps a client so the prompt and the response are visible.
 func Model(inner llm.Client, log *slog.Logger) llm.Client {
 	return &tracedModel{inner: inner, log: log}
 }
@@ -141,7 +138,6 @@ func (model *tracedModel) CompleteStream(ctx context.Context, system, user strin
 	return response, nil
 }
 
-// Runner wraps a sandbox engine so the program is printed, after fence stripping, before it runs; nil Out prints nothing.
 func Runner(inner sandbox.Runner, log *slog.Logger, out io.Writer) sandbox.Runner {
 	return &tracedRunner{inner: inner, log: log, out: out}
 }
@@ -176,7 +172,6 @@ func (runner *tracedRunner) Run(ctx context.Context, mode codemode.CodeMode, sou
 	return value, nil
 }
 
-// print renders the program with line numbers.
 func (runner *tracedRunner) print(source string) {
 	if runner.out == nil {
 		return
@@ -195,7 +190,6 @@ func (runner *tracedRunner) print(source string) {
 	io.WriteString(runner.out, block.String())
 }
 
-// callCounter counts capability calls without disturbing them.
 type callCounter struct {
 	codemode.CodeMode
 	calls atomic.Int64

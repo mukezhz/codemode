@@ -1,5 +1,3 @@
-// Command codemode-registry turns a Buf descriptor set into registry.json,
-// the allowlist of capabilities a model may call.
 package main
 
 import (

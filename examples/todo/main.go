@@ -101,7 +101,6 @@ func run(ctx context.Context, request string, options llm.Options, instructions 
 	return nil
 }
 
-// newSearch returns the ranking function and a cleanup, preferring the semantic index when configured.
 func newSearch(ctx context.Context, registry capability.Registry) (codemode.SearchFunc, func(), error) {
 	store, err := capability.OpenStoreFromEnv(ctx)
 	if errors.Is(err, capability.ErrNoStore) {
@@ -151,7 +150,6 @@ func report(result agent.Result) {
 	fmt.Printf("timing\n  %s\n\n", result.Timing)
 }
 
-// offline runs the demo with fixed programs in place of a model.
 func offline(ctx context.Context, mode codemode.CodeMode, request string) error {
 	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
@@ -187,7 +185,6 @@ func offline(ctx context.Context, mode codemode.CodeMode, request string) error 
 	return nil
 }
 
-// fixedPrograms stand in for model-authored code, one per sandbox dialect.
 var fixedPrograms = map[string]string{
 	"javascript": `
 codemode.execute("todos.create", { title: "Document code mode" });

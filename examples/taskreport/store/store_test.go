@@ -78,7 +78,6 @@ func TestCompleteAndReopenAreNotIdempotent(t *testing.T) {
 	if !done.Completed || done.CompletedDate != "2026-08-15" {
 		t.Fatalf("task = %+v, want completed today", done)
 	}
-	// Completing twice is an error, not a silent success.
 	if _, err := tasks.Complete(store.Everyone(), created.ID); err == nil {
 		t.Error("Complete accepted an already completed task")
 	}
@@ -115,7 +114,6 @@ func TestListFiltersCombine(t *testing.T) {
 	}
 }
 
-// Tag filters must not substring-match ("ui" vs "build").
 func TestTagFilterDoesNotMatchSubstrings(t *testing.T) {
 	tasks := open(t)
 	tasks.Create("ada", "Has ui", "design", "", "", []string{"ui"})
@@ -261,7 +259,6 @@ func titles(tasks []store.Task) []string {
 	return names
 }
 
-// The zero Scope must reach nothing.
 func TestZeroScopeReachesNothing(t *testing.T) {
 	tasks := open(t)
 	mine, _ := tasks.Create("ada", "Ada's task", "platform", "high", "2026-08-01", nil)

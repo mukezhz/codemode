@@ -8,7 +8,6 @@ import (
 	"sync"
 )
 
-// memoryStore is a Store held in the process, searched by full scan.
 type memoryStore struct {
 	mutex   sync.RWMutex
 	records map[string]Record
@@ -17,7 +16,6 @@ type memoryStore struct {
 
 var _ Store = (*memoryStore)(nil)
 
-// NewMemoryStore returns a Store held in memory, lost on restart.
 func NewMemoryStore() Store {
 	return &memoryStore{records: map[string]Record{}}
 }
@@ -73,7 +71,7 @@ func (store *memoryStore) Close() error {
 	return nil
 }
 
-// cosineDistance is 1 - cosine similarity; false when the vectors are not comparable.
+// false when the vectors are not comparable.
 func cosineDistance(a, b []float32) (float64, bool) {
 	if len(a) == 0 || len(a) != len(b) {
 		return 0, false

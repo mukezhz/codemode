@@ -1,4 +1,3 @@
-// Package search ranks capabilities by word overlap with the request; it decides only what the model is told about, never what may run.
 package search
 
 import (
@@ -10,7 +9,6 @@ import (
 	"github.com/mukezhz/codemode/codemode"
 )
 
-// New returns a SearchFunc over registry.
 func New(registry capability.Registry) codemode.SearchFunc {
 	indexed := make([]indexedCapability, 0, len(registry.Capabilities))
 	for _, item := range registry.Capabilities {
@@ -65,7 +63,6 @@ func index(item capability.Capability) indexedCapability {
 	}
 }
 
-// split turns "reports.byProject" into "reports by Project".
 func split(name string) string {
 	var builder strings.Builder
 	for _, symbol := range name {
@@ -82,7 +79,6 @@ func split(name string) string {
 	return builder.String()
 }
 
-// score weights a name hit above a description hit.
 func (item indexedCapability) score(words []string) float64 {
 	score := 0.0
 	for _, word := range words {
@@ -107,7 +103,6 @@ var stop = set([]string{
 	"many", "lot", "lots", "some", "few", "several", "number", "total",
 })
 
-// synonyms map what a person says to what the contracts say.
 var synonyms = map[string]string{
 	"todo":     "task",
 	"todos":    "task",
@@ -172,7 +167,6 @@ func set(words []string) map[string]bool {
 	return result
 }
 
-// stemmedSet indexes stems once rather than per query.
 func stemmedSet(words []string) map[string]bool {
 	result := make(map[string]bool, len(words))
 	for _, word := range words {

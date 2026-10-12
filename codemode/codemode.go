@@ -14,24 +14,19 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// CodeMode discovers application capabilities and executes an explicitly named
-// capability through a trusted transport.
 type CodeMode interface {
-	// Search returns at most limit capabilities relevant to query, closest first.
 	Search(ctx context.Context, query string, limit int) ([]capability.Match, error)
 
-	// Execute invokes the registered capability name with JSON input; unregistered names are rejected.
+	// Unregistered names are rejected.
 	Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error)
 }
 
-// Fingerprinter reports a stable identifier for the capability set a runtime
-// will execute, used to scope cached programs.
+// The identifier scopes cached programs.
 type Fingerprinter interface {
 	Fingerprint() string
 }
 
-// Fingerprint hashes every registered capability's full contract, so a schema,
-// role, or effect change invalidates programs cached against the old one.
+// Hashes each full contract so a schema, role, or effect change invalidates cached programs.
 func (runtime *runtime) Fingerprint() string {
 	names := make([]string, 0, len(runtime.capabilities))
 	for name := range runtime.capabilities {
@@ -47,10 +42,8 @@ func (runtime *runtime) Fingerprint() string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-// SearchFunc implements capability ranking.
 type SearchFunc func(ctx context.Context, query string, limit int) ([]capability.Match, error)
 
-// ExecuteFunc invokes a trusted transport with the protobuf RPC path resolved from the registry.
 type ExecuteFunc func(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error)
 
 type runtime struct {
@@ -59,8 +52,7 @@ type runtime struct {
 	execute      ExecuteFunc
 }
 
-// New creates a CodeMode using registry as its executable capability allowlist,
-// search for discovery, and execute for trusted RPC invocation.
+// registry is the executable capability allowlist.
 func New(registry capability.Registry, search SearchFunc, execute ExecuteFunc) (CodeMode, error) {
 	if search == nil {
 		return nil, errors.New("search function is required")

@@ -28,7 +28,6 @@ type luaRunner struct {
 
 var _ sandbox.Runner = (*luaRunner)(nil)
 
-// New returns a Runner backed by the in-process Lua interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
@@ -37,7 +36,6 @@ func New(options sandbox.Options) (sandbox.Runner, error) {
 	return &luaRunner{options: options}, nil
 }
 
-// luaTypes renders registry types as Lua table constructors.
 var luaTypes = prompt.Types{
 	Scalar: map[string]string{
 		"bool":  "boolean",
@@ -47,7 +45,6 @@ var luaTypes = prompt.Types{
 	Dict: func(key, value string) string { return "{[" + key + "] = " + value + "}" },
 }
 
-// luaDialect is the dialect the Lua engine evaluates.
 var luaDialect = prompt.Dialect{
 	ID:    "lua",
 	Prose: "Lua 5.1",
@@ -99,7 +96,6 @@ func (runner *luaRunner) Name() string {
 		runner.options.Timeout, runner.options.MaxCalls)
 }
 
-// Close is a no-op: the interpreter is created per run.
 func (runner *luaRunner) Close() error { return nil }
 
 func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source string) (any, error) {
@@ -194,7 +190,6 @@ func (runner *luaRunner) Run(ctx context.Context, mode codemode.CodeMode, source
 	return fromLua(state.Get(-1))
 }
 
-// toLua converts a JSON-decoded Go value into a Lua value; arrays are 1-indexed.
 func toLua(state *luavm.LState, value any) luavm.LValue {
 	switch typed := value.(type) {
 	case nil:
@@ -222,7 +217,6 @@ func toLua(state *luavm.LState, value any) luavm.LValue {
 	}
 }
 
-// fromLua converts a Lua value into a JSON-encodable Go value; contiguous 1-based tables become slices.
 func fromLua(value luavm.LValue) (any, error) {
 	switch typed := value.(type) {
 	case *luavm.LNilType, nil:

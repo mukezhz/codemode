@@ -22,7 +22,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/web"
 )
 
-// logger builds the request logger; -log debug adds prompts, programs, and per-call lines.
 func logger(config config) *slog.Logger {
 	level := slog.LevelInfo
 	switch strings.ToLower(strings.TrimSpace(config.logLevel)) {
@@ -36,7 +35,6 @@ func logger(config config) *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 }
 
-// serve runs the web application until interrupted.
 func serve(
 	ctx context.Context,
 	config config,
@@ -102,5 +100,4 @@ func serve(
 	}
 }
 
-// assetsOrNil warns on a missing build rather than failing.
 var _ = fs.FS(nil)

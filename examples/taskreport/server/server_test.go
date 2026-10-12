@@ -22,7 +22,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/view"
 )
 
-// model returns a fixed program and records its system prompt.
 type model struct {
 	program string
 	system  string

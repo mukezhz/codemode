@@ -8,23 +8,17 @@ import (
 	"time"
 )
 
-// Environment variables read by OptionsFromEnv.
 const (
-	// EnvProvider selects the provider: claude or openai.
 	EnvProvider = "LLM_PROVIDER"
-	// EnvBaseURL applies to any provider; a provider's own variable wins.
-	EnvBaseURL = "LLM_BASE_URL"
-	// EnvMaxTokens bounds thinking and response text together.
-	EnvMaxTokens = "LLM_MAX_TOKENS"
-	// EnvTemperature and EnvTopP leave the provider default alone when unset.
+	// A provider's own base URL variable wins over EnvBaseURL.
+	EnvBaseURL     = "LLM_BASE_URL"
+	EnvMaxTokens   = "LLM_MAX_TOKENS"
 	EnvTemperature = "LLM_TEMPERATURE"
 	EnvTopP        = "LLM_TOP_P"
-	// EnvTimeout bounds one completion request, as a Go duration.
-	EnvTimeout = "LLM_TIMEOUT"
+	EnvTimeout     = "LLM_TIMEOUT"
 )
 
-// OptionsFromEnv reads Options from the environment; without LLM_PROVIDER it
-// picks the lowest-Priority configured provider, else returns ErrNoProvider.
+// Without LLM_PROVIDER, OptionsFromEnv picks the lowest-Priority configured provider, else ErrNoProvider.
 func OptionsFromEnv() (Options, error) {
 	shared, err := sharedFromEnv()
 	if err != nil {
@@ -66,7 +60,6 @@ func OptionsFromEnv() (Options, error) {
 		ErrNoProvider, EnvProvider, EnvBaseURL)
 }
 
-// NewFromEnv is OptionsFromEnv followed by New.
 func NewFromEnv() (Client, error) {
 	options, err := OptionsFromEnv()
 	if err != nil {
@@ -83,7 +76,6 @@ func providerFromEnv(provider Provider) (Options, error) {
 	return options, err
 }
 
-// sharedFromEnv reads the LLM_* variables that apply to every provider.
 func sharedFromEnv() (Options, error) {
 	options := Options{BaseURL: strings.TrimSpace(os.Getenv(EnvBaseURL))}
 
@@ -113,7 +105,6 @@ func sharedFromEnv() (Options, error) {
 	return options, nil
 }
 
-// Env returns the trimmed value of name, or fallback when it is unset or blank.
 func Env(name, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
 		return value
@@ -121,7 +112,6 @@ func Env(name, fallback string) string {
 	return fallback
 }
 
-// EnvInt parses name as an integer, returning zero when it is unset.
 func EnvInt(name string) (int, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
@@ -134,7 +124,6 @@ func EnvInt(name string) (int, error) {
 	return parsed, nil
 }
 
-// EnvFloat parses name as a float, reporting whether it was set.
 func EnvFloat(name string) (float64, bool, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
@@ -147,7 +136,6 @@ func EnvFloat(name string) (float64, bool, error) {
 	return parsed, true, nil
 }
 
-// EnvDuration parses name as a Go duration, returning zero when it is unset.
 func EnvDuration(name string) (time.Duration, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {

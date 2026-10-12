@@ -1,5 +1,3 @@
-// Package llm turns a code mode prompt into a model-authored program via a
-// pluggable Client; providers live in subpackages and register from init.
 package llm
 
 import (
@@ -11,45 +9,30 @@ import (
 	"sync"
 )
 
-// Client completes a single prompt.
 type Client interface {
-	// Complete returns the model's response text.
 	Complete(ctx context.Context, system, user string) (string, error)
 
-	// Name identifies the provider and model.
 	Name() string
 }
 
-// Streamer is an optional Client extension that delivers the response in pieces.
 type Streamer interface {
-	// CompleteStream returns the same text Complete would, calling chunk with
-	// each fragment; chunk runs on the calling goroutine, must not block, and may be nil.
+	// chunk runs on the calling goroutine, must not block, and may be nil.
 	CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error)
 }
 
-// ErrNoProvider reports that no provider is configured.
 var ErrNoProvider = errors.New("no LLM provider configured")
 
-// Provider describes one registered model backend.
 type Provider struct {
-	// Name is the canonical name that selects it.
-	Name string
-	// Aliases are other accepted spellings.
+	Name    string
 	Aliases []string
-	// New builds a Client from options.
-	New func(Options) (Client, error)
-	// FromEnv reads this provider's environment variables and reports whether
-	// any were set; nil excludes it from env detection.
-	FromEnv func() (Options, bool, error)
-	// Priority orders env detection; lower wins.
+	New     func(Options) (Client, error)
+	// FromEnv reports whether any of its variables were set; nil excludes it from env detection.
+	FromEnv  func() (Options, bool, error)
 	Priority int
 }
 
-// Providers this module ships.
 const (
-	// ProviderClaude speaks the Anthropic API (llm/claude).
 	ProviderClaude = "claude"
-	// ProviderOpenAI speaks the OpenAI-compatible API (llm/openai).
 	ProviderOpenAI = "openai"
 )
 
@@ -78,7 +61,6 @@ func RegisterProvider(provider Provider) {
 	}
 }
 
-// RegisteredProviders lists the canonical names of every registered provider, sorted.
 func RegisteredProviders() []string {
 	providersMutex.RLock()
 	defer providersMutex.RUnlock()
@@ -94,7 +76,6 @@ func RegisteredProviders() []string {
 	return names
 }
 
-// New builds the client named by options.Provider without reading the environment.
 func New(options Options) (Client, error) {
 	name := strings.ToLower(strings.TrimSpace(options.Provider))
 	if name == "" {
@@ -115,7 +96,6 @@ func lookup(name string) (Provider, bool) {
 	return provider, found
 }
 
-// byPriority returns each registered provider once, lowest Priority first.
 func byPriority() []Provider {
 	providersMutex.RLock()
 	defer providersMutex.RUnlock()
@@ -150,10 +130,8 @@ func unregisteredProvider(name string) error {
 		name, strings.Join(available, ", "))
 }
 
-// Embedder turns text into a vector for capability search.
 type Embedder struct {
 	// Model is recorded in the capability index so mismatched searches are rejected.
 	Model string
-	// Embed produces the vector.
 	Embed func(ctx context.Context, text string) ([]float32, error)
 }

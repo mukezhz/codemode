@@ -1,4 +1,3 @@
-// Package store is the task application's own database; it validates its own input and knows nothing about models.
 package store
 
 import (
@@ -26,7 +25,6 @@ type Task struct {
 	Tags          []string `json:"tags"`
 }
 
-// Project is one project name with its task counts.
 type Project struct {
 	Name      string `json:"name"`
 	Total     int    `json:"total"`
@@ -34,7 +32,6 @@ type Project struct {
 	Completed int    `json:"completed"`
 }
 
-// GroupCount is one row of a grouped report.
 type GroupCount struct {
 	Name      string `json:"name"`
 	Total     int    `json:"total"`
@@ -42,7 +39,6 @@ type GroupCount struct {
 	Completed int    `json:"completed"`
 }
 
-// DayCount is one day of completion throughput.
 type DayCount struct {
 	Date      string `json:"date"`
 	Completed int    `json:"completed"`
@@ -50,16 +46,13 @@ type DayCount struct {
 
 // Scope is the set of rows a call may touch; the zero Scope reaches nothing.
 type Scope struct {
-	// Owner limits the call to one person's tasks.
 	Owner string
 	// All lifts that limit. Only an administrator's request sets it.
 	All bool
 }
 
-// Only returns a Scope limited to one owner.
 func Only(owner string) Scope { return Scope{Owner: owner} }
 
-// Everyone returns an unlimited Scope.
 func Everyone() Scope { return Scope{All: true} }
 
 func (scope Scope) where() (string, []any) {
@@ -70,18 +63,15 @@ func (scope Scope) where() (string, []any) {
 	return " AND owner = ?", []any{scope.Owner}
 }
 
-// Priorities are the accepted priority values, lowest first.
 var Priorities = []string{"low", "medium", "high"}
 
 const defaultPriority = "medium"
 
-// Store is the task database.
 type Store struct {
 	db  *sql.DB
 	now func() time.Time
 }
 
-// Open creates or opens the database at path, which may be ":memory:".
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -98,7 +88,6 @@ func Open(path string) (*Store, error) {
 	return store, nil
 }
 
-// SetClock overrides the clock.
 func (store *Store) SetClock(now func() time.Time) { store.now = now }
 
 func (store *Store) Close() error { return store.db.Close() }
@@ -128,12 +117,10 @@ func (store *Store) migrate() error {
 	return nil
 }
 
-// Today is the store's date, in the format every date field uses.
 func (store *Store) Today() string { return store.now().Format(dateLayout) }
 
 const dateLayout = "2006-01-02"
 
-// Create inserts a task owned by owner; title is required and priority defaults to medium.
 func (store *Store) Create(owner, title, project, priority, dueDate string, tags []string) (Task, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" {
@@ -166,7 +153,6 @@ func (store *Store) Create(owner, title, project, priority, dueDate string, tags
 	return store.Get(Only(owner), id)
 }
 
-// Get returns one task by ID, within scope.
 // Out-of-scope tasks report "not found", not "forbidden", so IDs cannot be probed.
 func (store *Store) Get(scope Scope, id int64) (Task, error) {
 	predicate, args := scope.where()
@@ -179,7 +165,6 @@ func (store *Store) Get(scope Scope, id int64) (Task, error) {
 	return task, err
 }
 
-// Filter narrows a listing. Every field is optional.
 type Filter struct {
 	Project  string
 	Status   string // open | completed
@@ -188,7 +173,6 @@ type Filter struct {
 	Limit    int
 }
 
-// List returns tasks matching filter within scope, newest first.
 func (store *Store) List(scope Scope, filter Filter) ([]Task, error) {
 	predicate, args := scope.where()
 	query := taskColumns + ` FROM tasks WHERE 1 = 1` + predicate
@@ -228,7 +212,6 @@ func (store *Store) List(scope Scope, filter Filter) ([]Task, error) {
 	return store.query(query, args...)
 }
 
-// Search returns tasks whose title contains text, case-insensitively.
 func (store *Store) Search(scope Scope, text string, limit int) ([]Task, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -244,7 +227,6 @@ func (store *Store) Search(scope Scope, text string, limit int) ([]Task, error) 
 	return store.query(query, args...)
 }
 
-// Update writes only the fields that are set.
 func (store *Store) Update(scope Scope, id int64, title, project, priority, dueDate string) (Task, error) {
 	current, err := store.Get(scope, id)
 	if err != nil {
@@ -276,7 +258,6 @@ func (store *Store) Update(scope Scope, id int64, title, project, priority, dueD
 	return store.Get(scope, id)
 }
 
-// Complete marks a task completed as of today.
 func (store *Store) Complete(scope Scope, id int64) (Task, error) {
 	task, err := store.Get(scope, id)
 	if err != nil {
@@ -294,7 +275,6 @@ func (store *Store) Complete(scope Scope, id int64) (Task, error) {
 	return store.Get(scope, id)
 }
 
-// Reopen marks a completed task open again.
 func (store *Store) Reopen(scope Scope, id int64) (Task, error) {
 	task, err := store.Get(scope, id)
 	if err != nil {
@@ -311,7 +291,6 @@ func (store *Store) Reopen(scope Scope, id int64) (Task, error) {
 	return store.Get(scope, id)
 }
 
-// Delete removes a task permanently.
 func (store *Store) Delete(scope Scope, id int64) error {
 	predicate, args := scope.where()
 	result, err := store.db.Exec(`DELETE FROM tasks WHERE id = ?`+predicate,
@@ -329,7 +308,6 @@ func (store *Store) Delete(scope Scope, id int64) error {
 	return nil
 }
 
-// AddTag adds a tag, ignoring one the task already has.
 func (store *Store) AddTag(scope Scope, id int64, tag string) (Task, error) {
 	return store.editTags(scope, id, tag, func(tags []string, tag string) []string {
 		for _, existing := range tags {
@@ -341,7 +319,6 @@ func (store *Store) AddTag(scope Scope, id int64, tag string) (Task, error) {
 	})
 }
 
-// RemoveTag removes a tag, ignoring one the task does not have.
 func (store *Store) RemoveTag(scope Scope, id int64, tag string) (Task, error) {
 	return store.editTags(scope, id, tag, func(tags []string, tag string) []string {
 		kept := tags[:0]
@@ -374,7 +351,6 @@ func (store *Store) editTags(scope Scope, id int64, tag string, edit func([]stri
 	return store.Get(scope, id)
 }
 
-// Assign moves a task to a different owner; only administrators reach it.
 func (store *Store) Assign(id int64, owner string) (Task, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" {
@@ -389,7 +365,6 @@ func (store *Store) Assign(id int64, owner string) (Task, error) {
 	return store.Get(Everyone(), id)
 }
 
-// Owners lists everyone who owns at least one task.
 func (store *Store) Owners() ([]string, error) {
 	rows, err := store.db.Query(`SELECT DISTINCT owner FROM tasks WHERE owner != '' ORDER BY owner`)
 	if err != nil {
@@ -408,7 +383,6 @@ func (store *Store) Owners() ([]string, error) {
 	return owners, rows.Err()
 }
 
-// Projects lists every project holding at least one task.
 func (store *Store) Projects(scope Scope) ([]Project, error) {
 	predicate, args := scope.where()
 	rows, err := store.db.Query(`
@@ -440,7 +414,6 @@ func (store *Store) Projects(scope Scope) ([]Project, error) {
 	return projects, rows.Err()
 }
 
-// RenameProject moves every task from one project to another.
 func (store *Store) RenameProject(scope Scope, from, to string) (int, error) {
 	from, to = strings.TrimSpace(from), strings.TrimSpace(to)
 	if from == "" || to == "" {
@@ -456,7 +429,6 @@ func (store *Store) RenameProject(scope Scope, from, to string) (int, error) {
 	return int(moved), err
 }
 
-// StatusCounts totals every task by state.
 type StatusCounts struct {
 	Total     int `json:"total"`
 	Open      int `json:"open"`
@@ -465,7 +437,6 @@ type StatusCounts struct {
 	DueToday  int `json:"due_today"`
 }
 
-// StatusCounts returns the whole-table totals.
 func (store *Store) StatusCounts(scope Scope) (StatusCounts, error) {
 	today := store.Today()
 	predicate, scopeArgs := scope.where()
@@ -487,17 +458,14 @@ func (store *Store) StatusCounts(scope Scope) (StatusCounts, error) {
 	return counts, nil
 }
 
-// ByProject counts open and completed tasks per project.
 func (store *Store) ByProject(scope Scope) ([]GroupCount, error) {
 	return store.groupCounts(scope, `project`, "(none)")
 }
 
-// ByOwner counts open and completed tasks per person.
 func (store *Store) ByOwner(scope Scope) ([]GroupCount, error) {
 	return store.groupCounts(scope, `owner`, "(unassigned)")
 }
 
-// ByPriority counts open and completed tasks per priority, highest first.
 func (store *Store) ByPriority(scope Scope) ([]GroupCount, error) {
 	groups, err := store.groupCounts(scope, `priority`, defaultPriority)
 	if err != nil {
@@ -541,7 +509,6 @@ func (store *Store) groupCounts(scope Scope, column, emptyLabel string) ([]Group
 	return groups, rows.Err()
 }
 
-// Overdue lists open tasks due before asOf (default today), oldest first.
 func (store *Store) Overdue(scope Scope, asOf string) ([]Task, error) {
 	if asOf = strings.TrimSpace(asOf); asOf == "" {
 		asOf = store.Today()
@@ -555,7 +522,6 @@ func (store *Store) Overdue(scope Scope, asOf string) ([]Task, error) {
 		ORDER BY due_date ASC`, append([]any{asOf}, args...)...)
 }
 
-// CompletedBetween lists tasks completed in a date range, inclusive.
 func (store *Store) CompletedBetween(scope Scope, start, end string) ([]Task, error) {
 	if err := validateDate("start", start); err != nil {
 		return nil, err
@@ -668,7 +634,6 @@ func normalizePriority(priority string) (string, error) {
 	return "", fmt.Errorf("priority %q is not one of %s", priority, strings.Join(Priorities, ", "))
 }
 
-// validateDate accepts empty or YYYY-MM-DD.
 func validateDate(field, value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -680,7 +645,6 @@ func validateDate(field, value string) error {
 	return nil
 }
 
-// ponytail: tags are a comma-delimited string; move to a table if filtering needs an index.
 func encodeTags(tags []string) string {
 	cleaned := make([]string, 0, len(tags))
 	seen := map[string]bool{}

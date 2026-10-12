@@ -77,7 +77,6 @@ func run(t *testing.T, ctx context.Context, mode codemode.CodeMode, program stri
 	return value
 }
 
-// Every published capability must have a dispatch case.
 func TestEveryPublishedCapabilityIsImplemented(t *testing.T) {
 	mode, _, ctx := newMode(t, auth.Identity{User: "grace", Role: auth.RoleAdmin})
 
@@ -122,7 +121,6 @@ func TestProgramComposesTheWholeWorkflow(t *testing.T) {
 	}
 }
 
-// Search does not authorize; a name absent from the registry is rejected before app code runs.
 func TestInventedCapabilityIsRejected(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second})
@@ -153,7 +151,6 @@ func TestUnknownRequestFieldIsRejected(t *testing.T) {
 	}
 }
 
-// Application errors must reach the program as failures, not empty results.
 func TestApplicationErrorsSurfaceInTheProgram(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second})
@@ -330,7 +327,6 @@ func TestCreatedTasksBelongToTheCaller(t *testing.T) {
 	}
 }
 
-// The prompt must say what the caller can see, so an empty result is not read as absence.
 func TestIdentityInstructionsDescribeTheCallersReach(t *testing.T) {
 	member := auth.Identity{User: "ada", Role: auth.RoleMember}.Instructions()
 
@@ -352,7 +348,6 @@ func TestIdentityInstructionsDescribeTheCallersReach(t *testing.T) {
 	}
 }
 
-// The sandbox gets one binding, no capability list.
 func TestSandboxHoldsOnlyTheBridge(t *testing.T) {
 	mode, _, ctx := member(t, "ada")
 
@@ -367,7 +362,6 @@ func TestSandboxHoldsOnlyTheBridge(t *testing.T) {
 	}
 }
 
-// Withheld capabilities fail from the sandbox however the program asks.
 func TestSandboxCannotReachWithheldCapabilities(t *testing.T) {
 	mode, tasks, ctx := member(t, "ada")
 	if _, err := tasks.Create("linus", "Linus's task", "docs", "high", "", nil); err != nil {

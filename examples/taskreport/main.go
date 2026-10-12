@@ -1,4 +1,3 @@
-// Command taskreport is a SQLite task tracker with reporting, answered in code mode by a model over the OpenAI protocol.
 package main
 
 import (
@@ -176,7 +175,6 @@ func run(ctx context.Context, config config) error {
 	return nil
 }
 
-// envFile is the dotfile this command reads; TASKREPORT_ENV overrides it.
 func envFile() string {
 	if path := strings.TrimSpace(os.Getenv("TASKREPORT_ENV")); path != "" {
 		return path
@@ -184,7 +182,6 @@ func envFile() string {
 	return "examples/taskreport/.env"
 }
 
-// capabilities merges every proto file's registry; a name claimed twice fails startup.
 func capabilities() (capability.Registry, error) {
 	tasks, err := coderegistry.FromFiles(taskv1.File_task_proto)
 	if err != nil {
@@ -197,7 +194,6 @@ func capabilities() (capability.Registry, error) {
 	return capability.Merge(tasks, users)
 }
 
-// restrict makes the named capabilities admin-only at runtime, for experiments without editing protos.
 func restrict(full capability.Registry, names string) (capability.Registry, error) {
 	names = strings.TrimSpace(names)
 	if names == "" {
@@ -225,7 +221,6 @@ func restrict(full capability.Registry, names string) (capability.Registry, erro
 	return restricted, nil
 }
 
-// forRole returns the registry this caller may execute against, from (codemode.roles) in the protos.
 func forRole(full capability.Registry, identity auth.Identity) capability.Registry {
 	return full.ForRole(string(identity.Role))
 }
@@ -259,7 +254,6 @@ func report(result agent.Result, verbose bool, runner sandbox.Runner) {
 	fmt.Printf("timing\n  %s\n\n", result.Timing)
 }
 
-// offline runs the full path with a fixed program in place of the model.
 func offline(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner, config config) error {
 	fmt.Println("model\n  none — pass -api-key and -base-url to have one write the program")
 
@@ -283,7 +277,6 @@ func offline(ctx context.Context, mode codemode.CodeMode, runner sandbox.Runner,
 	return nil
 }
 
-// fixedProgram is what a model would plausibly write for the default request.
 const fixedProgram = `
 const counts = codemode.execute("reports.statusCounts", {});
 const projects = codemode.execute("reports.byProject", {}).groups;
@@ -323,7 +316,6 @@ lines.push("Completed in the last 7 days: " + week + ".");
 return lines.join("\n");
 `
 
-// seed writes a sample backlog on first run, dated relative to today.
 func seed(tasks *store.Store) (int, error) {
 	existing, err := tasks.List(store.Everyone(), store.Filter{Limit: 1})
 	if err != nil {

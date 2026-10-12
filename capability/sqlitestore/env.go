@@ -20,7 +20,6 @@ func init() {
 	})
 }
 
-// OpenFromEnv opens the SQLite index at path, taking the vector library from SQLITE_VECTOR_EXTENSION.
 func OpenFromEnv(ctx context.Context, path string) (capability.Store, error) {
 	return Open(ctx, path, strings.TrimSpace(os.Getenv(EnvExtension)))
 }

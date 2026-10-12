@@ -13,7 +13,6 @@ import (
 	"github.com/mukezhz/codemode/program"
 )
 
-// TestVectorSearch skips unless SQLITE_VECTOR_EXTENSION is set.
 func TestVectorSearch(t *testing.T) {
 	extension := os.Getenv("SQLITE_VECTOR_EXTENSION")
 	if extension == "" {
@@ -59,7 +58,6 @@ func TestBackendRegistersItself(t *testing.T) {
 	}
 }
 
-// TestProgramCache skips unless SQLITE_VECTOR_EXTENSION is set.
 func TestProgramCache(t *testing.T) {
 	extension := os.Getenv("SQLITE_VECTOR_EXTENSION")
 	if extension == "" {

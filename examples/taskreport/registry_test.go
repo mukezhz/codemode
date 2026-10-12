@@ -20,7 +20,6 @@ import (
 	taskstore "github.com/mukezhz/codemode/examples/taskreport/store"
 )
 
-// Startup-derived registry must match the generated registry.json.
 func TestDerivedRegistryMatchesTheGeneratedFile(t *testing.T) {
 	generated, err := capability.LoadFile("registry.json")
 	if err != nil {
@@ -82,7 +81,6 @@ func TestPublishedCapabilities(t *testing.T) {
 	}
 }
 
-// A withheld capability must not appear anywhere in a role's prompt.
 func TestWithheldCapabilitiesNeverReachThePrompt(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)
@@ -185,7 +183,6 @@ func TestOnlyTheIntendedCapabilitiesAreUnrestricted(t *testing.T) {
 	}
 }
 
-// An unknown role gets only the unrestricted surface.
 func TestUnknownRoleGetsOnlyTheUnrestrictedSurface(t *testing.T) {
 	tasks, _ := coderegistry.FromFiles(taskv1.File_task_proto)
 	users, _ := coderegistry.FromFiles(userv1.File_user_proto)

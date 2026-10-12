@@ -1,4 +1,3 @@
-// Package view defines the strict document schema programs return and the browser renders.
 package view
 
 import (
@@ -7,21 +6,14 @@ import (
 	"strings"
 )
 
-// Block kinds, each one frontend component.
 const (
-	// KindStats is a row of headline numbers.
 	KindStats = "stats"
-	// KindBar is a categorical comparison: work per project, per person.
-	KindBar = "bar"
-	// KindLine is a value over time, such as completions per day.
-	KindLine = "line"
-	// KindTable is rows the reader needs to see individually.
+	KindBar   = "bar"
+	KindLine  = "line"
 	KindTable = "table"
-	// KindText is a sentence of interpretation between the figures.
-	KindText = "text"
+	KindText  = "text"
 )
 
-// Document is what a program returns and the browser renders.
 type Document struct {
 	Title  string  `json:"title,omitempty"`
 	Blocks []Block `json:"blocks,omitempty"`
@@ -30,28 +22,21 @@ type Document struct {
 	Unavailable string `json:"unavailable,omitempty"`
 }
 
-// Block is one element of a document; which fields matter depends on Type.
 type Block struct {
 	Type string `json:"type"`
 
-	// Heading labels the block. Optional everywhere.
 	Heading string `json:"heading,omitempty"`
 
-	// Items carries a stats block.
 	Items []Stat `json:"items,omitempty"`
 
-	// Series carries a bar or line block.
 	Series []Point `json:"series,omitempty"`
 
-	// Columns and Rows carry a table. Every row must be as wide as Columns.
 	Columns []string   `json:"columns,omitempty"`
 	Rows    [][]string `json:"rows,omitempty"`
 
-	// Text carries a text block.
 	Text string `json:"text,omitempty"`
 }
 
-// Stat is one headline number.
 type Stat struct {
 	Label string  `json:"label"`
 	Value float64 `json:"value"`
@@ -59,16 +44,13 @@ type Stat struct {
 	Tone string `json:"tone,omitempty"`
 }
 
-// Point is one bar, or one position on a line.
 type Point struct {
 	Label string  `json:"label"`
 	Value float64 `json:"value"`
 }
 
-// Tones a Stat may carry.
 var tones = map[string]bool{"": true, "good": true, "warn": true, "bad": true}
 
-// Parse decodes and validates a document produced by a program.
 func Parse(value any) (Document, error) {
 	if value == nil {
 		return Document{}, fmt.Errorf("the program returned nothing; return a view document")
@@ -95,10 +77,8 @@ func Parse(value any) (Document, error) {
 	return document, nil
 }
 
-// Refused reports whether the document is a refusal rather than an answer.
 func (document Document) Refused() bool { return strings.TrimSpace(document.Unavailable) != "" }
 
-// Validate reports the first problem with a document.
 func (document Document) Validate() error {
 	if document.Refused() {
 		if len(document.Blocks) > 0 {
@@ -168,7 +148,6 @@ func (block Block) validate() error {
 	return nil
 }
 
-// Instructions tell the model to return a document; appended via agent.Options.Instructions.
 const Instructions = `Return a view document, not a sentence. It is an object with an optional "title" and a "blocks" array. Each block is one of:
 
 {"type":"stats","heading":"...","items":[{"label":"Open","value":8,"tone":"warn"}]}   tone is good, warn, bad, or omitted
