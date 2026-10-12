@@ -66,6 +66,7 @@ flowchart TB
     cap["capability<br/><small>Store</small>"]
     llm["llm<br/><small>Client</small>"]
     sb["sandbox<br/><small>Runner</small>"]
+    prog["program<br/><small>Cache, Store</small>"]
   end
   subgraph impls["implementation packages — one vendor each"]
     pg["capability/pgstore"]
@@ -83,6 +84,8 @@ flowchart TB
   goja -->|"RegisterEngine"| sb
   star -->|"RegisterEngine"| sb
   lua -->|"RegisterEngine"| sb
+  lite -->|"implements"| prog
+  pg -->|"implements"| prog
 ```
 
 Registration is one-way. An implementation imports its interface package; the
