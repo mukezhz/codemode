@@ -28,3 +28,5 @@ dist/
 !examples/taskreport/web/dist/
 # Local credentials for the taskreport example. The .example is committed.
 examples/taskreport/.env
+
+.DS_Store
