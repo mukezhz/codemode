@@ -83,5 +83,10 @@ export default withMermaid(
       theme: "default",
       themeVariables: { fontFamily: "inherit" },
     },
+
+    // Pre-bundle mermaid: under pnpm the plugin's own CJS includes (dayjs, ...) do not resolve.
+    vite: {
+      optimizeDeps: { include: ["mermaid"] },
+    },
   }),
 );
