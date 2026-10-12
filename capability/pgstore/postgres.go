@@ -27,6 +27,8 @@ type pgStore struct {
 	db *sql.DB
 }
 
+var _ capability.Store = (*pgStore)(nil)
+
 // Open connects to the Postgres index named by dsn; the caller closes the store.
 func Open(ctx context.Context, dsn string) (capability.Store, error) {
 	db, err := sql.Open("pgx", dsn)

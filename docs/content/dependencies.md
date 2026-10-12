@@ -89,6 +89,18 @@ Registration is one-way. An implementation imports its interface package; the
 interface package never imports back. That is what keeps `capability`,
 `llm`, and `sandbox` free of vendor code.
 
+| Interface | Implementations |
+|---|---|
+| `capability.Store` | `capability/sqlitestore`, `capability/pgstore` |
+| `program.Cache` | `program.New` (semantic), `program.NewExactCache` |
+| `program.Store` | `program.NewMemoryStore`, `capability/sqlitestore`, `capability/pgstore` |
+| `llm.Client`, `llm.Streamer` | `llm/claude`, `llm/openai` |
+| `sandbox.Runner` | `sandbox/goja`, `sandbox/starlark`, `sandbox/lua` |
+
+Each implementation asserts its interface at compile time with a line such as
+`var _ sandbox.Runner = (*luaRunner)(nil)`, so
+`git grep 'var _ sandbox.Runner'` lists every engine.
+
 ## When you forget an import
 
 The failure is a runtime error at construction, not a compile error — the cost

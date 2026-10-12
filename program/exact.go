@@ -16,6 +16,8 @@ type exactCache struct {
 	next    int64
 }
 
+var _ Cache = (*exactCache)(nil)
+
 // NewExactCache returns a Cache that reuses a program only for a repeat of the
 // same request, ignoring surrounding whitespace and letter case.
 func NewExactCache() Cache {

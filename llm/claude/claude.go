@@ -68,6 +68,11 @@ type client struct {
 	thinking  anthropic.BetaThinkingConfigParamUnion
 }
 
+var (
+	_ llm.Client   = (*client)(nil)
+	_ llm.Streamer = (*client)(nil)
+)
+
 // New builds a Claude client from options without reading the environment.
 func New(options Options) (llm.Client, error) {
 	resolved, err := options.Options.WithDefaults(llm.Defaults{

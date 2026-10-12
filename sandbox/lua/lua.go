@@ -26,6 +26,8 @@ type luaRunner struct {
 	options sandbox.Options
 }
 
+var _ sandbox.Runner = (*luaRunner)(nil)
+
 // New returns a Runner backed by the in-process Lua interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()

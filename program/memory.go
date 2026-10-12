@@ -15,6 +15,8 @@ type memoryStore struct {
 	next    int64
 }
 
+var _ Store = (*memoryStore)(nil)
+
 // NewMemoryStore returns a Store held in memory, lost on restart.
 func NewMemoryStore() Store {
 	return &memoryStore{records: map[string]Record{}}

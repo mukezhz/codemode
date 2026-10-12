@@ -36,6 +36,8 @@ type sqliteProgramStore struct {
 	dimension int
 }
 
+var _ program.Store = (*sqliteProgramStore)(nil)
+
 func (store *sqliteProgramStore) migrate(ctx context.Context) error {
 	if _, err := store.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS `+programTable+` (

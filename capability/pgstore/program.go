@@ -31,6 +31,8 @@ type pgProgramStore struct {
 	db *sql.DB
 }
 
+var _ program.Store = (*pgProgramStore)(nil)
+
 func (store *pgProgramStore) migrate(ctx context.Context, dimension int) error {
 	// A table at a different dimension is replaced; the cache is derived data.
 	var existing int

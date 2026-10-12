@@ -20,6 +20,8 @@ type sqliteStore struct {
 	db *sql.DB
 }
 
+var _ capability.Store = (*sqliteStore)(nil)
+
 // Open opens the SQLite index at path, loading the sqlite-vector library from extensionPath; the caller closes the store.
 func Open(ctx context.Context, path, extensionPath string) (capability.Store, error) {
 	if extensionPath == "" {

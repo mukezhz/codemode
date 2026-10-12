@@ -97,6 +97,8 @@ type semanticCache struct {
 	threshold float64
 }
 
+var _ Cache = (*semanticCache)(nil)
+
 // New returns a Cache that finds a program by embedding the request and
 // searching store for the nearest one within the threshold. Closing the Cache closes store.
 func New(store Store, embedder capability.Embedder, options Options) (Cache, error) {

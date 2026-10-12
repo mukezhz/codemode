@@ -48,6 +48,11 @@ type client struct {
 	params Options
 }
 
+var (
+	_ llm.Client   = (*client)(nil)
+	_ llm.Streamer = (*client)(nil)
+)
+
 // New builds an OpenAI client from options without reading the environment.
 func New(options Options) (llm.Client, error) {
 	resolved, err := options.Options.WithDefaults(llm.Defaults{

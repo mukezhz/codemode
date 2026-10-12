@@ -30,6 +30,8 @@ type starlarkRunner struct {
 	options sandbox.Options
 }
 
+var _ sandbox.Runner = (*starlarkRunner)(nil)
+
 // New returns a Runner backed by the in-process Starlark interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()

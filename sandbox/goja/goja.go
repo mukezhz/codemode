@@ -27,6 +27,8 @@ type gojaRunner struct {
 	options sandbox.Options
 }
 
+var _ sandbox.Runner = (*gojaRunner)(nil)
+
 // New returns a Runner backed by the in-process goja interpreter.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
