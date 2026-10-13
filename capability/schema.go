@@ -19,18 +19,47 @@ type Capability struct {
 
 	Types map[string]TypeSchema `json:"types,omitempty"`
 
-	// Empty means unrestricted.
-	Roles []string `json:"roles,omitempty"`
+	// A caller holding any of Roles or any of Permissions may call it; both
+	// empty means unrestricted.
+	Roles       []string `json:"roles,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
 
 	// Anything but (idempotency_level) = NO_SIDE_EFFECTS is treated as a write.
 	ReadOnly bool `json:"read_only,omitempty"`
 }
 
+func (capability Capability) Unrestricted() bool {
+	return len(capability.Roles) == 0 && len(capability.Permissions) == 0
+}
+
 func (capability Capability) AllowsRole(role string) bool {
-	if len(capability.Roles) == 0 {
+	return capability.Unrestricted() || slices.Contains(capability.Roles, role)
+}
+
+// Allows reports whether caller holds any role or permission this capability accepts.
+func (capability Capability) Allows(caller Caller) bool {
+	if capability.Unrestricted() {
 		return true
 	}
-	return slices.Contains(capability.Roles, role)
+	for _, role := range caller.Roles {
+		if slices.Contains(capability.Roles, strings.TrimSpace(role)) {
+			return true
+		}
+	}
+	for _, permission := range caller.Permissions {
+		if slices.Contains(capability.Permissions, strings.TrimSpace(permission)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Caller is what your application says the signed-in user holds, fetched per
+// request: fixed roles from the session, and permissions from wherever runtime
+// roles are defined. Either may be empty.
+type Caller struct {
+	Roles       []string
+	Permissions []string
 }
 
 func (capability *Capability) EmbeddingText() string {

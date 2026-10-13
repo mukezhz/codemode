@@ -42,28 +42,11 @@ func (registry Registry) ForRole(role string) Registry {
 	return registry.Select(func(item Capability) bool { return item.AllowsRole(role) })
 }
 
-// ForRoles keeps the capabilities any of roles allows, plus every unrestricted
-// one. Pass whatever the caller holds, fetched per request: role names, or the
-// permission names your protos declare. No roles still gets the unrestricted
-// capabilities; blank and unknown names grant nothing.
-func (registry Registry) ForRoles(roles ...string) Registry {
-	held := map[string]bool{}
-	for _, role := range roles {
-		if role = strings.TrimSpace(role); role != "" {
-			held[role] = true
-		}
-	}
-	return registry.Select(func(item Capability) bool {
-		if len(item.Roles) == 0 {
-			return true
-		}
-		for _, role := range item.Roles {
-			if held[role] {
-				return true
-			}
-		}
-		return false
-	})
+// For keeps the capabilities caller may call: those whose roles or permissions
+// caller holds any of, plus every unrestricted one. Build caller per request
+// from your application; unknown, blank and wrongly cased names grant nothing.
+func (registry Registry) For(caller Caller) Registry {
+	return registry.Select(func(item Capability) bool { return item.Allows(caller) })
 }
 
 // Only ever narrows: a capability with no roles now requires role.
@@ -85,7 +68,7 @@ func (registry Registry) Require(role string, keep func(Capability) bool) Regist
 }
 
 func (registry Registry) Unrestricted() Registry {
-	return registry.Select(func(item Capability) bool { return len(item.Roles) == 0 })
+	return registry.Select(func(item Capability) bool { return item.Unrestricted() })
 }
 
 func (registry Registry) Roles() []string {
@@ -101,6 +84,23 @@ func (registry Registry) Roles() []string {
 	}
 	sort.Strings(roles)
 	return roles
+}
+
+// Permissions lists every permission the registry's capabilities accept: the
+// checkboxes an admin screen offers when someone defines a role at runtime.
+func (registry Registry) Permissions() []string {
+	unique := map[string]bool{}
+	for _, item := range registry.Capabilities {
+		for _, permission := range item.Permissions {
+			unique[permission] = true
+		}
+	}
+	permissions := make([]string, 0, len(unique))
+	for permission := range unique {
+		permissions = append(permissions, permission)
+	}
+	sort.Strings(permissions)
+	return permissions
 }
 
 func (registry Registry) Namespaces() []string {

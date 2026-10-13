@@ -42,9 +42,11 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	if err != nil {
 		return Registry{}, err
 	}
-	// Roles are optional, so a codemode.proto predating them still works.
+	// Roles and permissions are optional, so a codemode.proto predating them still works.
 	serviceRolesOption, _ := customOptionNumber(files, ".codemode.default_roles", ".google.protobuf.ServiceOptions")
 	methodRolesOption, _ := customOptionNumber(files, ".codemode.roles", ".google.protobuf.MethodOptions")
+	servicePermissionsOption, _ := customOptionNumber(files, ".codemode.default_permissions", ".google.protobuf.ServiceOptions")
+	methodPermissionsOption, _ := customOptionNumber(files, ".codemode.permissions", ".google.protobuf.MethodOptions")
 
 	messages := indexMessages(files)
 	registry := Registry{Capabilities: []Capability{}}
@@ -57,6 +59,10 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				return Registry{}, fmt.Errorf("%s.%s: %w", file.GetPackage(), service.GetName(), err)
 			}
 			defaultRoles, err := optionalRoles(service.GetOptions(), serviceRolesOption)
+			if err != nil {
+				return Registry{}, fmt.Errorf("%s: %w", service.GetName(), err)
+			}
+			defaultPermissions, err := optionalRoles(service.GetOptions(), servicePermissionsOption)
 			if err != nil {
 				return Registry{}, fmt.Errorf("%s: %w", service.GetName(), err)
 			}
@@ -81,6 +87,12 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
 				} else if methodRoles != nil {
 					roles = methodRoles
+				}
+				permissions := defaultPermissions
+				if methodPermissions, err := optionalRoles(method.GetOptions(), methodPermissionsOption); err != nil {
+					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
+				} else if methodPermissions != nil {
+					permissions = methodPermissions
 				}
 
 				description = strings.TrimSpace(description)
@@ -128,6 +140,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 					Output:      output,
 					Types:       types,
 					Roles:       roles,
+					Permissions: permissions,
 					ReadOnly:    method.GetOptions().GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS,
 				})
 			}

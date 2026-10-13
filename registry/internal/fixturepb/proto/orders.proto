@@ -11,6 +11,7 @@ option go_package = "github.com/mukezhz/codemode/registry/internal/fixturepb/gen
 // methods, and one field of each shape the neutral type renderer handles.
 service OrderService {
   option (codemode.namespace) = "orders";
+  option (codemode.default_permissions) = "orders.read";
 
   rpc List(ListOrdersRequest) returns (ListOrdersResponse) {
     option (codemode.description) = "Lists orders, newest first.";
@@ -22,6 +23,8 @@ service OrderService {
 
   rpc Cancel(GetOrderRequest) returns (OrderResponse) {
     option (codemode.description) = "Cancels an order that has not shipped.";
+    option (codemode.roles) = "support";
+    option (codemode.permissions) = "orders.cancel";
   }
 }
 

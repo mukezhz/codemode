@@ -6,9 +6,14 @@ version is 0, a minor bump may break the API.
 ## [Unreleased]
 
 ### Added
-- `capability.Registry.ForRoles(roles...)`: the capabilities any of a caller's
-  roles or permissions allow, plus every unrestricted one. Pass roles fetched
-  from your app per request; fixed and runtime-defined roles mix.
+- `(codemode.permissions)` and `(codemode.default_permissions)` beside roles, for
+  applications whose roles are defined at runtime: the proto names the
+  permission an RPC needs, the application decides which roles grant it.
+- `capability.Registry.For(capability.Caller{Roles, Permissions})`: the
+  capabilities a caller may call when they hold any listed role or permission,
+  plus every unrestricted one. Build the caller per request from your app.
+- `capability.Registry.Permissions()`: every permission the protos define, for a
+  role-editing screen.
 - `registry.MarshalJSON`: encodes a proto response in the shape the registry
   describes (proto field names, empty lists as `[]`, 64-bit integers as numbers).
   Plain `protojson.Marshal` disagrees with the schema on all three.

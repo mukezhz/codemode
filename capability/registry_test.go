@@ -160,25 +160,32 @@ func TestRequireDoesNotAliasRoles(t *testing.T) {
 	}
 }
 
-func TestForRolesUnionsWhatTheCallerHolds(t *testing.T) {
+func TestForMatchesAnyRoleOrPermission(t *testing.T) {
 	full := capability.Registry{Capabilities: []capability.Capability{
 		withRoles("tasks.list"),
 		withRoles("tasks.assign", "admin"),
-		withRoles("billing.refund", "finance", "admin"),
-		withRoles("reports.pipeline", "reports.view"),
+		{Name: "deals.move", Permissions: []string{"deals.write"}},
+		{Name: "deals.refund", Roles: []string{"admin"}, Permissions: []string{"billing.refund"}},
 	}}
 	for _, test := range []struct {
-		roles []string
-		want  string
+		caller capability.Caller
+		want   string
 	}{
-		{nil, "tasks.list"},
-		{[]string{"finance"}, "tasks.list,billing.refund"},
-		{[]string{"finance", "reports.view"}, "tasks.list,billing.refund,reports.pipeline"},
-		{[]string{"admin", "admin"}, "tasks.list,tasks.assign,billing.refund"},
-		{[]string{" ", "Admin", "nonexistent"}, "tasks.list"},
+		{capability.Caller{}, "tasks.list"},
+		{capability.Caller{Roles: []string{"admin"}}, "tasks.list,tasks.assign,deals.refund"},
+		{capability.Caller{Permissions: []string{"deals.write"}}, "tasks.list,deals.move"},
+		{capability.Caller{Permissions: []string{"billing.refund"}}, "tasks.list,deals.refund"},
+		{capability.Caller{Roles: []string{"deals.write"}}, "tasks.list"}, // a role is not a permission
+		{capability.Caller{Roles: []string{" ", "Admin"}, Permissions: []string{"deals.Write"}}, "tasks.list"},
 	} {
-		if got := strings.Join(full.ForRoles(test.roles...).Names(), ","); got != test.want {
-			t.Errorf("ForRoles(%q) = %q, want %q", test.roles, got, test.want)
+		if got := strings.Join(full.For(test.caller).Names(), ","); got != test.want {
+			t.Errorf("For(%+v) = %q, want %q", test.caller, got, test.want)
 		}
+	}
+	if got := strings.Join(full.Unrestricted().Names(), ","); got != "tasks.list" {
+		t.Errorf("Unrestricted() = %q: a permission-only capability is restricted", got)
+	}
+	if got := strings.Join(full.Permissions(), ","); got != "billing.refund,deals.write" {
+		t.Errorf("Permissions() = %q", got)
 	}
 }

@@ -39,6 +39,14 @@ var file_codemode_proto_extTypes = []protoimpl.ExtensionInfo{
 		Filename:      "codemode.proto",
 	},
 	{
+		ExtendedType:  (*descriptorpb.ServiceOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         50002,
+		Name:          "codemode.default_permissions",
+		Tag:           "bytes,50002,opt,name=default_permissions",
+		Filename:      "codemode.proto",
+	},
+	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50000,
@@ -52,6 +60,14 @@ var file_codemode_proto_extTypes = []protoimpl.ExtensionInfo{
 		Field:         50001,
 		Name:          "codemode.roles",
 		Tag:           "bytes,50001,opt,name=roles",
+		Filename:      "codemode.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         50002,
+		Name:          "codemode.permissions",
+		Tag:           "bytes,50002,opt,name=permissions",
 		Filename:      "codemode.proto",
 	},
 }
@@ -73,6 +89,14 @@ var (
 	//
 	// optional string default_roles = 50001;
 	E_DefaultRoles = &file_codemode_proto_extTypes[1]
+	// default_permissions are the permissions that allow a caller to use this
+	// service's methods, separated by spaces, such as "deals.read". Use them when
+	// your application's roles are data an administrator edits at runtime: the
+	// proto names what an RPC needs, and your application decides which roles
+	// grant it. A method's own (permissions) replaces this.
+	//
+	// optional string default_permissions = 50002;
+	E_DefaultPermissions = &file_codemode_proto_extTypes[2]
 )
 
 // Extension fields to descriptorpb.MethodOptions.
@@ -81,7 +105,7 @@ var (
 	// reads. Required, and worth writing for a stranger.
 	//
 	// optional string description = 50000;
-	E_Description = &file_codemode_proto_extTypes[2]
+	E_Description = &file_codemode_proto_extTypes[3]
 	// roles are the caller roles allowed to use this method, separated by
 	// spaces. It replaces the service's (default_roles) rather than adding to
 	// them, so a method can narrow a permissive service or open one method of a
@@ -92,7 +116,14 @@ var (
 	// hard, not merely unlikely.
 	//
 	// optional string roles = 50001;
-	E_Roles = &file_codemode_proto_extTypes[3]
+	E_Roles = &file_codemode_proto_extTypes[4]
+	// permissions are the permissions that allow a caller to use this method,
+	// separated by spaces, such as "deals.write". A caller holding any listed
+	// role or any listed permission may call the method. It replaces the
+	// service's (default_permissions), as roles replace default_roles.
+	//
+	// optional string permissions = 50002;
+	E_Permissions = &file_codemode_proto_extTypes[5]
 )
 
 var File_codemode_proto protoreflect.FileDescriptor
@@ -101,9 +132,11 @@ const file_codemode_proto_rawDesc = "" +
 	"\n" +
 	"\x0ecodemode.proto\x12\bcodemode\x1a google/protobuf/descriptor.proto:?\n" +
 	"\tnamespace\x12\x1f.google.protobuf.ServiceOptions\x18І\x03 \x01(\tR\tnamespace:F\n" +
-	"\rdefault_roles\x12\x1f.google.protobuf.ServiceOptions\x18ц\x03 \x01(\tR\fdefaultRoles:B\n" +
+	"\rdefault_roles\x12\x1f.google.protobuf.ServiceOptions\x18ц\x03 \x01(\tR\fdefaultRoles:R\n" +
+	"\x13default_permissions\x12\x1f.google.protobuf.ServiceOptions\x18҆\x03 \x01(\tR\x12defaultPermissions:B\n" +
 	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescription:6\n" +
-	"\x05roles\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\tR\x05rolesB3Z1github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
+	"\x05roles\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\tR\x05roles:B\n" +
+	"\vpermissions\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\vpermissionsB3Z1github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
 
 var file_codemode_proto_goTypes = []any{
 	(*descriptorpb.ServiceOptions)(nil), // 0: google.protobuf.ServiceOptions
@@ -112,12 +145,14 @@ var file_codemode_proto_goTypes = []any{
 var file_codemode_proto_depIdxs = []int32{
 	0, // 0: codemode.namespace:extendee -> google.protobuf.ServiceOptions
 	0, // 1: codemode.default_roles:extendee -> google.protobuf.ServiceOptions
-	1, // 2: codemode.description:extendee -> google.protobuf.MethodOptions
-	1, // 3: codemode.roles:extendee -> google.protobuf.MethodOptions
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	0, // [0:4] is the sub-list for extension extendee
+	0, // 2: codemode.default_permissions:extendee -> google.protobuf.ServiceOptions
+	1, // 3: codemode.description:extendee -> google.protobuf.MethodOptions
+	1, // 4: codemode.roles:extendee -> google.protobuf.MethodOptions
+	1, // 5: codemode.permissions:extendee -> google.protobuf.MethodOptions
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	0, // [0:6] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
 }
 
@@ -133,7 +168,7 @@ func file_codemode_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_codemode_proto_rawDesc), len(file_codemode_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   0,
-			NumExtensions: 4,
+			NumExtensions: 6,
 			NumServices:   0,
 		},
 		GoTypes:           file_codemode_proto_goTypes,

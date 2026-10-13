@@ -148,3 +148,21 @@ func TestFromFilesCarriesReferencedShapes(t *testing.T) {
 	}
 	t.Fatal("orders.list is missing")
 }
+
+func TestRolesAndPermissionsComeFromTheContract(t *testing.T) {
+	built, err := registry.FromFiles(fixturev1.File_orders_proto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]registry.Capability{}
+	for _, item := range built.Capabilities {
+		byName[item.Name] = item
+	}
+	if list := byName["orders.list"]; len(list.Roles) != 0 || strings.Join(list.Permissions, ",") != "orders.read" {
+		t.Errorf("orders.list roles=%v permissions=%v, want the service default permission", list.Roles, list.Permissions)
+	}
+	cancel := byName["orders.cancel"]
+	if strings.Join(cancel.Roles, ",") != "support" || strings.Join(cancel.Permissions, ",") != "orders.cancel" {
+		t.Errorf("orders.cancel roles=%v permissions=%v, want its own, replacing the default", cancel.Roles, cancel.Permissions)
+	}
+}
