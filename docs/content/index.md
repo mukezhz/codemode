@@ -103,6 +103,7 @@ per-user scoping, and charts rendered from a prompt:
 go run ./examples/taskreport -serve :8080
 ```
 
-Then build your own in fifteen minutes with the [Quickstart](/quickstart).
+Then build your own in fifteen minutes with the [Quickstart](/quickstart), or add
+it to an application you already run with [Adding it to an existing app](/existing-app).
 Read [what code mode is](/overview) for the idea, [Architecture](/architecture)
 for how the pieces fit, or [the flow](/flow) for one request traced step by step.

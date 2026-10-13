@@ -110,7 +110,20 @@ What each line is for:
 version: v2
 modules:
   - path: proto
+lint:
+  use:
+    - STANDARD
+  except:
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+  ignore:
+    - proto/codemode.proto
 ```
+
+`ignore` keeps `buf lint` off the library's file. The three exceptions are
+optional: they let request and response types be named for what they hold
+(`ListOrdersRequest`, a shared `Order`), which reads better in the prompt.
 
 `buf.gen.yaml`:
 
@@ -336,6 +349,7 @@ with a memory cap and no access to your environment. See
 
 | You want to | Read |
 | --- | --- |
+| add it to an app you already have (a CRM, say) | [Adding it to an existing app](/existing-app) |
 | understand how the pieces fit | [Architecture](/architecture) |
 | connect a real backend, gRPC or your services | [Add it to your application](/using-it#_3-write-executefunc) |
 | scope data per user, roles, tenants | [Roles and tenants](/tenants) |

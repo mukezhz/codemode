@@ -261,6 +261,9 @@ flowchart LR
   another MCP server's tools as capabilities, so one program can call
   `github.listIssues` next to `orders.list`. Imported tools always require a role.
 
+To see these pieces added to a real application, follow
+[Adding it to an existing app](/existing-app), which walks a CRM through it.
+
 ## What you write, what you get
 
 | You write | Code mode provides |

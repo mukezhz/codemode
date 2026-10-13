@@ -25,7 +25,7 @@ export default withMermaid(
           text: "Guide",
           link: "/quickstart",
           activeMatch:
-            "^/(quickstart|overview|architecture|flow|using-it|environments|dependencies|permissions|tenants|writes|caching|scaling-up|mcp|capabilities|search|models|sandbox|worker)",
+            "^/(quickstart|existing-app|overview|architecture|flow|using-it|environments|dependencies|permissions|tenants|writes|caching|scaling-up|mcp|capabilities|search|models|sandbox|worker)",
         },
         {
           text: "Reference",
@@ -47,6 +47,7 @@ export default withMermaid(
           text: "Using it",
           items: [
             { text: "Quickstart", link: "/quickstart" },
+            { text: "Adding it to an existing app", link: "/existing-app" },
             { text: "Add it to your application", link: "/using-it" },
             { text: "Development and production", link: "/environments" },
             { text: "What your binary links", link: "/dependencies" },

@@ -2,7 +2,8 @@
 
 This page goes from an empty `main.go` to a working request, explaining each
 choice along the way. For the shortest path, follow the [Quickstart](/quickstart)
-first; for how the pieces fit, see [Architecture](/architecture). Every Go snippet
+first; for how the pieces fit, see [Architecture](/architecture); to add it beside
+an app you already run, see [Adding it to an existing app](/existing-app). Every Go snippet
 here compiles against the module as it stands.
 
 ## Install

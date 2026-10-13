@@ -59,6 +59,7 @@ Full docs are a VitePress site under [`docs/`](docs/content):
 
 - [**Quickstart**](docs/content/quickstart.md) — an empty directory to a model answering, in eight steps
 - [What code mode is](docs/content/overview.md) · [**Architecture**](docs/content/architecture.md) — packages, ports, request lifecycle, trust boundaries
+- [Adding it to an existing app](docs/content/existing-app.md) — a CRM walked through: contract, adapter, roles, tenants, confirmed writes, and a non-Go CRM via a sidecar
 - [Add it to your application](docs/content/using-it.md) — every integration choice, explained
 - [Development and production](docs/content/environments.md) · [Running the worker](docs/content/worker.md) — same binary, different isolation
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
