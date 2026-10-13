@@ -17,6 +17,9 @@ version is 0, a minor bump may break the API.
 - Permissions must look like `resource.action` (`capability.PermissionPattern`);
   a malformed one fails registry loading. `Registry.ValidatePermissions` checks
   names an admin is about to grant against the pattern and the protos.
+- Permission actions: `write` also grants `read`, `manage` grants every action on
+  its resource, `delete` and custom actions grant only themselves
+  (`capability.Grants`). `Registry.Permissions()` offers `resource.manage`.
 - `registry.MarshalJSON`: encodes a proto response in the shape the registry
   describes (proto field names, empty lists as `[]`, 64-bit integers as numbers).
   Plain `protojson.Marshal` disagrees with the schema on all three.

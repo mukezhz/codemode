@@ -46,9 +46,11 @@ func (capability Capability) Allows(caller Caller) bool {
 			return true
 		}
 	}
-	for _, permission := range caller.Permissions {
-		if slices.Contains(capability.Permissions, strings.TrimSpace(permission)) {
-			return true
+	for _, held := range caller.Permissions {
+		for _, required := range capability.Permissions {
+			if Grants(strings.TrimSpace(held), required) {
+				return true
+			}
 		}
 	}
 	return false

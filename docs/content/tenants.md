@@ -249,6 +249,8 @@ With these roles in the database:
 | Senior AE | `deals.read` `deals.write` `deals.discount` | `deals.list` `deals.move` `deals.discount` |
 | Sales Ops | `deals.read` `reports.view` | `deals.list` `reports.pipeline` |
 | Revoked Intern | (none) | (none) |
+| Deal Editor | `deals.write` | `deals.list` `deals.move`: write implies read |
+| Deals Admin | `deals.manage` | `deals.list` `deals.move` `deals.discount`: manage is everything on deals |
 | fixed role `admin`, no grants | — | `deals.discount` only: a fixed role reaches only RPCs that name it |
 
 That table is a passing test against the proto above. Two checks stop a typo

@@ -60,6 +60,29 @@ underscores, separated by dots.
 | --- | --- |
 | `deals.write`, `reports.view`, `billing.refund_partial`, `crm.deals.write` | `write` (no resource), `Deals.Write` (uppercase), `deals-write`, `deals..write`, `deals.write ` |
 
+### Read, write, delete, manage
+
+Four actions mean more than their name, so a role screen does not need a box for
+every RPC:
+
+| Granted | Satisfies | Example |
+| --- | --- | --- |
+| `deals.read` | itself | view only |
+| `deals.write` | itself and `deals.read` | edit, which implies viewing |
+| `deals.delete` | itself | deleting stays a separate, deliberate grant; `write` never implies it |
+| `deals.manage` | every `deals.*`, including custom actions like `deals.discount` | everything on that resource |
+| any other, e.g. `deals.discount` | itself | |
+
+The proto still names exactly what each RPC needs: `List` asks for `deals.read`,
+`Move` for `deals.write`. The hierarchy applies only when matching what a user
+was granted, so annotations stay precise and admins can grant broadly. `manage`
+covers one resource: `deals.manage` grants nothing on `reports`, and `crm.manage`
+does not reach `crm.deals.write`. An RPC that should be open only to managers asks
+for `deals.manage` itself.
+
+`capability.Grants(held, required)` is the rule, if you need it elsewhere in your
+app (to show or hide UI, say), so the UI and the assistant agree.
+
 They are checked in two places:
 
 - **In the proto, at load.** `registry.FromFiles` rejects a malformed permission,
@@ -76,7 +99,8 @@ They are checked in two places:
 
   It rejects names that break the pattern and names no capability accepts, and
   reports every problem at once. Build the role editor's checkboxes from
-  `full.Permissions()` and admins can only pick valid names.
+  `full.Permissions()`: every permission an RPC declares, plus `resource.manage`
+  for each resource, so admins can only pick valid names.
 
 At request time `For` does not fail on unknown names: your app's permission set
 will include ones the assistant has no use for (`users.invite`), and those are

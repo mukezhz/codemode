@@ -86,13 +86,17 @@ func (registry Registry) Roles() []string {
 	return roles
 }
 
-// Permissions lists every permission the registry's capabilities accept: the
-// checkboxes an admin screen offers when someone defines a role at runtime.
+// Permissions lists every permission worth granting: each one a capability
+// declares, plus resource.manage for every resource. These are the checkboxes an
+// admin screen offers when someone defines a role at runtime.
 func (registry Registry) Permissions() []string {
 	unique := map[string]bool{}
 	for _, item := range registry.Capabilities {
 		for _, permission := range item.Permissions {
 			unique[permission] = true
+			if resource, _ := splitPermission(permission); resource != "" {
+				unique[resource+"."+ActionManage] = true
+			}
 		}
 	}
 	permissions := make([]string, 0, len(unique))

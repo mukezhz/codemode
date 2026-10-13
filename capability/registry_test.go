@@ -185,7 +185,7 @@ func TestForMatchesAnyRoleOrPermission(t *testing.T) {
 	if got := strings.Join(full.Unrestricted().Names(), ","); got != "tasks.list" {
 		t.Errorf("Unrestricted() = %q: a permission-only capability is restricted", got)
 	}
-	if got := strings.Join(full.Permissions(), ","); got != "billing.refund,deals.write" {
+	if got := strings.Join(full.Permissions(), ","); got != "billing.manage,billing.refund,deals.manage,deals.write" {
 		t.Errorf("Permissions() = %q", got)
 	}
 }

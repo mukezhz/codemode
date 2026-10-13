@@ -120,7 +120,9 @@ var (
 	// permissions are the permissions that allow a caller to use this method,
 	// separated by spaces, such as "deals.write". Each must look like
 	// resource.action: lowercase letters, digits and underscores, separated by
-	// dots. A malformed name fails registry loading. A caller holding any listed
+	// dots. A malformed name fails registry loading. When matching a caller's
+	// grants, resource.write also satisfies resource.read, and resource.manage
+	// satisfies every action on that resource. A caller holding any listed
 	// role or any listed permission may call the method. It replaces the
 	// service's (default_permissions), as roles replace default_roles.
 	//
