@@ -208,7 +208,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	allowed := full.ForRole("customer") // no orders.refund: it needs support or admin
+	allowed := full.ForRoles("customer") // in your app: the user's roles, fetched per request
 	mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
 	if err != nil {
 		log.Fatal(err)
@@ -250,7 +250,7 @@ The five things it does, in order:
 | Line | What it is |
 | --- | --- |
 | `registry.FromFiles(...)` | reads the capabilities out of the generated code. Nothing to keep in sync. |
-| `full.ForRole("customer")` | this caller's allowlist. `orders.refund` is not in it. |
+| `full.ForRoles("customer")` | this caller's allowlist. `orders.refund` needs `support` or `admin`, so it is not in it. In a real app, pass the roles (or permissions) you fetch for the signed-in user. |
 | `capability.Keyword(allowed)` | search with no database. Switch to a [vector index](/search) later. |
 | `execute` | **your code**: the only place that touches data. The program never sees it. |
 | `agent.Run` | search → prompt → model writes a program → sandbox runs it → answer. |
@@ -327,7 +327,7 @@ with what it has:
 answer: order 1: ada, 42.5, status paid (no refund capability is available, so nothing was changed)
 ```
 
-Change `ForRole("customer")` to `ForRole("support")` and the same request
+Change `ForRoles("customer")` to `ForRoles("support")` and the same request
 refunds, once you add a `Refund` case to `execute`.
 
 ## 8. Run programs out of process

@@ -71,8 +71,8 @@ func main() {
 	slog.Info("codemode", "sandbox", runner.Name(), "model", model.Name())
 
 	http.HandleFunc("POST /ask", func(writer http.ResponseWriter, request *http.Request) {
-		user, role := identify(request) // your auth: a verified session or token
-		mode, err := codemode.New(full.ForRole(role), search, executeFor(user))
+		user, roles := identify(request) // your auth: roles or permissions, fetched per request
+		mode, err := codemode.New(full.ForRoles(roles...), search, executeFor(user))
 		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
@@ -82,9 +82,8 @@ func main() {
 		result, err := agent.Run(ctx, mode, model, request.FormValue("q"), agent.Options{
 			Runner:      runner,
 			Cache:       cache,
-			CacheCaller: role,
 			OnCall: func(call codemode.Call) {
-				slog.Info("capability", "user", user, "role", role, "name", call.Name,
+				slog.Info("capability", "user", user, "roles", roles, "name", call.Name,
 					"ms", call.Duration.Milliseconds(), "error", call.Error)
 			},
 		})
@@ -118,8 +117,9 @@ search. The point here is that nothing in this file says "development" or
 Two rules make that hold:
 
 - **Build per request what depends on the caller.** `mode` comes from
-  `full.ForRole(role)` and an `ExecuteFunc` bound to the user, so the role and
-  the row scope can never leak between requests.
+  `full.ForRoles(roles...)` and an `ExecuteFunc` bound to the user, so roles and
+  row scope can never leak between requests, and a role an admin edits applies
+  on the next one.
 - **Build once what does not.** The registry, model, runner, search and cache are
   safe for concurrent use and expensive to make.
 

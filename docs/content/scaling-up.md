@@ -110,8 +110,8 @@ rpc Assign(AssignTaskRequest) returns (TaskResponse) {
 Then narrowing per request is one call:
 
 ```go
-allowed := full.ForRole(string(identity.Role))
-mode, err := codemode.New(allowed, search.New(allowed), app.Execute)
+allowed := full.ForRoles(identity.Roles...) // fixed roles, or permissions fetched per request
+mode, err := codemode.New(allowed, capability.Keyword(allowed), app.Execute)
 ```
 
 Building a registry per request is cheap — a slice and a map.
@@ -183,7 +183,7 @@ is assembled per request from a role, and a bug in that assembly should fail
 closed rather than quietly widen what a member sees. It is a cheap second lock
 on a door you already locked.
 
-**Fail closed on an unknown role.** `ForRole("Admin")` — wrong case, a typo, a
+**Fail closed on an unknown role.** `ForRoles("Admin")` — wrong case, a typo, a
 role from a system that no longer exists — returns the unrestricted capabilities
 and nothing else. A mistake in a role name must lose access, never gain it.
 

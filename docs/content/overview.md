@@ -28,7 +28,9 @@ flowchart LR
 ```
 
 Two things come out of the registry, and keeping them apart is the whole security
-story. Search decides what the model *knows about*. The allowlist decides what
+story. Both are narrowed per request to the roles or permissions your app says
+the caller holds, whether those are fixed in code or created by an admin at
+runtime. Search decides what the model *knows about*. The allowlist decides what
 may actually *run*. A program that invents a capability name is rejected by a map
 lookup, no matter how convincing the prompt was.
 

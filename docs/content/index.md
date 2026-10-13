@@ -31,9 +31,9 @@ features:
       by a map lookup rather than by a prompt.
   - title: Permissions live in the contract
     details: >
-      An RPC declares which roles may call it, beside the description a model
-      reads. Narrowing a registry per caller withholds a capability from what
-      runs and from the prompt at once — one decision, not two.
+      An RPC declares which roles or permissions may call it. Each request, pass
+      what the caller holds, fixed roles or ones an admin created at runtime, and
+      the capability is withheld from what runs and from the prompt at once.
   - title: Generated from your contracts
     details: >
       Annotate a protobuf service with a namespace and a description per method.

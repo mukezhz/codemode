@@ -6,13 +6,49 @@ are.
 
 | Question | Answered by | Lives in |
 | --- | --- | --- |
-| Which capabilities **exist** for this caller? | `Registry.ForRole` | the contract, `(codemode.roles)` |
+| Which capabilities **exist** for this caller? | `Registry.ForRoles` | the contract, `(codemode.roles)`, and the roles your app holds for the caller |
 | Which **rows** may those capabilities touch? | your `ExecuteFunc` | your application |
 | Does the model **know** what it cannot do? | the system prompt | your instructions |
 
 Only the first is the library's. The second cannot be — the registry knows the
 capability being called and nothing whatsoever about the data behind it. The
 third looks optional and is not.
+
+## Fixed roles and dynamic roles
+
+Codemode stores no roles. Each request, your app says what the caller holds and
+codemode keeps the capabilities that allows. That works the same whether roles
+are fixed in your code or created by an admin at runtime:
+
+| Your app has | Put in `(codemode.roles)` | Pass to `ForRoles` each request |
+| --- | --- | --- |
+| **Fixed roles**: `admin`, `manager`, `member` | the role names | the user's roles from the session |
+| **Dynamic roles**: admins create "Senior AE" and tick boxes | the **permission** each RPC needs: `deals.write` | the user's permissions, fetched from your app |
+| Both | either, mixed: `"admin deals.write"` | both lists together |
+
+```go
+// Fixed roles
+allowed := full.ForRoles(session.Roles...)
+
+// Dynamic roles: ask your app what this user may do, every request
+permissions, err := app.PermissionsFor(ctx, session) // your database or API
+if err != nil {
+	return err // fail closed
+}
+allowed = full.ForRoles(permissions...)
+
+// Both
+allowed = full.ForRoles(append(session.Roles, permissions...)...)
+
+mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+```
+
+Because the registry is built per request, an admin's change to a role applies
+on the user's next request; nothing is compiled in or cached by codemode. The
+protos stay the ceiling: a role can be given any permission the protos name, and
+nothing they do not. [Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles)
+covers limits with values ("discount up to 15%") and fetching permissions from an
+app that is not written in Go.
 
 ## Declare the policy in the contract
 
@@ -153,7 +189,7 @@ func TestRolesSeeTheIntendedCapabilities(t *testing.T) {
 		"admin":   {"billing.invoices", "billing.refund", "billing.summary", "tasks.assign", "tasks.list"},
 	}
 	for role, names := range want {
-		got := slices.Sorted(slices.Values(full.ForRole(role).Names()))
+		got := slices.Sorted(slices.Values(full.ForRoles(role).Names()))
 		if !slices.Equal(got, names) {
 			t.Errorf("%s sees %v, want %v", role, got, names)
 		}
@@ -167,8 +203,8 @@ production.
 ## Narrow per request
 
 ```go
-allowed := full.ForRole(string(identity.Role))
-mode, err := codemode.New(allowed, search.New(allowed), app.Execute)
+allowed := full.ForRoles(identity.Roles...) // or permissions fetched from your app
+mode, err := codemode.New(allowed, capability.Keyword(allowed), app.Execute)
 ```
 
 Building a registry per request is cheap — a slice and a map. Passing the
@@ -176,9 +212,10 @@ Building a registry per request is cheap — a slice and a map. Passing the
 what makes this one decision instead of two: the model is never told about a
 capability it cannot call.
 
-**Unknown roles fail closed.** `ForRole("Admin")` — wrong case, a typo, a role
-from a system that no longer exists — returns the unrestricted capabilities and
-nothing more. A mistake in a role name loses access, never gains it.
+**Unknown roles fail closed.** `ForRoles("Admin")` — wrong case, a typo, a role
+from a system that no longer exists, a permission an admin deleted — returns the
+unrestricted capabilities and nothing more. A mistake in a role name loses
+access, never gains it.
 
 ## Policy that is not in the contract
 
