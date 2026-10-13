@@ -46,6 +46,7 @@ export default withMermaid(
           text: "Using it",
           items: [
             { text: "Add it to your application", link: "/using-it" },
+            { text: "Development and production", link: "/environments" },
             { text: "What your binary links", link: "/dependencies" },
             { text: "Permissions", link: "/permissions" },
             { text: "Writes and retries", link: "/writes" },
