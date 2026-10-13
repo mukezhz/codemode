@@ -58,7 +58,7 @@ jobs:
           go-version: stable
           cache: true
       - name: Known vulnerabilities in reachable code
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   # Short on every push; a crasher lands in testdata/fuzz and becomes a regression test.
   fuzz:

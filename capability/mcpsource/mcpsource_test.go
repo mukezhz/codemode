@@ -43,7 +43,9 @@ func session(t *testing.T) *mcp.ClientSession {
 		})
 	server.AddTool(&mcp.Tool{Name: "vague", InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{"x": map[string]any{"oneOf": []any{}}},
-	}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) { return &mcp.CallToolResult{}, nil })
+	}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
