@@ -162,7 +162,11 @@ Programs and prompts are unchanged; only results differ in one way: they cross
 JSON, so numbers come back as `float64`.
 
 On Linux the worker also runs in new user, network and mount namespaces, and
-under `RLIMIT_CPU` and `RLIMIT_NOFILE`. Where unprivileged user
+under `RLIMIT_CPU` and `RLIMIT_NOFILE`, and installs a seccomp filter before
+running the program: sockets, `exec`, file opens and writes, `ptrace`, mounts,
+namespaces, `bpf` and module loading all fail with `EPERM`. It is a denylist,
+so a Go upgrade cannot break the worker; on a kernel without seccomp the worker
+says so on stderr and runs without it. Where unprivileged user
 namespaces are disabled, the runner falls back to a plain child process.
 
 ### Container workers

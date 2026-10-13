@@ -15,7 +15,7 @@ output) can steer what it writes.
 | --- | --- | --- |
 | `goja`, `starlark`, `lua` (in-process) | ambient access (no files, network, environment); unregistered capabilities; call, time and per-response budgets | a program exhausting host memory; an interpreter escape, which lands in the host process |
 | `subprocess-*` on macOS | the above, plus host memory exhaustion (heap cap) and environment leakage | an escape reaching the user's files and network |
-| `subprocess-*` on Linux | the above, plus no network and a private mount namespace, under rlimits | kernel exploits; hosts with unprivileged user namespaces disabled fall back to a plain child process |
+| `subprocess-*` on Linux | the above, plus a seccomp filter denying network, exec, file access and namespace syscalls; no network and a private mount namespace where user namespaces are allowed; CPU and fd rlimits | kernel exploits; hosts with unprivileged user namespaces disabled fall back to a plain child process |
 | `subprocess-*` with the worker in a container under gVisor | the above, behind a separate kernel | — this is the supported boundary for multi-tenant input |
 
 In every runner the registry check, roles, call budget and response limits run in

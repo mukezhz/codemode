@@ -16,6 +16,7 @@ version is 0, a minor bump may break the API.
 - `deploy/worker.Dockerfile`, `sandbox.Options.WorkerIsolated`
   (`SANDBOX_WORKER_ISOLATED`) and `make test-container`: subprocess engines can
   run each worker in a locked-down container, optionally under gVisor.
+- On Linux, `codemode-worker` installs a seccomp denylist before running a program.
 - `SECURITY.md` with the threat model per runner.
 - Fuzz tests for the worker protocol and the descriptor parser; govulncheck in CI.
 
