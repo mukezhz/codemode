@@ -246,7 +246,7 @@ if instructionsMentionUser {
 
 | | Per what | How |
 | --- | --- | --- |
-| Sandbox | per run | one shared runner; `subprocess-*` or a container worker for untrusted tenants ([Running the worker](/worker)) |
+| Sandbox | per run | one shared runner; process isolation or a container worker for untrusted tenants ([Running the worker](/worker)) |
 | Rate limit | per tenant **and** per user | so one user cannot spend a tenant's quota, and one tenant cannot starve others |
 | Concurrency | per tenant | a cap on programs running at once |
 | Audit | per call | `OnCall` with tenant, user, roles, capability, input hash |

@@ -15,7 +15,7 @@ import (
 	"github.com/mukezhz/codemode/sandbox/goja"
 	"github.com/mukezhz/codemode/sandbox/lua"
 	"github.com/mukezhz/codemode/sandbox/starlark"
-	"github.com/mukezhz/codemode/sandbox/subprocess"
+	_ "github.com/mukezhz/codemode/sandbox/subprocess"
 )
 
 type engine struct {
@@ -56,20 +56,22 @@ func TestMain(m *testing.M) {
 }
 
 // dialect is the in-process engine whose prompt a variant shares.
-func (engine engine) dialect() string { return strings.TrimPrefix(engine.name, "subprocess-") }
+func (engine engine) dialect() string { return strings.TrimSuffix(engine.name, "-process") }
 
 func engines() []engine {
 	inProcess := inProcessEngines()
 	all := inProcess
 	for _, inner := range inProcess {
 		variant := inner
-		variant.name = "subprocess-" + inner.name
+		variant.name = inner.name + "-process"
 		variant.isolated = true
+		engineName := inner.name
 		variant.new = func(options sandbox.Options) (sandbox.Runner, error) {
-			options.Engine = variant.name
+			options.Engine = engineName
+			options.Isolation = sandbox.IsolationProcess
 			options.Worker = worker
-			options.WorkerIsolated = os.Getenv("CODEMODE_TEST_WORKER") != ""
-			return subprocess.New(options)
+			options.WorkerContainer = os.Getenv("CODEMODE_TEST_WORKER") != ""
+			return sandbox.New(options)
 		}
 		all = append(all, variant)
 	}
@@ -480,4 +482,45 @@ func TestEnginesRejectHugeResults(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewValidatesIsolation(t *testing.T) {
+	for name, test := range map[string]struct {
+		options sandbox.Options
+		want    string
+	}{
+		"unknown isolation":            {sandbox.Options{Isolation: "wasm"}, `isolation "wasm" is unknown`},
+		"worker without isolation":     {sandbox.Options{Worker: []string{"codemode-worker"}}, "SANDBOX_ISOLATION=process"},
+		"container without isolation":  {sandbox.Options{WorkerContainer: true}, "SANDBOX_ISOLATION=process"},
+		"container without a command":  {sandbox.Options{Isolation: "process", WorkerContainer: true}, "set SANDBOX_WORKER"},
+		"worker that is not a worker":  {sandbox.Options{Isolation: "process", Worker: []string{"true"}}, "codemode-worker check failed"},
+		"worker that does not exist":   {sandbox.Options{Isolation: "process", Worker: []string{"/nonexistent/codemode-worker"}}, "codemode-worker check failed"},
+		"unknown engine under process": {sandbox.Options{Isolation: "process", Engine: "ruby", Worker: worker}, `engine "ruby"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := sandbox.New(test.options)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestNewAcceptsAWorkingWorker(t *testing.T) {
+	runner, err := sandbox.New(sandbox.Options{Isolation: "process", Worker: worker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runner.Close()
+	if !strings.Contains(runner.Name(), "child process") && !strings.Contains(runner.Name(), "container") {
+		t.Fatalf("Name() = %q", runner.Name())
+	}
+}
+
+func TestNewChecksTheWorkerWithItsOwnDeadline(t *testing.T) {
+	runner, err := sandbox.New(sandbox.Options{Isolation: "process", Worker: worker, Timeout: time.Nanosecond})
+	if err != nil {
+		t.Fatalf("a program timeout shorter than a worker start failed New: %v", err)
+	}
+	runner.Close()
 }

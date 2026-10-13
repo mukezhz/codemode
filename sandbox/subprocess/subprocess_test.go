@@ -33,8 +33,14 @@ func TestMain(m *testing.M) {
 func fakeWorker(behaviour string) {
 	reader := wire.NewReader(os.Stdin, 1<<20)
 	writer := wire.NewWriter(os.Stdout)
-	if _, err := reader.Read(); err != nil {
+	start, err := reader.Read()
+	if err != nil {
 		os.Exit(2)
+	}
+	// Pass New's startup check, then misbehave on the real run.
+	if start.Source == "return 1" {
+		writer.Write(wire.Message{Type: wire.TypeDone, Value: []byte("1")})
+		return
 	}
 	call := wire.Message{Type: wire.TypeCall, ID: 1, Name: "todos.list", Input: []byte(`{}`)}
 	switch behaviour {
@@ -138,7 +144,7 @@ func TestRunGivesTheWorkerNoEnvironment(t *testing.T) {
 }
 
 func TestNewRequiresTheInnerEngine(t *testing.T) {
-	_, err := New(sandbox.Options{Engine: "subprocess-lua", Worker: []string{"unused"}})
+	_, err := New(sandbox.Options{Engine: "lua", Worker: []string{"unused"}})
 	if err == nil || !strings.Contains(err.Error(), "sandbox/lua") {
 		t.Fatalf("err = %v, want it to name the missing import", err)
 	}

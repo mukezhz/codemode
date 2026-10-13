@@ -39,7 +39,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// An MCP client is a program author you do not control: prefer SANDBOX_ENGINE=subprocess-goja.
+	// An MCP client is a program author you do not control: prefer SANDBOX_ISOLATION=process.
 	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
 		return err

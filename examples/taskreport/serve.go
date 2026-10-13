@@ -50,7 +50,7 @@ func serve(
 		fmt.Printf("frontend\n  not built — %v\n", err)
 	}
 
-	// goja in-process by default; SANDBOX_ENGINE=subprocess-goja for untrusted users.
+	// goja in-process by default; SANDBOX_ISOLATION=process for untrusted users.
 	chatRunner, err := sandbox.NewFromEnv(sandbox.Options{MaxCalls: 25, Timeout: 30 * time.Second})
 	if err != nil {
 		return err

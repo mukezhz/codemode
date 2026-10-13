@@ -35,7 +35,7 @@ the same way you build `mode` for `agent.Run`.
 
 ```go
 mode, _ := codemode.New(registry.ForRole(role), search, execute)
-runner, _ := sandbox.New(sandbox.Options{Engine: "subprocess-goja"})
+runner, _ := sandbox.New(sandbox.Options{Engine: "goja", Isolation: "process"})
 
 server, _ := mcpserver.New(mode, runner, mcpserver.Options{Name: "tasks"})
 server.Run(ctx, &mcp.StdioTransport{})
@@ -55,7 +55,7 @@ claude mcp add todo -- make -s -C /path/to/codemode mcp-todo
 - **The role is fixed when you build `mode`.** No tool argument names a role, so
   a client cannot widen what the registry allows.
 - **Use a subprocess engine.** An MCP client is a program author you do not
-  control; see [Sandbox](/sandbox#subprocess-engines).
+  control; see [Running the worker](/worker).
 - `Options.MaxSourceBytes` (64 KiB) bounds the program; `sandbox.Options` bounds
   calls, time and each response. For MCP, a smaller `MaxResponseBytes` keeps
   results from flooding the client's context.

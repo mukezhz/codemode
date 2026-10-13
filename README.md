@@ -100,5 +100,5 @@ Configuration is entirely environment-driven and entirely optional — see
 
 > [!WARNING]
 > The default engines run in-process and are not a defence against a determined
-> attacker. For programs steered by untrusted users, use a `subprocess-*` engine,
+> attacker. For programs steered by untrusted users, use process isolation (`SANDBOX_ISOLATION=process`),
 > and a container for multi-tenant input. See [SECURITY.md](SECURITY.md).

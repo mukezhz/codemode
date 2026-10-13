@@ -9,12 +9,13 @@ import (
 )
 
 const (
-	EnvEngine   = "SANDBOX_ENGINE"
-	EnvTimeout  = "SANDBOX_TIMEOUT"
-	EnvMaxCalls = "SANDBOX_MAX_CALLS"
-	EnvWorker   = "SANDBOX_WORKER"
-	EnvMaxHeap  = "SANDBOX_MAX_HEAP_BYTES"
-	EnvIsolated = "SANDBOX_WORKER_ISOLATED"
+	EnvEngine    = "SANDBOX_ENGINE"
+	EnvTimeout   = "SANDBOX_TIMEOUT"
+	EnvMaxCalls  = "SANDBOX_MAX_CALLS"
+	EnvWorker    = "SANDBOX_WORKER"
+	EnvMaxHeap   = "SANDBOX_MAX_HEAP_BYTES"
+	EnvContainer = "SANDBOX_WORKER_CONTAINER"
+	EnvIsolation = "SANDBOX_ISOLATION"
 )
 
 func OptionsFromEnv(options Options) (Options, error) {
@@ -42,13 +43,16 @@ func OptionsFromEnv(options Options) (Options, error) {
 	if len(options.Worker) == 0 {
 		options.Worker = strings.Fields(os.Getenv(EnvWorker))
 	}
-	if !options.WorkerIsolated {
-		if value := strings.TrimSpace(os.Getenv(EnvIsolated)); value != "" {
-			isolated, err := strconv.ParseBool(value)
+	if options.Isolation == "" {
+		options.Isolation = strings.ToLower(strings.TrimSpace(os.Getenv(EnvIsolation)))
+	}
+	if !options.WorkerContainer {
+		if value := strings.TrimSpace(os.Getenv(EnvContainer)); value != "" {
+			container, err := strconv.ParseBool(value)
 			if err != nil {
-				return options, fmt.Errorf("%s: %w", EnvIsolated, err)
+				return options, fmt.Errorf("%s: %w", EnvContainer, err)
 			}
-			options.WorkerIsolated = isolated
+			options.WorkerContainer = container
 		}
 	}
 	if options.MaxHeapBytes == 0 {

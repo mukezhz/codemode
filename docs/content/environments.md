@@ -8,7 +8,7 @@ change.
 
 | Concern | Development | Production |
 | --- | --- | --- |
-| Sandbox | `goja` in your process | `subprocess-goja` in a worker process, or a container for untrusted tenants |
+| Sandbox | `goja` in your process | `goja` in a worker process (`SANDBOX_ISOLATION=process`), or a container for untrusted tenants |
 | Worker binary | not needed | `codemode-worker` installed beside your app |
 | Search | keyword ranking, no database | semantic index in SQLite or Postgres |
 | Program cache | in memory | in memory per replica, or shared through a store |
@@ -147,7 +147,7 @@ Useful while building:
 | See the prompt, the program and every call | log `result.Source`; in the examples, `-log debug` |
 | Try without an API key | `make demo-todo` runs a fixed program end to end |
 | Drive it from Claude Code or Cursor | `make mcp-todo`, or serve your own `mode` with [`mcpserver`](/mcp) |
-| Check the production sandbox locally | `make worker`, then `SANDBOX_ENGINE=subprocess-goja SANDBOX_WORKER=$PWD/bin/codemode-worker` |
+| Check the production sandbox locally | `make worker`, then `SANDBOX_ISOLATION=process SANDBOX_WORKER=$PWD/bin/codemode-worker` |
 
 Run the subprocess engine locally at least once before shipping. The program
 and the prompt are identical, but results cross JSON in that mode, so an
@@ -178,7 +178,8 @@ kills its own worker, not your server, and the worker has no environment, so
 API keys and database URLs never reach it.
 
 ```sh
-SANDBOX_ENGINE=subprocess-goja
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
 SANDBOX_WORKER=/usr/local/bin/codemode-worker
 SANDBOX_MAX_HEAP_BYTES=268435456
 SANDBOX_TIMEOUT=10s
@@ -214,8 +215,9 @@ Put each worker in its own container, under gVisor where you can. Roles, tenant
 scoping and per-tenant policy are in [Roles and tenants](/tenants).
 
 ```sh
-SANDBOX_ENGINE=subprocess-goja
-SANDBOX_WORKER_ISOLATED=true
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
+SANDBOX_WORKER_CONTAINER=true
 SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --user 65534:65534 \
   --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
@@ -223,7 +225,7 @@ SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
 ```
 
 - Build the image from `deploy/worker.Dockerfile`.
-- `SANDBOX_WORKER_ISOLATED=true` is required: without it the host wraps the
+- `SANDBOX_WORKER_CONTAINER=true` is required: without it the host wraps the
   `docker` CLI in namespaces that cut it off from the Docker socket.
 - Each run pays a container start (150–400 ms). The program cache skips the
   model call for repeats, not the sandbox.
@@ -260,7 +262,7 @@ in-memory program cache or use a shared `program.Store`; see
 
 ## Before you ship
 
-- `runner.Name()` in the first log line says `subprocess-` (or you decided in-process is right).
+- `runner.Name()` in the first log line says `child process` or `container` (or you decided in-process is right).
 - `codemode-worker` is the same version as the library in `go.mod`.
 - Timeout, call budget and heap cap are set, not defaulted.
 - Every RPC only some roles may call carries `(codemode.roles)`, and a test asserts `Registry.Unrestricted()` is what you expect.

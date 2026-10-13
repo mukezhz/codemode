@@ -63,14 +63,31 @@ publishes no embeddings API. See [Search](/search#embeddings).
 
 | Variable | Values | Default |
 | --- | --- | --- |
-| `SANDBOX_ENGINE` | `goja`, `starlark`, `lua`, `subprocess-goja`, `subprocess-starlark`, `subprocess-lua` | `goja` |
+| `SANDBOX_ENGINE` | the language: `goja`, `starlark`, `lua` | `goja` |
+| `SANDBOX_ISOLATION` | `inprocess`, `process` | `inprocess` |
 | `SANDBOX_TIMEOUT` | Go duration, e.g. `10s` | `30s` |
 | `SANDBOX_MAX_CALLS` | integer | `50` |
-| `SANDBOX_WORKER` | argv for `codemode-worker`, space-separated | `codemode-worker` on `PATH` |
-| `SANDBOX_WORKER_ISOLATED` | `true` when `SANDBOX_WORKER` starts a container | `false` |
+| `SANDBOX_WORKER` | argv for `codemode-worker`, space-separated; `process` only | `codemode-worker` on `PATH` |
+| `SANDBOX_WORKER_CONTAINER` | `true` when `SANDBOX_WORKER` starts a container | `false` |
 | `SANDBOX_MAX_HEAP_BYTES` | integer; subprocess engines only | `268435456` |
 
-Options passed in code win over these. See [Sandbox](/sandbox).
+Options passed in code win over these. See [Sandbox](/sandbox) and
+[Running the worker](/worker).
+
+`sandbox.New` refuses a configuration that is probably a mistake rather than
+guessing:
+
+| Configuration | Error |
+| --- | --- |
+| an isolation that is not `inprocess` or registered | `sandbox isolation "x" is unknown` |
+| `process` without importing `sandbox/subprocess` | `... is not registered: add _ ".../sandbox/subprocess"` |
+| `SANDBOX_WORKER` or `SANDBOX_WORKER_CONTAINER` with `inprocess` | `a worker is configured but isolation is inprocess` |
+| `SANDBOX_WORKER_CONTAINER=true` with no `SANDBOX_WORKER` | `worker container is set but no worker command is` |
+| `process`, but the worker does not start or answer | `codemode-worker check failed (...)` |
+
+The last check runs one trivial program through the worker inside `New`, so a
+missing binary, a version mismatch, a bad `docker run` or a missing image fails at
+startup, not on the first request.
 
 ## Observing calls
 

@@ -26,19 +26,22 @@ type Runner interface {
 }
 
 type Options struct {
+	// Engine is the language: goja, starlark or lua.
 	Engine string
+	// Isolation is where programs run: IsolationInProcess (default) or a registered one such as IsolationProcess.
+	Isolation string
 
 	Timeout  time.Duration
 	MaxCalls int
 	// ponytail: bounds input, not interpreter heap; MaxHeapBytes is the hard cap, subprocess engines only.
 	MaxResponseBytes int
 
-	// Worker is the argv that starts codemode-worker; subprocess engines only.
+	// Worker is the argv that starts codemode-worker; process isolation only.
 	Worker []string
-	// WorkerIsolated says Worker starts a container that isolates itself, so the
+	// WorkerContainer says Worker starts a container that isolates itself, so the
 	// host must not unshare namespaces around the container CLI.
-	WorkerIsolated bool
-	MaxHeapBytes   int
+	WorkerContainer bool
+	MaxHeapBytes    int
 }
 
 const (
@@ -90,6 +93,37 @@ const (
 
 const DefaultEngine = EngineGoja
 
+const (
+	IsolationInProcess = "inprocess"
+	IsolationProcess   = "process"
+)
+
+// Isolation runs an engine somewhere other than this process. New receives the
+// options with Engine still naming the language.
+type Isolation struct {
+	Name string
+	New  func(Options) (Runner, error)
+}
+
+var shippedIsolations = map[string]string{
+	IsolationProcess: "github.com/mukezhz/codemode/sandbox/subprocess",
+}
+
+var isolations = map[string]Isolation{}
+
+// RegisterIsolation makes isolation selectable by New; registering a name twice panics.
+func RegisterIsolation(isolation Isolation) {
+	if isolation.Name == "" || isolation.Name == IsolationInProcess || isolation.New == nil {
+		panic("sandbox: isolation needs a name other than inprocess and a constructor")
+	}
+	enginesMutex.Lock()
+	defer enginesMutex.Unlock()
+	if _, exists := isolations[isolation.Name]; exists {
+		panic("sandbox: isolation " + isolation.Name + " is already registered")
+	}
+	isolations[isolation.Name] = isolation
+}
+
 // shipped maps each built-in engine to its package, so errors can name the missing import.
 var shipped = map[string]string{
 	EngineGoja:     "github.com/mukezhz/codemode/sandbox/goja",
@@ -133,6 +167,23 @@ func RegisteredEngines() []string {
 }
 
 func New(options Options) (Runner, error) {
+	isolation := strings.ToLower(strings.TrimSpace(options.Isolation))
+	if isolation != "" && isolation != IsolationInProcess {
+		enginesMutex.RLock()
+		registered, ok := isolations[isolation]
+		enginesMutex.RUnlock()
+		if !ok {
+			return nil, unregisteredIsolation(isolation)
+		}
+		options.Isolation = isolation
+		return registered.New(options)
+	}
+	// Worker settings with in-process isolation almost always mean SANDBOX_ISOLATION was forgotten,
+	// and running in-process then is the unsafe way to be wrong.
+	if len(options.Worker) > 0 || options.WorkerContainer {
+		return nil, errors.New("a worker is configured but isolation is inprocess: set SANDBOX_ISOLATION=process, or remove SANDBOX_WORKER and SANDBOX_WORKER_CONTAINER")
+	}
+
 	name := strings.ToLower(strings.TrimSpace(options.Engine))
 	if name == "" {
 		name = DefaultEngine
@@ -158,6 +209,20 @@ func unregisteredEngine(name string) error {
 	}
 	return fmt.Errorf("sandbox engine %q is unknown: registered engines are %s",
 		name, strings.Join(available, ", "))
+}
+
+func unregisteredIsolation(name string) error {
+	if path, ships := shippedIsolations[name]; ships {
+		return fmt.Errorf("sandbox isolation %q is not registered: add `_ %q` to your imports", name, path)
+	}
+	known := []string{IsolationInProcess}
+	enginesMutex.RLock()
+	for registered := range isolations {
+		known = append(known, registered)
+	}
+	enginesMutex.RUnlock()
+	sort.Strings(known)
+	return fmt.Errorf("sandbox isolation %q is unknown: use one of %s", name, strings.Join(known, ", "))
 }
 
 func values(paths map[string]string) []string {

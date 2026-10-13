@@ -17,11 +17,11 @@ WORKER_DOCKER = docker run -i --rm --network none --read-only --cap-drop ALL \
 	--cpus 0.5 --pids-limit 32 $(if $(RUNTIME),--runtime $(RUNTIME)) codemode-worker:dev
 
 test-container: worker-image
-	CODEMODE_TEST_WORKER="$(WORKER_DOCKER)" go test ./sandbox/enginetest -run '/subprocess' -count=1 -v
+	CODEMODE_TEST_WORKER="$(WORKER_DOCKER)" go test ./sandbox/enginetest -run '/-process' -count=1 -v
 
 # The todo example as an MCP server on stdio, sandboxed out of process.
 mcp-todo: worker
-	@SANDBOX_ENGINE=subprocess-goja SANDBOX_WORKER=$(CURDIR)/bin/codemode-worker go run ./examples/todo/cmd/todo-mcp
+	@SANDBOX_ISOLATION=process SANDBOX_WORKER=$(CURDIR)/bin/codemode-worker go run ./examples/todo/cmd/todo-mcp
 
 # A complete application: SQLite tasks, 18 capabilities, reporting. Runs without
 # credentials; pass BASE_URL and API_KEY to have a model write the program.

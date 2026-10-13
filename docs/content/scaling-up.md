@@ -242,7 +242,7 @@ Roles and row scoping stop one user reading another's data. With users you do
 not trust, three more things matter, and none of them needs codemode to know
 what a tenant is:
 
-- **Compute.** Use a `subprocess-*` engine, and a container worker for hostile
+- **Compute.** Use process isolation (`SANDBOX_ISOLATION=process`), and a container worker for hostile
   input, so a program cannot exhaust the host or reach past its bridge. See
   [Sandbox](/sandbox#container-workers). Development keeps the in-process
   default: the program and prompt are identical, only `SANDBOX_ENGINE` changes.

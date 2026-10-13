@@ -132,7 +132,7 @@ program that allocates without limit can exhaust the host's memory.
 | Engine | Isolation | Cost |
 | --- | --- | --- |
 | goja / starlark / lua | Same process, same heap. Bounds and allowlist only | Zero, pure Go |
-| `subprocess-goja` / `-starlark` / `-lua` | Child process: own heap, empty environment, heap cap; on Linux no network and a private mount namespace | A process spawn per run, a `codemode-worker` binary |
+| `SANDBOX_ISOLATION=process` | Child process: own heap, empty environment, heap cap; on Linux no network and a private mount namespace | A process spawn per run, a `codemode-worker` binary |
 | wasm | Memory-isolated, deterministic | Heavier toolchain |
 | Container | Real | Infrastructure |
 
@@ -148,7 +148,8 @@ the bridge.
 
 ```sh
 go install github.com/mukezhz/codemode/cmd/codemode-worker@latest
-SANDBOX_ENGINE=subprocess-goja
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
 SANDBOX_WORKER=codemode-worker      # argv; defaults to codemode-worker on PATH
 SANDBOX_MAX_HEAP_BYTES=268435456    # worker exits when its heap passes this
 ```
@@ -178,15 +179,16 @@ host's limits are the same; only the argv changes.
 
 ```sh
 docker build -f deploy/worker.Dockerfile -t codemode-worker .
-SANDBOX_ENGINE=subprocess-goja
-SANDBOX_WORKER_ISOLATED=true
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
+SANDBOX_WORKER_CONTAINER=true
 SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --user 65534:65534 \
   --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
   --runtime runsc codemode-worker"
 ```
 
-- `SANDBOX_WORKER_ISOLATED=true` stops the host unsharing namespaces around the
+- `SANDBOX_WORKER_CONTAINER=true` stops the host unsharing namespaces around the
   `docker` CLI, which would cut it off from the Docker socket. The container
   provides the isolation instead.
 - `--runtime runsc` is gVisor: a separate kernel between the program and yours.

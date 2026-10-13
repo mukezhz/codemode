@@ -21,15 +21,11 @@ import (
 	"github.com/mukezhz/codemode/sandbox"
 )
 
-const prefix = "subprocess-"
-
 // exitHeap mirrors cmd/codemode-worker's ExitHeap.
 const exitHeap = 3
 
 func init() {
-	for _, inner := range []string{sandbox.EngineGoja, sandbox.EngineStarlark, sandbox.EngineLua} {
-		sandbox.RegisterEngine(sandbox.Engine{Name: prefix + inner, New: New})
-	}
+	sandbox.RegisterIsolation(sandbox.Isolation{Name: sandbox.IsolationProcess, New: New})
 }
 
 type Runner struct {
@@ -40,13 +36,16 @@ type Runner struct {
 
 var _ sandbox.Runner = (*Runner)(nil)
 
-// New needs options.Engine to name the inner engine, with or without the subprocess- prefix; that engine must be imported for its prompt.
+// New runs options.Engine in codemode-worker. That engine must also be imported
+// here, for its prompt. New starts one worker and runs a trivial program, so a
+// missing binary, a version mismatch or a broken container command fails now,
+// not on the first request.
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
 		return nil, err
 	}
-	engine := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(options.Engine)), prefix)
+	engine := strings.ToLower(strings.TrimSpace(options.Engine))
 	if engine == "" {
 		engine = sandbox.DefaultEngine
 	}
@@ -55,13 +54,48 @@ func New(options sandbox.Options) (sandbox.Runner, error) {
 		return nil, err
 	}
 	if len(options.Worker) == 0 {
+		if options.WorkerContainer {
+			return nil, errors.New("worker container is set but no worker command is: set SANDBOX_WORKER to the docker run argv")
+		}
 		path, err := exec.LookPath("codemode-worker")
 		if err != nil {
-			return nil, fmt.Errorf("subprocess engine needs codemode-worker: set Options.Worker or install it on PATH: %w", err)
+			return nil, fmt.Errorf("process isolation needs codemode-worker: install it on PATH or set SANDBOX_WORKER: %w", err)
 		}
 		options.Worker = []string{path}
 	}
-	return &Runner{options: options, inner: inner, engine: engine}, nil
+	runner := &Runner{options: options, inner: inner, engine: engine}
+	if err := runner.check(); err != nil {
+		inner.Close()
+		return nil, err
+	}
+	return runner, nil
+}
+
+// checkTimeout covers a container start, which can take longer than a program's own timeout.
+const checkTimeout = 30 * time.Second
+
+// check is "return 1" because that is valid in every engine's language.
+func (runner *Runner) check() error {
+	probe := *runner
+	probe.options.Timeout = max(runner.options.Timeout, checkTimeout)
+	value, err := probe.Run(context.Background(), refuseAll{}, "return 1")
+	if err != nil {
+		return fmt.Errorf("codemode-worker check failed (%s): %w", strings.Join(runner.options.Worker, " "), err)
+	}
+	if value != float64(1) {
+		return fmt.Errorf("codemode-worker check failed (%s): returned %v, want 1", strings.Join(runner.options.Worker, " "), value)
+	}
+	return nil
+}
+
+type refuseAll struct{}
+
+func (refuseAll) Search(context.Context, string, int) ([]capability.Match, error) {
+	return nil, errors.New("no capabilities during the worker check")
+}
+
+func (refuseAll) Execute(context.Context, string, json.RawMessage) (json.RawMessage, error) {
+	return nil, errors.New("no capabilities during the worker check")
 }
 
 func (runner *Runner) Language() string { return runner.inner.Language() }
@@ -69,8 +103,12 @@ func (runner *Runner) Language() string { return runner.inner.Language() }
 func (runner *Runner) Prompt(matches []capability.Match) string { return runner.inner.Prompt(matches) }
 
 func (runner *Runner) Name() string {
-	return fmt.Sprintf("%s%s / %s (child process, %s timeout, %d call budget, %d MiB heap)",
-		prefix, runner.engine, runner.inner.Language(), runner.options.Timeout, runner.options.MaxCalls,
+	where := "child process"
+	if runner.options.WorkerContainer {
+		where = "container"
+	}
+	return fmt.Sprintf("%s / %s (%s, %s timeout, %d call budget, %d MiB heap)",
+		runner.engine, runner.inner.Language(), where, runner.options.Timeout, runner.options.MaxCalls,
 		runner.options.MaxHeapBytes>>20)
 }
 
@@ -90,7 +128,7 @@ func (runner *Runner) Run(ctx context.Context, mode codemode.CodeMode, source st
 	defer os.RemoveAll(dir)
 
 	stderr := &tail{limit: 64 << 10}
-	namespaces := unshare.Load() && !runner.options.WorkerIsolated
+	namespaces := unshare.Load() && !runner.options.WorkerContainer
 	cmd, stdin, stdout, err := runner.spawn(ctx, dir, stderr, namespaces)
 	if err != nil && namespaces && denied(err) {
 		unshare.Store(false)

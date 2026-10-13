@@ -1,7 +1,7 @@
 # Running the worker
 
 `codemode-worker` is a small binary that runs one program and exits. The
-`subprocess-*` engines start one per run, so a program executes in its own
+`process` isolation starts one per run, so a program executes in its own
 process instead of inside your application. This page is how to install it,
 configure it, check it is working, and run it in a container.
 
@@ -11,7 +11,7 @@ run in-process with goja; see [Development and production](/environments).
 ## What changes when you turn it on
 
 ```
-in-process (goja)                         subprocess (subprocess-goja)
+SANDBOX_ISOLATION=inprocess (default)     SANDBOX_ISOLATION=process
 
 your app                                  your app                         codemode-worker
  ├─ agent.Run                              ├─ agent.Run                      └─ goja
@@ -82,7 +82,7 @@ engine is still needed in your app: it writes the prompt.
 ```go
 import (
 	_ "github.com/mukezhz/codemode/sandbox/goja"       // prompt and in-process runs
-	_ "github.com/mukezhz/codemode/sandbox/subprocess" // subprocess-goja, -starlark, -lua
+	_ "github.com/mukezhz/codemode/sandbox/subprocess" // SANDBOX_ISOLATION=process
 )
 ```
 
@@ -94,7 +94,8 @@ so the same binary serves development and production.
 From the environment, with `sandbox.NewFromEnv`:
 
 ```sh
-SANDBOX_ENGINE=subprocess-goja                  # or subprocess-starlark, subprocess-lua
+SANDBOX_ENGINE=goja                             # the language: goja, starlark or lua
+SANDBOX_ISOLATION=process                       # run it in codemode-worker
 SANDBOX_WORKER=/usr/local/bin/codemode-worker   # optional when it is on PATH
 SANDBOX_MAX_HEAP_BYTES=268435456                # 256 MiB, the default
 SANDBOX_TIMEOUT=10s
@@ -109,7 +110,8 @@ Or in code, which wins over the environment:
 
 ```go
 runner, err := sandbox.New(sandbox.Options{
-	Engine:       "subprocess-goja",
+	Engine:       "goja",
+	Isolation:    "process",
 	Worker:       []string{"/usr/local/bin/codemode-worker"},
 	MaxHeapBytes: 256 << 20,
 	Timeout:      10 * time.Second,
@@ -120,9 +122,10 @@ defer runner.Close()
 
 | Option | Env | Default | Meaning |
 | --- | --- | --- | --- |
-| `Engine` | `SANDBOX_ENGINE` | `goja` | `subprocess-` prefix runs the worker |
+| `Engine` | `SANDBOX_ENGINE` | `goja` | the language: `goja`, `starlark`, `lua` |
+| `Isolation` | `SANDBOX_ISOLATION` | `inprocess` | `process` runs every program in a worker |
 | `Worker` | `SANDBOX_WORKER` | `codemode-worker` on `PATH` | argv that starts a worker; split on spaces from the env |
-| `WorkerIsolated` | `SANDBOX_WORKER_ISOLATED` | `false` | `true` when `Worker` starts a container (step 5) |
+| `WorkerContainer` | `SANDBOX_WORKER_CONTAINER` | `false` | `true` when `Worker` starts a container (step 5) |
 | `MaxHeapBytes` | `SANDBOX_MAX_HEAP_BYTES` | 256 MiB | worker exits when its heap passes this |
 | `Timeout` | `SANDBOX_TIMEOUT` | 30 s | whole program, enforced by your app |
 | `MaxCalls` | `SANDBOX_MAX_CALLS` | 50 | capability calls per program, counted by your app |
@@ -133,6 +136,12 @@ runner exactly as before.
 
 ## Step 4: check it is working
 
+`sandbox.New` checks for you. With `process` isolation it starts one worker and
+runs `return 1` through it before returning, so a missing binary, a version
+mismatch, a bad `docker run` or a missing image is an error from `New`, at
+startup, not a failure on the first user request. It also refuses settings that
+look like a mistake (see Troubleshooting).
+
 Log the runner's name at startup. It states what is enforcing the boundary:
 
 ```go
@@ -140,7 +149,7 @@ slog.Info("sandbox", "runner", runner.Name())
 ```
 
 ```
-subprocess-goja / javascript (child process, 10s timeout, 25 call budget, 256 MiB heap)
+goja / javascript (child process, 10s timeout, 25 call budget, 256 MiB heap)
 ```
 
 If it says `in-process`, the environment did not reach the binary.
@@ -190,8 +199,9 @@ docker build -f deploy/worker.Dockerfile -t ghcr.io/you/codemode-worker:v0.1.0 .
 Point the runner at it:
 
 ```sh
-SANDBOX_ENGINE=subprocess-goja
-SANDBOX_WORKER_ISOLATED=true
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
+SANDBOX_WORKER_CONTAINER=true
 SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --user 65534:65534 \
   --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
@@ -208,7 +218,7 @@ SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
 | `--cpus`, `--pids-limit` | one program cannot starve the node |
 | `--runtime runsc` | gVisor: a separate kernel; omit only where it is not installed |
 
-`SANDBOX_WORKER_ISOLATED=true` is required. Without it your app wraps the `docker`
+`SANDBOX_WORKER_CONTAINER=true` is required. Without it your app wraps the `docker`
 command in new namespaces, which cuts it off from the Docker socket.
 
 Each run pays a container start, roughly 150–400 ms. A worker that outlives its
@@ -233,13 +243,17 @@ make test-container RUNTIME=runsc  # under gVisor
 
 | Error | Cause | Fix |
 | --- | --- | --- |
-| `subprocess engine needs codemode-worker: set Options.Worker or install it on PATH` | worker not found | install it, or set `SANDBOX_WORKER` to its path |
-| `sandbox engine "goja" is not registered: add _ ".../sandbox/goja"` | only the subprocess engine imported | blank-import the language engine too (step 2) |
+| `process isolation needs codemode-worker: install it on PATH or set SANDBOX_WORKER` | worker not found on `PATH` | install it, or set `SANDBOX_WORKER` to its path |
+| `codemode-worker check failed (...): ...` | the startup check could not run a program through the worker: wrong path, not a worker, version mismatch, bad `docker run`, missing image | the error after the colon says which; fix it and restart |
+| `sandbox isolation "process" is not registered: add _ ".../sandbox/subprocess"` | `SANDBOX_ISOLATION=process` without the import | blank-import `sandbox/subprocess` (step 2) |
+| `sandbox engine "goja" is not registered: add _ ".../sandbox/goja"` | only `sandbox/subprocess` imported | blank-import the language engine too (step 2) |
+| `a worker is configured but isolation is inprocess` | `SANDBOX_WORKER` or `SANDBOX_WORKER_CONTAINER` set, `SANDBOX_ISOLATION` not | set `SANDBOX_ISOLATION=process`; this is refused because running in-process here is the unsafe way to be wrong |
+| `worker container is set but no worker command is` | `SANDBOX_WORKER_CONTAINER=true` alone | set `SANDBOX_WORKER` to the `docker run` argv |
 | `protocol version 1, worker speaks 2` | app and worker from different codemode versions | build both from the same `go.mod` |
 | `sandbox: memory limit of N bytes exceeded` | the program allocated past `MaxHeapBytes` | the program's fault; raise the cap only if real data needs it |
 | `sandbox stopped: context deadline exceeded` | the program ran past `Timeout` | same; it is a runaway or the timeout is too tight |
 | `worker protocol error: ...` | the worker sent something malformed or died mid-run | the stderr tail is attached; a crash here is a bug worth reporting |
-| `worker protocol error: EOF` with `permission denied ... docker` in the stderr tail | the `docker` CLI was wrapped in namespaces, or the app cannot reach the daemon | set `SANDBOX_WORKER_ISOLATED=true`; check the app's access to the runtime |
+| `worker protocol error: EOF` with `permission denied ... docker` in the stderr tail | the `docker` CLI was wrapped in namespaces, or the app cannot reach the daemon | set `SANDBOX_WORKER_CONTAINER=true`; check the app's access to the runtime |
 | stderr: `seccomp unavailable, running without it` | kernel or emulator cannot load filters | expected under emulation; on a real host, check the kernel config |
 
 ## How it works, briefly
