@@ -1,8 +1,15 @@
-.PHONY: demo-todo demo-report demo-web generate generate-go generate-registry test test-vector \
+.PHONY: demo-todo mcp-todo worker demo-report demo-web generate generate-go generate-registry test test-vector \
 	test-postgres test-consumer test-env docs docs-build docs-preview
 
 demo-todo: generate
 	go run ./examples/todo
+
+worker:
+	go build -o bin/codemode-worker ./cmd/codemode-worker
+
+# The todo example as an MCP server on stdio, sandboxed out of process.
+mcp-todo: worker
+	@SANDBOX_ENGINE=subprocess-goja SANDBOX_WORKER=$(CURDIR)/bin/codemode-worker go run ./examples/todo/cmd/todo-mcp
 
 # A complete application: SQLite tasks, 18 capabilities, reporting. Runs without
 # credentials; pass BASE_URL and API_KEY to have a model write the program.

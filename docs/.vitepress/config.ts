@@ -51,6 +51,7 @@ export default withMermaid(
             { text: "Writes and retries", link: "/writes" },
             { text: "Caching programs", link: "/caching" },
             { text: "Many services, many users", link: "/scaling-up" },
+            { text: "Serving MCP clients", link: "/mcp" },
           ],
         },
         {

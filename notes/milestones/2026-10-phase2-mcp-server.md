@@ -70,7 +70,7 @@ calls search first.
 
 | Path | Role |
 | --- | --- |
-| `mcp/` | `NewServer(mode codemode.CodeMode, runner sandbox.Runner, opts Options) *Server`; `Serve(ctx, transport)` |
+| `mcpserver/` | `New(mode codemode.CodeMode, runner sandbox.Runner, opts Options) (*mcp.Server, error)`; caller runs it on a transport |
 | `examples/todo/cmd/todo-mcp` | wires the todo example's mode + runner to stdio |
 | `examples/taskreport/cmd/taskreport-mcp` | same for taskreport, role from flag |
 

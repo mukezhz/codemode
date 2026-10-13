@@ -30,3 +30,5 @@ dist/
 examples/taskreport/.env
 
 .DS_Store
+# make worker
+bin/
