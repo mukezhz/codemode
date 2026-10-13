@@ -40,12 +40,20 @@ type Options struct {
 	Programs io.Writer
 	Logger   *slog.Logger
 	Cache    program.Cache
+
+	// Per user; zero takes the default.
+	ChatsPerMinute int
+	ChatsAtOnce    int
+	// Audit receives one JSON line per capability call; nil keeps none.
+	Audit io.Writer
 }
 
 type Server struct {
-	options Options
-	app     *app.App
-	log     *slog.Logger
+	options  Options
+	app      *app.App
+	log      *slog.Logger
+	fairness *fairness
+	audit    *auditor
 }
 
 func New(options Options) (*Server, error) {
@@ -61,6 +69,16 @@ func New(options Options) (*Server, error) {
 	if options.Attempts == 0 {
 		options.Attempts = 3
 	}
+	if options.ChatsPerMinute == 0 {
+		options.ChatsPerMinute = 10
+	}
+	if options.ChatsAtOnce == 0 {
+		options.ChatsAtOnce = 2
+	}
+	var audit *auditor
+	if options.Audit != nil {
+		audit = &auditor{writer: options.Audit}
+	}
 	logger := options.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -68,9 +86,11 @@ func New(options Options) (*Server, error) {
 	options.Runner = trace.Runner(options.Runner, logger, options.Programs)
 
 	return &Server{
-		options: options,
-		app:     app.New(options.Store, options.Admins...),
-		log:     logger,
+		options:  options,
+		app:      app.New(options.Store, options.Admins...),
+		log:      logger,
+		fairness: &fairness{perMinute: options.ChatsPerMinute, concurrent: options.ChatsAtOnce},
+		audit:    audit,
 	}, nil
 }
 
@@ -84,8 +104,8 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/reopen", server.reopenTask)
 	mux.HandleFunc("DELETE /api/tasks/{id}", server.deleteTask)
 	mux.HandleFunc("GET /api/summary", server.summary)
-	mux.HandleFunc("POST /api/chat", server.chat)
-	mux.HandleFunc("POST /api/chat/stream", server.chatStream)
+	mux.HandleFunc("POST /api/chat", server.fairness.guard(server.chat))
+	mux.HandleFunc("POST /api/chat/stream", server.fairness.guard(server.chatStream))
 
 	mux.Handle("/", server.assets())
 
@@ -334,6 +354,7 @@ func (server *Server) answer(
 		// A program targets one role's capabilities, so cache per role.
 		CacheCaller: string(identity.Role),
 		OnChunk:     onChunk,
+		OnCall:      server.audit.hook(identity),
 	})
 	if err != nil {
 		server.log.Error("chat failed", "request", body.Request, "error", err, "program", result.Source)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -15,7 +16,9 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
-	"github.com/mukezhz/codemode/sandbox/goja"
+
+	_ "github.com/mukezhz/codemode/sandbox/goja"
+	_ "github.com/mukezhz/codemode/sandbox/subprocess"
 
 	"github.com/mukezhz/codemode/examples/taskreport/server"
 	"github.com/mukezhz/codemode/examples/taskreport/store"
@@ -47,11 +50,22 @@ func serve(
 		fmt.Printf("frontend\n  not built — %v\n", err)
 	}
 
-	chatRunner, err := goja.New(sandbox.Options{MaxCalls: 25, Timeout: 30 * time.Second})
+	// goja in-process by default; SANDBOX_ENGINE=subprocess-goja for untrusted users.
+	chatRunner, err := sandbox.NewFromEnv(sandbox.Options{MaxCalls: 25, Timeout: 30 * time.Second})
 	if err != nil {
 		return err
 	}
 	defer chatRunner.Close()
+
+	var audit io.Writer
+	if config.audit != "" {
+		file, err := os.OpenFile(config.audit, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		audit = file
+	}
 
 	handler, err := server.New(server.Options{
 		Store:    tasks,
@@ -64,6 +78,7 @@ func serve(
 		Assets:   assets,
 		Logger:   logger(config),
 		Programs: os.Stderr,
+		Audit:    audit,
 	})
 	if err != nil {
 		return err

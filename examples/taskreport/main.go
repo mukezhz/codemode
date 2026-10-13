@@ -52,6 +52,7 @@ func main() {
 	flag.StringVar(&config.restrict, "restrict", "",
 		"comma-separated capability names to make admin-only at runtime, for testing denial without editing the protos")
 	flag.StringVar(&config.logLevel, "log", "info", "debug, info, warn, or error; debug shows the prompt, the program, and every capability call")
+	flag.StringVar(&config.audit, "audit", "", "append one JSON line per capability call to this file when serving")
 	flag.Parse()
 
 	if err := run(context.Background(), config); err != nil {
@@ -76,6 +77,7 @@ type config struct {
 	verbose      bool
 	serve        string
 	logLevel     string
+	audit        string
 	restrict     string
 }
 
