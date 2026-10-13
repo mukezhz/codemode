@@ -163,9 +163,34 @@ JSON, so numbers come back as `float64`.
 
 On Linux the worker also runs in new user, network and mount namespaces, and
 under `RLIMIT_CPU` and `RLIMIT_NOFILE`. Where unprivileged user
-namespaces are disabled, the runner falls back to a plain child process. Against
-a hostile tenant, run the worker in a container (the next rung) by setting
-`SANDBOX_WORKER` to a `docker run -i ...` argv; the protocol is the same.
+namespaces are disabled, the runner falls back to a plain child process.
+
+### Container workers
+
+Against a hostile tenant, run the worker in a container. The protocol and the
+host's limits are the same; only the argv changes.
+
+```sh
+docker build -f deploy/worker.Dockerfile -t codemode-worker .
+SANDBOX_ENGINE=subprocess-goja
+SANDBOX_WORKER_ISOLATED=true
+SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --user 65534:65534 \
+  --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
+  --runtime runsc codemode-worker"
+```
+
+- `SANDBOX_WORKER_ISOLATED=true` stops the host unsharing namespaces around the
+  `docker` CLI, which would cut it off from the Docker socket. The container
+  provides the isolation instead.
+- `--runtime runsc` is gVisor: a separate kernel between the program and yours.
+  Without it the container shares the host kernel.
+- The image is `codemode-worker` on `scratch`: no shell, no libc.
+- Each run starts a fresh container (about 150–400 ms) and nothing is reused.
+  The worker exits on its own one second after its timeout, so a killed CLI
+  cannot leave it running.
+
+`make test-container` runs the engine suite this way (`RUNTIME=runsc` to add gVisor).
 
 The bridge shape is identical in all four — `(name, input) → output`. Only the
 transport changes, so moving up the ladder is a new file implementing `Runner`,

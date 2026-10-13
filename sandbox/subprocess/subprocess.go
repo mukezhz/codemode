@@ -90,8 +90,9 @@ func (runner *Runner) Run(ctx context.Context, mode codemode.CodeMode, source st
 	defer os.RemoveAll(dir)
 
 	stderr := &tail{limit: 64 << 10}
-	cmd, stdin, stdout, err := runner.spawn(ctx, dir, stderr, unshare.Load())
-	if err != nil && unshare.Load() && denied(err) {
+	namespaces := unshare.Load() && !runner.options.WorkerIsolated
+	cmd, stdin, stdout, err := runner.spawn(ctx, dir, stderr, namespaces)
+	if err != nil && namespaces && denied(err) {
 		unshare.Store(false)
 		cmd, stdin, stdout, err = runner.spawn(ctx, dir, stderr, false)
 	}

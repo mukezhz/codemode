@@ -21,8 +21,11 @@ import (
 	_ "github.com/mukezhz/codemode/sandbox/starlark"
 )
 
-// ExitHeap tells the host the heap watchdog fired.
-const ExitHeap = 3
+const (
+	// ExitHeap tells the host the heap watchdog fired.
+	ExitHeap     = 3
+	ExitDeadline = 4
+)
 
 func main() {
 	writer := wire.NewWriter(os.Stdout)
@@ -48,6 +51,8 @@ func run(reader *wire.Reader, writer *wire.Writer) error {
 		return err
 	}
 	watchHeap(uint64(limits.MaxHeapBytes))
+	// A killed container CLI can leave this process running; it must stop on its own.
+	time.AfterFunc(time.Duration(limits.TimeoutMS)*time.Millisecond+time.Second, func() { os.Exit(ExitDeadline) })
 
 	runner, err := sandbox.New(sandbox.Options{
 		Engine:           start.Engine,

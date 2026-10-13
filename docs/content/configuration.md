@@ -67,6 +67,7 @@ publishes no embeddings API. See [Search](/search#embeddings).
 | `SANDBOX_TIMEOUT` | Go duration, e.g. `10s` | `30s` |
 | `SANDBOX_MAX_CALLS` | integer | `50` |
 | `SANDBOX_WORKER` | argv for `codemode-worker`, space-separated | `codemode-worker` on `PATH` |
+| `SANDBOX_WORKER_ISOLATED` | `true` when `SANDBOX_WORKER` starts a container | `false` |
 | `SANDBOX_MAX_HEAP_BYTES` | integer; subprocess engines only | `268435456` |
 
 Options passed in code win over these. See [Sandbox](/sandbox).

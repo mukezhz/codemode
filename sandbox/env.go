@@ -14,6 +14,7 @@ const (
 	EnvMaxCalls = "SANDBOX_MAX_CALLS"
 	EnvWorker   = "SANDBOX_WORKER"
 	EnvMaxHeap  = "SANDBOX_MAX_HEAP_BYTES"
+	EnvIsolated = "SANDBOX_WORKER_ISOLATED"
 )
 
 func OptionsFromEnv(options Options) (Options, error) {
@@ -40,6 +41,15 @@ func OptionsFromEnv(options Options) (Options, error) {
 	}
 	if len(options.Worker) == 0 {
 		options.Worker = strings.Fields(os.Getenv(EnvWorker))
+	}
+	if !options.WorkerIsolated {
+		if value := strings.TrimSpace(os.Getenv(EnvIsolated)); value != "" {
+			isolated, err := strconv.ParseBool(value)
+			if err != nil {
+				return options, fmt.Errorf("%s: %w", EnvIsolated, err)
+			}
+			options.WorkerIsolated = isolated
+		}
 	}
 	if options.MaxHeapBytes == 0 {
 		if value := strings.TrimSpace(os.Getenv(EnvMaxHeap)); value != "" {

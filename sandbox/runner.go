@@ -34,8 +34,11 @@ type Options struct {
 	MaxResponseBytes int
 
 	// Worker is the argv that starts codemode-worker; subprocess engines only.
-	Worker       []string
-	MaxHeapBytes int
+	Worker []string
+	// WorkerIsolated says Worker starts a container that isolates itself, so the
+	// host must not unshare namespaces around the container CLI.
+	WorkerIsolated bool
+	MaxHeapBytes   int
 }
 
 const (

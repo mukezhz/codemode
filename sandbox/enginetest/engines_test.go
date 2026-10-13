@@ -31,16 +31,21 @@ type engine struct {
 	isolated     bool
 }
 
-var worker string
+var worker []string
 
 // TestMain builds codemode-worker once so every engine test also runs out of process.
+// CODEMODE_TEST_WORKER replaces it with another argv, such as a docker run.
 func TestMain(m *testing.M) {
+	if argv := strings.Fields(os.Getenv("CODEMODE_TEST_WORKER")); len(argv) > 0 {
+		worker = argv
+		os.Exit(m.Run())
+	}
 	dir, err := os.MkdirTemp("", "enginetest-")
 	if err != nil {
 		panic(err)
 	}
-	worker = filepath.Join(dir, "codemode-worker")
-	build := exec.Command("go", "build", "-o", worker, "github.com/mukezhz/codemode/cmd/codemode-worker")
+	worker = []string{filepath.Join(dir, "codemode-worker")}
+	build := exec.Command("go", "build", "-o", worker[0], "github.com/mukezhz/codemode/cmd/codemode-worker")
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
 		panic(err)
@@ -62,7 +67,8 @@ func engines() []engine {
 		variant.isolated = true
 		variant.new = func(options sandbox.Options) (sandbox.Runner, error) {
 			options.Engine = variant.name
-			options.Worker = []string{worker}
+			options.Worker = worker
+			options.WorkerIsolated = os.Getenv("CODEMODE_TEST_WORKER") != ""
 			return subprocess.New(options)
 		}
 		all = append(all, variant)
