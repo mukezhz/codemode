@@ -138,6 +138,8 @@ program that allocates without limit can exhaust the host's memory.
 
 ### Subprocess engines
 
+Step-by-step setup, every option, and troubleshooting: [Running the worker](/worker).
+
 Each run starts `codemode-worker`, which runs the same interpreter in a child
 process and sends every `codemode.execute` back to the host as a JSON line. The
 registry check, roles, call budget, response limit and timeout all stay in the

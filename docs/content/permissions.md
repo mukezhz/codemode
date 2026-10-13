@@ -155,7 +155,8 @@ If `tasks.list` takes an `owner`, the program can set it. A program written by a
 model is untrusted input, and the first thing to try is someone else's name.
 :::
 
-See [Many services, many users](/scaling-up) for the rules that follow from
+For users with several roles, tenants, and per-tenant plans, see
+[Roles and tenants](/tenants). See [Many services, many users](/scaling-up) for the rules that follow from
 that — scope as a parameter, a zero value that reaches nothing, "not found"
 rather than "forbidden".
 

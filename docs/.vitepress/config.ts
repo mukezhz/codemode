@@ -49,6 +49,7 @@ export default withMermaid(
             { text: "Development and production", link: "/environments" },
             { text: "What your binary links", link: "/dependencies" },
             { text: "Permissions", link: "/permissions" },
+            { text: "Roles and tenants", link: "/tenants" },
             { text: "Writes and retries", link: "/writes" },
             { text: "Caching programs", link: "/caching" },
             { text: "Many services, many users", link: "/scaling-up" },
@@ -62,6 +63,7 @@ export default withMermaid(
             { text: "Search", link: "/search" },
             { text: "Models", link: "/models" },
             { text: "Sandbox", link: "/sandbox" },
+            { text: "Running the worker", link: "/worker" },
           ],
         },
         {

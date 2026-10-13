@@ -172,7 +172,8 @@ SANDBOX_MAX_CALLS=25
 
 ### End users, one organisation
 
-Run every program in a worker process. A program that allocates without limit
+Run every program in a worker process ([Running the worker](/worker) has every
+step and option). A program that allocates without limit
 kills its own worker, not your server, and the worker has no environment, so
 API keys and database URLs never reach it.
 
@@ -209,7 +210,8 @@ unprivileged ones (many container platforms do not; it falls back quietly).
 
 ### Many tenants, or users you do not trust
 
-Put each worker in its own container, under gVisor where you can:
+Put each worker in its own container, under gVisor where you can. Roles, tenant
+scoping and per-tenant policy are in [Roles and tenants](/tenants).
 
 ```sh
 SANDBOX_ENGINE=subprocess-goja
