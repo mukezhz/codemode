@@ -6,6 +6,9 @@ version is 0, a minor bump may break the API.
 ## [Unreleased]
 
 ### Added
+- `capability.Registry.ForRoles(roles...)`: the capabilities any of a caller's
+  roles or permissions allow, plus every unrestricted one. Pass roles fetched
+  from your app per request; fixed and runtime-defined roles mix.
 - `registry.MarshalJSON`: encodes a proto response in the shape the registry
   describes (proto field names, empty lists as `[]`, 64-bit integers as numbers).
   Plain `protojson.Marshal` disagrees with the schema on all three.

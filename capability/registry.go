@@ -42,6 +42,30 @@ func (registry Registry) ForRole(role string) Registry {
 	return registry.Select(func(item Capability) bool { return item.AllowsRole(role) })
 }
 
+// ForRoles keeps the capabilities any of roles allows, plus every unrestricted
+// one. Pass whatever the caller holds, fetched per request: role names, or the
+// permission names your protos declare. No roles still gets the unrestricted
+// capabilities; blank and unknown names grant nothing.
+func (registry Registry) ForRoles(roles ...string) Registry {
+	held := map[string]bool{}
+	for _, role := range roles {
+		if role = strings.TrimSpace(role); role != "" {
+			held[role] = true
+		}
+	}
+	return registry.Select(func(item Capability) bool {
+		if len(item.Roles) == 0 {
+			return true
+		}
+		for _, role := range item.Roles {
+			if held[role] {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 // Only ever narrows: a capability with no roles now requires role.
 func (registry Registry) Require(role string, keep func(Capability) bool) Registry {
 	role = strings.TrimSpace(role)

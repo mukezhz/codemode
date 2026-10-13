@@ -159,3 +159,26 @@ func TestRequireDoesNotAliasRoles(t *testing.T) {
 		t.Fatalf("the source gained a role: %v", full.Capabilities[0].Roles)
 	}
 }
+
+func TestForRolesUnionsWhatTheCallerHolds(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{
+		withRoles("tasks.list"),
+		withRoles("tasks.assign", "admin"),
+		withRoles("billing.refund", "finance", "admin"),
+		withRoles("reports.pipeline", "reports.view"),
+	}}
+	for _, test := range []struct {
+		roles []string
+		want  string
+	}{
+		{nil, "tasks.list"},
+		{[]string{"finance"}, "tasks.list,billing.refund"},
+		{[]string{"finance", "reports.view"}, "tasks.list,billing.refund,reports.pipeline"},
+		{[]string{"admin", "admin"}, "tasks.list,tasks.assign,billing.refund"},
+		{[]string{" ", "Admin", "nonexistent"}, "tasks.list"},
+	} {
+		if got := strings.Join(full.ForRoles(test.roles...).Names(), ","); got != test.want {
+			t.Errorf("ForRoles(%q) = %q, want %q", test.roles, got, test.want)
+		}
+	}
+}
