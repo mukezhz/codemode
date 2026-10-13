@@ -105,9 +105,10 @@ are actually in play.
 | A capability is available to everyone by mistake | Its `(codemode.roles)` was forgotten. Pin `Unrestricted().Names()` in a test — nothing else catches it. |
 | `roles option is blank` | The roles string is only whitespace. Remove the line to place no restriction (`""` counts as not set). |
 | An unknown role gets some capabilities | Correct: unknown roles get the unrestricted set and nothing more. Roles fail closed, never open. |
-| A role edited in the admin screen has no effect | The registry is built from what you pass to `ForRoles`. Check you fetch roles or permissions per request, and that any cache of that lookup expires or is cleared when a role is saved. |
-| A user with several roles gets only one role's capabilities | Pass them all: `ForRoles(session.Roles...)`, not `ForRole(session.Roles[0])`. |
-| A dynamic role gets nothing | Its permissions do not match the names in `(codemode.roles)` exactly (case and spelling). Pin each role's capability set in a test. |
+| A role edited in the admin screen has no effect | The registry is built from the `capability.Caller` you pass to `For`. Check you fetch roles or permissions per request, and that any cache of that lookup expires or is cleared when a role is saved. |
+| A user with several roles gets only one role's capabilities | Pass them all: `For(capability.Caller{Roles: session.Roles})`, not `ForRole(session.Roles[0])`. |
+| A dynamic role gets nothing | Its permissions do not match the names in `(codemode.permissions)` exactly (case and spelling), or you passed them as `Roles`. Pin each role's capability set in a test. |
+| A fixed role cannot reach an RPC annotated with permissions | Correct: roles match `(codemode.roles)` only. Add the role to the RPC, or grant the role's users the permission. |
 
 ## Wrong answers
 

@@ -34,7 +34,7 @@ The server needs your `ExecuteFunc`, so there is no generic binary: you build on
 the same way you build `mode` for `agent.Run`.
 
 ```go
-mode, _ := codemode.New(registry.ForRoles(roles...), search, execute)
+mode, _ := codemode.New(registry.For(caller), search, execute) // caller: this user's roles and permissions
 runner, _ := sandbox.New(sandbox.Options{Engine: "goja", Isolation: "process"})
 
 server, _ := mcpserver.New(mode, runner, mcpserver.Options{Name: "tasks"})
@@ -55,7 +55,7 @@ claude mcp add todo -- make -s -C /path/to/codemode mcp-todo
 - **The roles are fixed when you build `mode`.** No tool argument names a role,
   so a client cannot widen what the registry allows. A stdio server runs for one
   user: fetch that user's roles or permissions from your app at startup and pass
-  them to `ForRoles`. A role change then applies when the client restarts the
+  them to `For`. A role change then applies when the client restarts the
   server.
 - **Use a subprocess engine.** An MCP client is a program author you do not
   control; see [Running the worker](/worker).

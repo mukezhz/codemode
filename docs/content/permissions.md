@@ -6,7 +6,7 @@ are.
 
 | Question | Answered by | Lives in |
 | --- | --- | --- |
-| Which capabilities **exist** for this caller? | `Registry.ForRoles` | the contract, `(codemode.roles)`, and the roles your app holds for the caller |
+| Which capabilities **exist** for this caller? | `Registry.For` | the contract (`roles`, `permissions`), and what your app says the caller holds |
 | Which **rows** may those capabilities touch? | your `ExecuteFunc` | your application |
 | Does the model **know** what it cannot do? | the system prompt | your instructions |
 
@@ -14,39 +14,49 @@ Only the first is the library's. The second cannot be — the registry knows the
 capability being called and nothing whatsoever about the data behind it. The
 third looks optional and is not.
 
-## Fixed roles and dynamic roles
+## Roles and permissions
 
-Codemode stores no roles. Each request, your app says what the caller holds and
-codemode keeps the capabilities that allows. That works the same whether roles
-are fixed in your code or created by an admin at runtime:
+Codemode stores no roles. Each request, your app says what the signed-in user
+holds and codemode keeps the capabilities that allows. The contract can ask for
+two kinds of thing:
 
-| Your app has | Put in `(codemode.roles)` | Pass to `ForRoles` each request |
+| Your app has | Annotate the RPC with | Pass each request |
 | --- | --- | --- |
-| **Fixed roles**: `admin`, `manager`, `member` | the role names | the user's roles from the session |
-| **Dynamic roles**: admins create "Senior AE" and tick boxes | the **permission** each RPC needs: `deals.write` | the user's permissions, fetched from your app |
-| Both | either, mixed: `"admin deals.write"` | both lists together |
+| **Fixed roles** in code: `admin`, `manager`, `member` | `(codemode.roles) = "admin"` | `Roles`: the user's roles from the session |
+| **Dynamic roles**: admins create "Senior AE" and tick boxes | `(codemode.permissions) = "deals.write"` | `Permissions`: what the user's roles grant, fetched from your app |
+| Both | both options on the same RPC | both lists |
+
+```protobuf
+rpc Move(MoveDealRequest) returns (Deal) {
+  option (codemode.description) = "Moves a deal to another stage.";
+  option (codemode.permissions) = "deals.write";       // whoever an admin granted it
+}
+rpc Discount(DiscountRequest) returns (Deal) {
+  option (codemode.description) = "Applies a discount to a deal.";
+  option (codemode.roles) = "admin";                    // a fixed role
+  option (codemode.permissions) = "deals.discount";     // or a runtime grant
+}
+```
 
 ```go
-// Fixed roles
-allowed := full.ForRoles(session.Roles...)
-
-// Dynamic roles: ask your app what this user may do, every request
-permissions, err := app.PermissionsFor(ctx, session) // your database or API
+permissions, err := app.PermissionsFor(ctx, session) // your database or API, every request
 if err != nil {
 	return err // fail closed
 }
-allowed = full.ForRoles(permissions...)
-
-// Both
-allowed = full.ForRoles(append(session.Roles, permissions...)...)
-
+allowed := full.For(capability.Caller{Roles: session.Roles, Permissions: permissions})
 mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
 ```
 
+A caller may use an RPC when they hold **any** role it lists **or any**
+permission it lists. A role is never matched against permissions, or the
+reverse: a role an admin happens to call `deals.write` grants nothing.
+
 Because the registry is built per request, an admin's change to a role applies
 on the user's next request; nothing is compiled in or cached by codemode. The
-protos stay the ceiling: a role can be given any permission the protos name, and
-nothing they do not. [Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles)
+protos stay the ceiling: a runtime role can be given any permission the protos
+name, and nothing they do not. `full.Permissions()` lists them all, which is what
+a role-editing screen offers as checkboxes.
+[Dynamic roles](/tenants#dynamic-roles-permissions-in-the-proto-grants-in-your-app)
 covers limits with values ("discount up to 15%") and fetching permissions from an
 app that is not written in Go.
 
@@ -167,7 +177,7 @@ Three rules follow from the table:
 Pass every role the caller holds, fetched from your app per request:
 
 ```go
-allowed := full.ForRoles(identity.Roles...)
+allowed := full.For(capability.Caller{Roles: identity.Roles})
 ```
 
 With the service above, a user with `["billing", "viewer"]` gets `billing.invoices`
@@ -175,9 +185,10 @@ and `billing.summary`, but not `billing.refund`. A user with no roles keeps the
 unrestricted capabilities. [Roles and tenants](/tenants) builds the full request
 path around this.
 
-Roles that admins create at runtime cannot be named in a proto. Name the
-*permission* each RPC needs instead, and map roles to permissions in your
-database: [Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles).
+Roles that admins create at runtime cannot be named in a proto. Use
+`(codemode.permissions)` / `(codemode.default_permissions)` for those RPCs
+instead, with exactly the same rules as the table above:
+[Roles and permissions](#roles-and-permissions).
 
 ### Pin each role's set in a test
 
@@ -189,7 +200,7 @@ func TestRolesSeeTheIntendedCapabilities(t *testing.T) {
 		"admin":   {"billing.invoices", "billing.refund", "billing.summary", "tasks.assign", "tasks.list"},
 	}
 	for role, names := range want {
-		got := slices.Sorted(slices.Values(full.ForRoles(role).Names()))
+		got := slices.Sorted(slices.Values(full.ForRole(role).Names()))
 		if !slices.Equal(got, names) {
 			t.Errorf("%s sees %v, want %v", role, got, names)
 		}
@@ -203,7 +214,7 @@ production.
 ## Narrow per request
 
 ```go
-allowed := full.ForRoles(identity.Roles...) // or permissions fetched from your app
+allowed := full.For(capability.Caller{Roles: identity.Roles, Permissions: permissions})
 mode, err := codemode.New(allowed, capability.Keyword(allowed), app.Execute)
 ```
 
@@ -212,8 +223,8 @@ Building a registry per request is cheap — a slice and a map. Passing the
 what makes this one decision instead of two: the model is never told about a
 capability it cannot call.
 
-**Unknown roles fail closed.** `ForRoles("Admin")` — wrong case, a typo, a role
-from a system that no longer exists, a permission an admin deleted — returns the
+**Unknown names fail closed.** A role `"Admin"` — wrong case, a typo, a role
+from a system that no longer exists — or a permission an admin deleted gets the
 unrestricted capabilities and nothing more. A mistake in a role name loses
 access, never gains it.
 

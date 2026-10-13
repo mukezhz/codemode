@@ -87,11 +87,12 @@ Leave out anything you would not let a junior employee do on the user's behalf
 without asking: bulk deletes, exports, permission changes. A capability that does
 not exist cannot be talked into.
 
-Fixed roles (`admin`, `manager`) can go straight into the proto. If your CRM
-also lets admins create roles at runtime, annotate those RPCs with
-**permissions** (`deals.write`) instead, fetch each user's permissions from the
-CRM per request, and pass both lists to `full.ForRoles(...)`. See
-[Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles).
+Fixed roles (`admin`, `manager`) go in `(codemode.roles)`, as below. If your
+CRM also lets admins create roles at runtime, annotate those RPCs with
+`(codemode.permissions) = "deals.write"`, fetch each user's permissions from the
+CRM per request, and pass both:
+`full.For(capability.Caller{Roles: session.Roles, Permissions: permissions})`. See
+[Roles and permissions](/permissions#roles-and-permissions).
 
 ### Step 2: write the contract
 
@@ -452,7 +453,7 @@ func (assistant *Assistant) Apply(ctx context.Context, planned []codemode.Call) 
 // modeFor narrows the registry to what this user's roles allow; the roles come
 // from the CRM's own session, fetched per request. reports.* need manager or admin.
 func (assistant *Assistant) modeFor(session auth.Session) (codemode.CodeMode, error) {
-	allowed := assistant.full.ForRoles(session.Roles...)
+	allowed := assistant.full.For(capability.Caller{Roles: session.Roles})
 	return codemode.New(allowed, capability.Keyword(allowed), assistant.execute)
 }
 
@@ -773,7 +774,7 @@ func Permissions(ctx context.Context, base string, client *http.Client) ([]strin
   "forbidden" from "missing".
 - **Roles come from the CRM on every request.** `Permissions` asks the CRM what
   this user may do, with their token, and the result goes straight into
-  `full.ForRoles(permissions...)`. An admin's change to a role applies on the
+  `full.For(capability.Caller{Permissions: permissions})`. An admin's change to a role applies on the
   user's next question.
 
 The sidecar's own HTTP handler is the same `ask`/`apply` pair as in step 5,

@@ -276,7 +276,7 @@ execute := func(ctx context.Context, rpc string, input json.RawMessage) (json.Ra
     }
     return app.Execute(ctx, rpc, input)
 }
-mode, _ := codemode.New(registry.ForRoles(roles...), search, execute) // roles fetched from your app
+mode, _ := codemode.New(registry.For(caller), search, execute) // caller: roles and permissions fetched from your app
 ```
 
 What it does not trust:

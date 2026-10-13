@@ -53,7 +53,7 @@ flowchart TB
     model["llm.Client"]
   end
   subgraph request["per request"]
-    identity["caller identity<br/><small>roles fetched from your app</small>"] --> narrowed["registry.ForRoles(roles...)<br/><small>this caller's allowlist</small>"]
+    identity["caller<br/><small>roles + permissions fetched from your app</small>"] --> narrowed["registry.For(caller)<br/><small>this caller's allowlist</small>"]
     full --> narrowed
     narrowed --> runtime["codemode.New(narrowed, search, execute)"]
     runtime --> run["agent.Run(ctx, mode, model, request, options)"]
@@ -103,7 +103,7 @@ above it, and **none of these packages imports a third-party SDK**: importing
 
 | Package | Job | You call |
 | --- | --- | --- |
-| `capability` | The vocabulary: a capability, a registry, a search match. Narrowing (`ForRole`, `Select`, `Require`), merging, keyword and vector search. | `ForRoles`, `Keyword`, `Merge` |
+| `capability` | The vocabulary: a capability, a registry, a search match. Narrowing (`ForRole`, `Select`, `Require`), merging, keyword and vector search. | `For`, `Keyword`, `Merge` |
 | `registry` | Reads protobuf descriptors and the codemode annotations into a `capability.Registry`. | `FromFiles` |
 | `codemode` | The runtime the sandbox talks to. Resolves a capability name against the registry, calls `ExecuteFunc` with the RPC path, records calls. | `New` |
 | `sandbox` | Runs a program and writes the prompt for its language. Engines and isolations register themselves. | `New`, `NewFromEnv` |
@@ -207,7 +207,7 @@ flowchart LR
 
 | Boundary | What enforces it | Lives in |
 | --- | --- | --- |
-| Which capabilities exist for this caller | `ForRoles(...)` with the roles or permissions your app holds for them, against `(codemode.roles)` | your protos + your app |
+| Which capabilities exist for this caller | `For(caller)`: the roles and permissions your app holds for them, against `(codemode.roles)` and `(codemode.permissions)` | your protos + your app |
 | Whether a name resolves at all | a map lookup in the runtime | `codemode` |
 | How many calls, how long, how large | call budget, timeout, response limit | `sandbox` options |
 | Which rows a call may touch | the identity on `ctx`, never a field in the input | **your `ExecuteFunc`** |

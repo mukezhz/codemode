@@ -8,7 +8,7 @@ explains each lock on its own; this page puts them together.
 
 | Question | Example | Answered by | Where |
 | --- | --- | --- | --- |
-| Which **capabilities exist** for this caller? | a viewer has no `tasks.delete` | roles | `(codemode.roles)` in protos → `Registry.ForRole` / `Select` |
+| Which **capabilities exist** for this caller? | a viewer has no `tasks.delete` | roles and permissions | `(codemode.roles)` / `(codemode.permissions)` in protos → `Registry.For` |
 | Which **tenant's data** do they reach? | acme never sees globex rows | the tenant | your `ExecuteFunc` |
 | Which **rows inside the tenant**? | a member sees their own tasks, a manager their team's | the user and role | your `ExecuteFunc` |
 
@@ -80,11 +80,11 @@ service BillingService {
 
 ## Users with several roles
 
-Pass everything the caller holds to `ForRoles`, fetched per request from your
-app's session or database:
+Pass everything the caller holds, fetched per request from your app's session
+or database:
 
 ```go
-allowed := full.ForRoles(identity.Roles...)
+allowed := full.For(capability.Caller{Roles: identity.Roles})
 ```
 
 A user with `["member", "billing"]` gets the unrestricted capabilities, plus
@@ -151,7 +151,7 @@ func forTenant(full capability.Registry, tenant TenantConfig) capability.Registr
 Order: tenant policy first, then the user's roles. Both only remove, so the
 result is never wider than the protos.
 
-### Dynamic roles: name permissions in the proto, not roles
+### Dynamic roles: permissions in the proto, grants in your app
 
 Most CRMs and back-office apps let an admin create roles at runtime ("Senior AE",
 "Sales Ops", "Regional Lead") and tick boxes for what each may do. Those role
@@ -166,13 +166,13 @@ Split it into three layers instead:
 | **Roles** | which permissions each role grants | an admin edits a role | your database |
 | **Limits** | values a grant carries: max discount, max deal value, own records only | an admin edits a role | your database, enforced in `ExecuteFunc` |
 
-**1. In the proto, `(codemode.roles)` names a permission.** It is a list of
-strings checked against what the caller holds; nothing makes it a job title.
+**1. In the proto, name the permission each RPC needs** with
+`(codemode.permissions)`, and put `(codemode.default_permissions)` on the service:
 
 ```protobuf
 service DealService {
   option (codemode.namespace) = "deals";
-  option (codemode.default_roles) = "deals.read";     // every method, and every new one
+  option (codemode.default_permissions) = "deals.read";
 
   rpc List(ListDealsRequest) returns (DealList) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -180,17 +180,18 @@ service DealService {
   }
   rpc Move(MoveDealRequest) returns (Deal) {
     option (codemode.description) = "Moves a deal to another stage.";
-    option (codemode.roles) = "deals.write";
+    option (codemode.permissions) = "deals.write";
   }
   rpc Discount(DiscountRequest) returns (Deal) {
     option (codemode.description) = "Applies a discount to a deal.";
-    option (codemode.roles) = "deals.discount";
+    option (codemode.roles) = "admin";                 // a fixed role
+    option (codemode.permissions) = "deals.discount";  // or a runtime one
   }
 }
 
 service ReportService {
   option (codemode.namespace) = "reports";
-  option (codemode.default_roles) = "reports.view";
+  option (codemode.default_permissions) = "reports.view";
 
   rpc Pipeline(PipelineRequest) returns (DealList) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -199,9 +200,10 @@ service ReportService {
 }
 ```
 
-Put `default_roles` on every service. A new RPC then requires the service's
-permission until someone decides otherwise, instead of arriving open to every
-role an admin ever created.
+Put `default_permissions` (or `default_roles`) on every service. A new RPC then
+requires the service's permission until someone decides otherwise, instead of
+arriving open to every role an admin ever created. `Discount` shows the two kinds
+mixed: the fixed `admin` role, or any runtime role granted `deals.discount`.
 
 **2. Per request, fetch the user's permissions from your app and pass them in.**
 Codemode does not store roles; it filters by whatever list you hand it, so it
@@ -219,16 +221,20 @@ permissions, err := grants.Permissions(ctx, session.Org, session.Roles)
 if err != nil {
 	return err // fail closed: no permissions, no assistant
 }
-allowed := full.ForRoles(permissions...)
+allowed := full.For(capability.Caller{Roles: session.Roles, Permissions: permissions})
 mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
 ```
+
+`Roles` match `(codemode.roles)`, `Permissions` match `(codemode.permissions)`,
+and either is enough. `full.Permissions()` lists every permission the protos
+define: the checkboxes for your role-editing screen.
 
 If your app is not written in Go, the codemode service asks it over HTTP, with
 the user's own token, on every request:
 
 ```go
 permissions, err := sidecar.Permissions(ctx, crmURL, client) // GET /api/me/permissions as the user
-allowed := full.ForRoles(permissions...)
+allowed := full.For(capability.Caller{Permissions: permissions})
 ```
 
 That function is in [A CRM not written in Go](/existing-app#a-crm-not-written-in-go).
@@ -243,18 +249,11 @@ With these roles in the database:
 | Senior AE | `deals.read` `deals.write` `deals.discount` | `deals.list` `deals.move` `deals.discount` |
 | Sales Ops | `deals.read` `reports.view` | `deals.list` `reports.pipeline` |
 | Revoked Intern | (none) | (none) |
+| fixed role `admin`, no grants | — | `deals.discount` only: a fixed role reaches only RPCs that name it |
 
 That table is a passing test against the proto above. Write the same test for
 your own permissions: it is what catches a permission typo, which would
 otherwise fail closed silently.
-
-**Fixed and dynamic together.** One proto can mix both: `(codemode.roles) =
-"admin deals.write"` admits the fixed `admin` role and anyone whose runtime role
-grants `deals.write`. Pass both lists:
-
-```go
-allowed := full.ForRoles(append(session.Roles, permissions...)...)
-```
 
 **3. Enforce limits in `ExecuteFunc`.** The registry answers *may this caller
 call `deals.discount` at all*. "Up to 15%" or "only deals under $50,000" is a
@@ -397,7 +396,7 @@ func (server *Server) ask(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "permissions unavailable", http.StatusServiceUnavailable) // fail closed
 		return
 	}
-	allowed := forTenant(server.full, tenant).ForRoles(permissions...)
+	allowed := forTenant(server.full, tenant).For(capability.Caller{Roles: identity.Roles, Permissions: permissions})
 	mode, err := codemode.New(allowed, server.search, server.app.Execute)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -429,8 +428,8 @@ serves every tenant and still scopes each call.
 
 | Test | Catches |
 | --- | --- |
-| `full.Unrestricted().Names()` equals a pinned list | a new privileged RPC that forgot `(codemode.roles)` |
-| for each role, `full.ForRoles(role).Names()` equals a pinned list | a role quietly gaining a capability |
+| `full.Unrestricted().Names()` equals a pinned list | a new privileged RPC that forgot `(codemode.roles)` or `(codemode.permissions)` |
+| for each role, `full.For(capability.Caller{Permissions: grantsOf(role)}).Names()` equals a pinned list | a role quietly gaining a capability |
 | a user of tenant A calls every read capability with ids from tenant B → "not found" | a query missing its tenant scope |
 | `Execute` with no identity on the context → error | a code path that defaults to "everyone" |
 | a program calls a capability its role lacks → `capability "x" is not registered` | the registry being built too wide |
