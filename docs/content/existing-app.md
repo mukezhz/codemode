@@ -87,6 +87,11 @@ Leave out anything you would not let a junior employee do on the user's behalf
 without asking: bulk deletes, exports, permission changes. A capability that does
 not exist cannot be talked into.
 
+If your CRM lets admins create roles at runtime, annotate RPCs with
+**permissions** (`deals.write`) rather than role names, and resolve each user's
+roles to permissions from your database per request. See
+[Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles).
+
 ### Step 2: write the contract
 
 The contract is not a new public API. It is a description, for the model, of

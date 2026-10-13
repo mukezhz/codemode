@@ -162,19 +162,142 @@ func forTenant(full capability.Registry, tenant TenantConfig) capability.Registr
 Order: tenant policy first, then the user's roles. Both only remove, so the
 result is never wider than the protos.
 
-### Tenants that define their own roles
+### Dynamic roles: name permissions in the proto, not roles
 
-If a tenant can invent a role ("auditor"), map it onto the roles your protos
-know, in your database:
+Most CRMs and back-office apps let an admin create roles at runtime ("Senior AE",
+"Sales Ops", "Regional Lead") and tick boxes for what each may do. Those role
+names live in a database and change without a deploy, so they cannot go in a
+`.proto` file.
 
-```go
-// acme: auditor → viewer + billing (read only, see below)
-roles := tenant.MapRoles(identity.Roles) // custom names → proto roles
-allowed := forRoles(forTenant(full, tenant), roles)
+Split it into three layers instead:
+
+| Layer | Holds | Changes when | Lives in |
+| --- | --- | --- | --- |
+| **Permissions** | what each RPC requires: `deals.write`, `reports.view` | you add an RPC | the proto, reviewed in code |
+| **Roles** | which permissions each role grants | an admin edits a role | your database |
+| **Limits** | values a grant carries: max discount, max deal value, own records only | an admin edits a role | your database, enforced in `ExecuteFunc` |
+
+**1. In the proto, `(codemode.roles)` names a permission.** It is a list of
+strings checked against what the caller holds; nothing makes it a job title.
+
+```protobuf
+service DealService {
+  option (codemode.namespace) = "deals";
+  option (codemode.default_roles) = "deals.read";     // every method, and every new one
+
+  rpc List(ListDealsRequest) returns (DealList) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Lists deals.";
+  }
+  rpc Move(MoveDealRequest) returns (Deal) {
+    option (codemode.description) = "Moves a deal to another stage.";
+    option (codemode.roles) = "deals.write";
+  }
+  rpc Discount(DiscountRequest) returns (Deal) {
+    option (codemode.description) = "Applies a discount to a deal.";
+    option (codemode.roles) = "deals.discount";
+  }
+}
+
+service ReportService {
+  option (codemode.namespace) = "reports";
+  option (codemode.default_roles) = "reports.view";
+
+  rpc Pipeline(PipelineRequest) returns (DealList) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Whole-org pipeline.";
+  }
+}
 ```
 
-Protos stay the ceiling. A tenant can combine and restrict roles, never create
-access the contract does not have.
+Put `default_roles` on every service. A new RPC then requires the service's
+permission until someone decides otherwise, instead of arriving open to every
+role an admin ever created.
+
+**2. Per request, resolve the user's roles to permissions and filter by them.**
+
+```go
+// Grants is what the admin screen edits: role → permissions, per org.
+type Grants interface {
+	Permissions(ctx context.Context, org string, roles []string) ([]string, error)
+}
+
+// Allowed keeps the capabilities whose required permission the caller holds.
+// Unknown or revoked permissions grant nothing.
+func Allowed(full capability.Registry, permissions []string) capability.Registry {
+	return full.Select(func(item capability.Capability) bool {
+		for _, permission := range permissions {
+			if item.AllowsRole(permission) {
+				return true
+			}
+		}
+		return false
+	})
+}
+```
+
+```go
+permissions, err := grants.Permissions(ctx, session.Org, session.Roles)
+if err != nil {
+	return err // fail closed: no permissions, no assistant
+}
+allowed := Allowed(full, permissions)
+mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+```
+
+With these roles in the database:
+
+| Role (created at runtime) | Grants | Capabilities the model gets |
+| --- | --- | --- |
+| Junior AE | `deals.read` | `deals.list` |
+| Senior AE | `deals.read` `deals.write` `deals.discount` | `deals.list` `deals.move` `deals.discount` |
+| Sales Ops | `deals.read` `reports.view` | `deals.list` `reports.pipeline` |
+| Revoked Intern | (none) | (none) |
+
+That table is a passing test against the proto above. Write the same test for
+your own permissions: it is what catches a permission typo, which would
+otherwise fail closed silently.
+
+**3. Enforce limits in `ExecuteFunc`.** The registry answers *may this caller
+call `deals.discount` at all*. "Up to 15%" or "only deals under $50,000" is a
+value from the grant, checked where the data is:
+
+```go
+func discount(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
+	grants, _ := ctx.Value(grantsKey{}).(map[string]Grant)
+	grant, ok := grants["deals.discount"]
+	if !ok {
+		return nil, codemode.Permanent(errors.New("not permitted")) // registry and grants disagree: fail closed
+	}
+	request := &permv1.DiscountRequest{}
+	if err := protojson.Unmarshal(input, request); err != nil {
+		return nil, err
+	}
+	if request.GetPercent() > grant.MaxDiscount {
+		return nil, codemode.Permanent(fmt.Errorf("discount of %.0f%% is over your limit of %.0f%%",
+			request.GetPercent(), grant.MaxDiscount))
+	}
+	return applyDiscount(ctx, request) // your service layer, as before
+}
+```
+
+Return limit violations as `codemode.Permanent` so the agent stops instead of
+rewriting the program. The message is read by the model, so it can tell the user
+what their limit is. If the model should plan around limits up front, say them
+in `Instructions` too ("this user can discount up to 15%").
+
+What follows from building the registry per request:
+
+- **Role edits apply on the next request.** Nothing is compiled in. If you cache
+  `Permissions` lookups, use a short TTL and drop the entry when an admin saves a
+  role.
+- **The program cache stays correct.** Its key includes a fingerprint of the
+  capability set, so two roles with different permissions never share a cached
+  program, and an admin's edit changes the fingerprint. Add limits that appear in
+  `Instructions` to `CacheCaller`.
+- **The protos cap everything.** A database row can combine permissions the
+  protos define; it cannot create one. An RPC with no matching permission in any
+  grant is simply unreachable.
 
 ### Read-only roles
 
@@ -270,8 +393,13 @@ func (server *Server) ask(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	roles := tenant.MapRoles(identity.Roles)
-	allowed := forRoles(forTenant(server.full, tenant), roles)
+	// Roles are dynamic (admin-edited); the proto names permissions. See "Dynamic roles".
+	permissions, err := server.grants.Permissions(request.Context(), identity.Tenant, identity.Roles)
+	if err != nil {
+		http.Error(writer, "permissions unavailable", http.StatusServiceUnavailable) // fail closed
+		return
+	}
+	allowed := Allowed(forTenant(server.full, tenant), permissions)
 	mode, err := codemode.New(allowed, server.search, server.app.Execute)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -281,9 +409,8 @@ func (server *Server) ask(writer http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithTimeout(request.Context(), 2*time.Minute)
 	defer cancel()
 	result, err := agent.Run(ctx, mode, server.model, request.FormValue("q"), agent.Options{
-		Runner:       server.runner, // shared; SANDBOX_ENGINE decides in-process or worker
-		Cache:        server.cache,
-		CacheCaller:  strings.Join(slices.Sorted(slices.Values(roles)), ","),
+		Runner:       server.runner, // shared; SANDBOX_ISOLATION decides in-process or worker
+		Cache:        server.cache, // keyed by the capability set already; CacheCaller adds anything else in the prompt
 		Instructions: "You answer for one user of one organisation. Say so when a request needs data outside it.",
 		OnCall: func(call codemode.Call) {
 			server.audit(identity, call)

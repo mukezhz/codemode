@@ -148,6 +148,10 @@ and `billing.summary`, but not `billing.refund`. Do not `capability.Merge` sever
 rejects duplicates. [Roles and tenants](/tenants) builds the full request path
 around this.
 
+Roles that admins create at runtime cannot be named in a proto. Name the
+*permission* each RPC needs instead, and map roles to permissions in your
+database: [Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles).
+
 ### Pin each role's set in a test
 
 ```go
