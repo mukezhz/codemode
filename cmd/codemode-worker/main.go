@@ -69,7 +69,7 @@ func run(reader *wire.Reader, writer *wire.Writer) error {
 	return writer.Write(wire.Message{Type: wire.TypeDone, Value: encoded})
 }
 
-// watchHeap exits rather than letting the kernel or host pick a victim; macOS ignores RLIMIT_AS, so this is the portable cap.
+// watchHeap exits rather than letting the kernel or host pick a victim; RLIMIT_AS cannot cap a Go process, so this is the cap on every OS.
 func watchHeap(limit uint64) {
 	debug.SetMemoryLimit(int64(limit))
 	sample := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}

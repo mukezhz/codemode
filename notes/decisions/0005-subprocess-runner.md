@@ -19,7 +19,7 @@ child and speaks JSON lines over stdio (`internal/wire`).
   size, line size, wall clock, empty environment, process-group kill. The worker
   is untrusted once program code runs in it, so nothing it reports is believed.
 - **The worker enforces only its own resources**: a heap watchdog (portable;
-  macOS ignores `RLIMIT_AS`) and, on Linux, rlimits. These stop runaway programs,
+  `RLIMIT_AS` cannot cap a Go process) and, on Linux, CPU and fd rlimits. These stop runaway programs,
   not an attacker who already escaped.
 - **The engines are reused unchanged.** The worker hands them a `CodeMode` whose
   `Execute` is a round trip, so there is still exactly one implementation of each

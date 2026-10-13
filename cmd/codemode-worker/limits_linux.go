@@ -6,12 +6,12 @@ import (
 	"github.com/mukezhz/codemode/internal/wire"
 )
 
+// No RLIMIT_AS: the Go runtime reserves more address space than any useful cap,
+// so the worker dies before running anything. watchHeap is the memory cap, and a
+// container's --memory is the hard one.
 func applyLimits(limits wire.Limits) error {
-	// ponytail: the Go runtime reserves address space up front, so RLIMIT_AS is a loose backstop; watchHeap is the real cap.
-	addressSpace := uint64(max(limits.MaxHeapBytes*4, 1<<30))
 	cpuSeconds := uint64(limits.TimeoutMS/1000 + 1)
 	for resource, value := range map[int]uint64{
-		syscall.RLIMIT_AS:     addressSpace,
 		syscall.RLIMIT_CPU:    cpuSeconds,
 		syscall.RLIMIT_NOFILE: 16,
 	} {
