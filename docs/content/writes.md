@@ -75,7 +75,8 @@ is no more trusted than a direct call.
 
 `sandbox.Options.MaxResponseBytes` (default 1 MiB) rejects any single
 capability response larger than the limit. It bounds what a program is handed,
-not what it allocates; a hard memory limit needs a separate process.
+not what it allocates. For a hard memory limit, set `SANDBOX_ISOLATION=process`:
+`Options.MaxHeapBytes` (default 256 MiB) caps the worker's heap.
 
 ## Watching a run
 

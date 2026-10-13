@@ -49,8 +49,8 @@ will read later, so write it for a reader, not a compiler.
 
 ### B2 — The generator turns them into a registry
 
-`make generate` asks Buf for a descriptor set, then `registry/main.go` walks it
-and writes `registry.json`. `registry.FromFiles` derives the same thing at
+`make generate` asks Buf for a descriptor set, then `cmd/codemode-registry` walks
+it and writes `registry.json` (optional). `registry.FromFiles` derives the same thing at
 startup from descriptors already compiled in, if you would rather have no file
 at all. Each entry has a friendly `name` like
 `todos.complete`, the real `rpc` path `todo.v1.TodoService/Complete`, the
@@ -120,7 +120,7 @@ lists.
 
 ```mermaid
 flowchart TD
-  registry["registry.json<br/><small>every capability</small>"]
+  registry["registry<br/><small>every capability</small>"]
   registry -->|top few| matches["search results<br/><small>ranked matches</small>"]
   registry -->|all of them| allow["codemode allowlist<br/><small>map[name]Capability</small>"]
   matches --> prompt["the prompt<br/><b>what the model KNOWS</b>"]
@@ -233,5 +233,6 @@ If the answer is "the prompt", it is not enforced.
 | No filesystem, network, or modules | The sandbox's empty global scope | Instructions to the model |
 | Programs terminate | Timeout and call budget on the runner | Well-behaved generated code |
 | Input matches the schema | Your application, at the RPC boundary | The types in the prompt |
-| This user may do this thing | Your transport, or a bridge in front of it | Anything described here |
+| This user may call this capability | `Registry.For(caller)`, from `(codemode.roles)` / `(codemode.permissions)` | The prompt |
+| This user may touch these rows | Your `ExecuteFunc` or transport | Anything described here |
 | Secrets stay secret | They live host-side and never enter the sandbox | The program choosing not to look |

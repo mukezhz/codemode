@@ -295,14 +295,25 @@ full = full.Require("admin", func(item capability.Capability) bool {
 })
 ```
 
-`Require` **only ever narrows**. A capability that already required a role gains
-this one as an additional acceptable role; one that required nothing now
-requires this. There is no call that widens a registry, because a mistake that
-widens is the one nobody notices.
+`Require` adds `role` to each selected capability. One that required nothing
+now requires it, which narrows it; one that already had roles or permissions
+**also admits `role`**, which widens it for that role. To take a capability away
+from callers, remove it instead, per request:
+
+```go
+allowed := full.For(caller)
+if !slices.Contains(caller.Roles, "admin") {
+	allowed = allowed.Select(func(item capability.Capability) bool {
+		return !strings.HasSuffix(item.Name, ".delete")
+	})
+}
+```
+
+`Select` and `For` only ever remove capabilities.
 
 ## Assert what is public
 
-`Unrestricted()` returns everything with no roles declared. That list is worth
+`Unrestricted()` returns everything with neither roles nor permissions declared. That list is worth
 pinning in a test, because it is where a forgotten annotation lands:
 
 ```go

@@ -136,20 +136,32 @@ an admin's choice to lock something down. Apply it per request, after the roles,
 with calls that **only narrow**:
 
 ```go
+// Features the plan does not include disappear entirely.
 func forTenant(full capability.Registry, tenant TenantConfig) capability.Registry {
-	// Features the plan does not include disappear entirely.
-	allowed := full.Select(func(item capability.Capability) bool {
+	return full.Select(func(item capability.Capability) bool {
 		return !strings.HasPrefix(item.Name, "billing.") || tenant.Plan == "business"
 	})
-	// This tenant wants deletes restricted to admins, even where the proto is wider.
-	return allowed.Require("admin", func(item capability.Capability) bool {
-		return tenant.LockDeletes && strings.HasSuffix(item.Name, ".delete")
+}
+
+// This tenant wants deletes for admins only, even where the proto is wider.
+func lockDeletes(allowed capability.Registry, tenant TenantConfig, caller capability.Caller) capability.Registry {
+	if !tenant.LockDeletes || slices.Contains(caller.Roles, "admin") {
+		return allowed
+	}
+	return allowed.Select(func(item capability.Capability) bool {
+		return !strings.HasSuffix(item.Name, ".delete")
 	})
 }
 ```
 
-Order: tenant policy first, then the user's roles. Both only remove, so the
-result is never wider than the protos.
+```go
+caller := capability.Caller{Roles: identity.Roles, Permissions: permissions}
+allowed := lockDeletes(forTenant(full, tenant).For(caller), tenant, caller)
+```
+
+`Select` and `For` only ever remove, so the result is never wider than the
+protos. Avoid `Require` for this: on a capability that already has roles or
+permissions it *adds* the role as another way in, rather than restricting it.
 
 ### Dynamic roles: permissions in the proto, grants in your app
 
@@ -239,7 +251,7 @@ allowed := full.For(capability.Caller{Permissions: permissions})
 
 That function is in [A CRM not written in Go](/existing-app#a-crm-not-written-in-go).
 Either way, an admin's edit applies on the user's next request, with nothing to
-restart; a test in that example changes a role between two requests and checks it.
+restart, because nothing about the caller is kept between requests.
 
 With these roles in the database:
 
@@ -253,7 +265,7 @@ With these roles in the database:
 | Deals Admin | `deals.manage` | `deals.list` `deals.move` `deals.discount`: manage is everything on deals |
 | fixed role `admin`, no grants | — | `deals.discount` only: a fixed role reaches only RPCs that name it |
 
-That table is a passing test against the proto above. Two checks stop a typo
+`TestDynamicRoleTable` in `capability/permission_test.go` checks this table. Two checks stop a typo
 from silently failing closed: `full.ValidatePermissions(submitted)` when an admin
 saves a role, and the same test for your own roles. See
 [Naming and validation](/permissions#naming-and-validation).

@@ -155,8 +155,8 @@ type Fingerprinter interface {
 ```
 
 The runtime `codemode.New` returns implements it, hashing the full contract
-of every registered capability: name, RPC path, schemas, roles, and read-only
-flag. Change any of it and every program cached against the old one becomes
+of every registered capability: name, RPC path, description, schemas and types,
+roles, permissions, and read-only flag. Change any of it and every program cached against the old one becomes
 unreachable.
 
 ::: warning A wrapper must forward Fingerprint
@@ -189,8 +189,11 @@ That is handled rather than prevented. The agent calls `Forget` on the entry and
 falls through to generation, so a stale program costs one wasted sandbox run —
 tens of microseconds — and removes itself. The next ask caches the replacement.
 
-Nothing about the cache can fail a request. A lookup that errors, a miss, a stale
-hit, and a failed write are all just "no cache today".
+The cache almost never fails a request. A lookup that errors, a miss, a stale
+hit, and a failed write are all just "no cache today", with one exception: a
+cached program that wrote before failing, or failed with `codemode.Permanent`,
+stops with `agent.ErrNotRetried` instead of being regenerated, because running a
+new program could repeat the write. See [Writes and retries](/writes).
 
 ::: tip Cached programs, not cached answers
 The cached program still runs, still calls into your application, and still sees

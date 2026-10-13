@@ -28,7 +28,8 @@
 | Error | Cause and fix |
 | --- | --- |
 | `no LLM provider configured` | Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `LLM_BASE_URL`. |
-| `LLM_PROVIDER "x" is not supported` | Use `claude` or `openai`. Other vendors go through `openai` plus a base URL. |
+| `LLM provider "x" is not registered: add _ "…/llm/x"` | Blank-import the provider package. |
+| `LLM provider "x" is unknown` | Use `claude` or `openai`. Other vendors go through `openai` plus a base URL. |
 | `claude: request was declined` | A safety classifier declined. The server-side fallback handles most cases; it is not sent against a custom base URL. |
 | `openai: empty response` | Check the finish reason in the error. Usually the model hit a token cap. |
 | `capability store is configured but embeddings are not` | Set `EMBEDDING_API_KEY` or `EMBEDDING_BASE_URL`. |
@@ -37,11 +38,15 @@
 
 | Error | Cause and fix |
 | --- | --- |
-| `SANDBOX_ENGINE "x" is not supported` | Use `goja`, `starlark`, or `lua`. |
+| `sandbox engine "x" is not registered: add _ "…/sandbox/x"` | Blank-import the engine package. |
+| `sandbox engine "x" is unknown` | `SANDBOX_ENGINE` is the language: `goja`, `starlark`, or `lua`. |
+| `sandbox isolation "x" is unknown` / `is not registered` | `SANDBOX_ISOLATION` is `inprocess` or `process`; `process` needs `_ "…/sandbox/subprocess"`. |
+| `a worker is configured but isolation is inprocess` | Set `SANDBOX_ISOLATION=process`, or remove `SANDBOX_WORKER` and `SANDBOX_WORKER_CONTAINER`. |
+| `codemode-worker check failed (...)` | The worker did not start or answer at startup. See [Running the worker](/worker#troubleshooting). |
+| `sandbox: memory limit of N bytes exceeded` | With `process` isolation the program passed `SANDBOX_MAX_HEAP_BYTES`. Usually a runaway program. |
 | `sandbox stopped: context deadline exceeded` | The program ran past `SANDBOX_TIMEOUT`. Raise it, or look for an unbounded loop. |
 | `call budget of N exhausted` | The program made more capability calls than `SANDBOX_MAX_CALLS`. Raise it, or check whether the program is calling in a loop it should have batched. |
 | `capability "x" is not registered` | The model invented a name. Expected, and correctly rejected — the repair loop feeds it back. Persistent cases usually mean a description is unclear. |
-| `sandbox: ... has no .execute field` | The engine's API object was built wrong. All three bind `codemode.execute`; file a bug. |
 
 ## Caching
 

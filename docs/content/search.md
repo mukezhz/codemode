@@ -13,8 +13,9 @@ type SearchFunc func(ctx context.Context, query string, limit int) ([]capability
 ```
 
 Matches are ordered closest first; a lower `Match.Distance` is a stronger match.
-The demo ships a dependency-free keyword ranker so it runs without a database.
-For anything real, use the semantic index.
+`capability.Keyword(registry)` is a dependency-free keyword ranker that needs no
+database: the right start, and enough for a few dozen capabilities. Beyond that,
+use the semantic index.
 
 ## The store interface
 
@@ -53,7 +54,7 @@ SQLITE_VECTOR_EXTENSION=/abs/path/vector.dylib
 
 ### SQLite
 
-Needs [sqlite-vector](https://github.com/asg017/sqlite-vector) 1.0.0 as a native
+Needs [sqlite-vector](https://github.com/sqliteai/sqlite-vector) 1.0.0 as a native
 library — `vector.dylib` on macOS, `vector.so` on Linux — and an **explicit
 absolute path**. The package never searches for or loads an arbitrary extension.
 
@@ -93,7 +94,8 @@ The model name is recorded in the index. `Open` rejects an embedder whose name
 differs from the one used to build it, so a silent mismatch cannot return
 nonsense.
 
-`openai.NewEmbedder()` provides one over the OpenAI embeddings protocol. Anthropic
+`openai.NewEmbedder(openai.EmbedOptions{...})` provides one over the OpenAI
+embeddings protocol; `openai.NewEmbedderFromEnv` reads the variables below. Anthropic
 publishes no embeddings API, so this path is used regardless of `LLM_PROVIDER`;
 point `EMBEDDING_BASE_URL` at a local endpoint to embed without leaving the
 machine.

@@ -57,7 +57,7 @@ claude mcp add todo -- make -s -C /path/to/codemode mcp-todo
   user: fetch that user's roles or permissions from your app at startup and pass
   them to `For`. A role change then applies when the client restarts the
   server.
-- **Use a subprocess engine.** An MCP client is a program author you do not
+- **Use process isolation** (`SANDBOX_ISOLATION=process`). An MCP client is a program author you do not
   control; see [Running the worker](/worker).
 - `Options.MaxSourceBytes` (64 KiB) bounds the program; `sandbox.Options` bounds
   calls, time and each response. For MCP, a smaller `MaxResponseBytes` keeps

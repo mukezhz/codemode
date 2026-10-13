@@ -22,9 +22,9 @@ service StudentService {
 }
 ```
 
-Two more options are optional. `(codemode.roles)` on a method, and
-`(codemode.default_roles)` on a service, name the caller roles allowed to use
-it:
+Four more options are optional. `(codemode.roles)` and `(codemode.permissions)`
+on a method, and `(codemode.default_roles)` and `(codemode.default_permissions)`
+on a service, name the roles or permissions allowed to use it:
 
 ```protobuf
 service AdminService {
@@ -39,9 +39,9 @@ service AdminService {
 ```
 
 A method's `(codemode.roles)` replaces its service's default rather than adding
-to it. No annotation means no restriction. `Registry.ForRole` then narrows a
-registry per caller, and `Registry.Unrestricted()` returns what nobody
-restricted — worth asserting in a test, since that is where a forgotten
+to it. No annotation means no restriction. `Registry.For(capability.Caller{Roles: ..., Permissions: ...})`
+then narrows a registry per caller, and `Registry.Unrestricted()` returns what
+nobody restricted — worth asserting in a test, since that is where a forgotten
 annotation shows up. See [Many services, many users](/scaling-up).
 
 The generator requires:
@@ -196,7 +196,8 @@ Three ways, in increasing order of how well they scale.
 thirty capabilities.
 
 **A switch onto generated clients.** `buf generate` gives you typed clients;
-bridge JSON with `protojson`. Compile-checked, but the switch grows with every
+decode requests with `protojson.Unmarshal` and encode responses with
+`registry.MarshalJSON`. Compile-checked, but the switch grows with every
 method.
 
 **Dynamic invoke.** gRPC method paths are strings on the wire already, and your

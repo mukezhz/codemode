@@ -6,7 +6,7 @@ answers questions by writing **one JavaScript program** that composes them —
 returning a document the browser renders as charts and tables.
 
 Everything the application needs is in this directory. The only thing it takes
-from the repository root is `proto/codemode.proto`, which declares the two
+from the repository root is `proto/codemode.proto`, which declares the
 annotations that mark a service as a capability surface.
 
 ---
@@ -455,7 +455,7 @@ capability signatures search selected — explains more than this README does.
 ```
 proto/      this application's contracts: task.proto, user.proto
 gen/        their generated Go, committed so `go get` needs no buf
-main.go     flags and wiring. The only thing here that reads the environment.
+main.go     flags and wiring. Reads $OPENAI_* itself; SANDBOX_* through sandbox.NewFromEnv.
 env.go      loads .env into the environment, before the flags are parsed.
 serve.go    the -serve flag: HTTP, graceful shutdown.
 store/      the application's own SQLite database. Knows nothing about models.
@@ -470,15 +470,16 @@ web/        Vite + React + TanStack Router. Built output is embedded.
 ```
 
 Everything the application needs is in this directory. The only thing it takes
-from the repository root is `proto/codemode.proto`, which declares the two
+from the repository root is `proto/codemode.proto`, which declares the
 annotations — and a real consumer gets that with
 `codemode-registry -print-proto`.
 
 Some things worth noticing in the code:
 
-**The library reads no environment.** This command reads flags and `$OPENAI_*`,
-then hands the library an explicit `llm.Options`. Swap the flags for your config
-file and nothing in the library changes.
+**The library reads the environment only where you ask it to.** This command
+builds `llm.Options` explicitly from flags and `$OPENAI_*`, and calls
+`sandbox.NewFromEnv` so `SANDBOX_*` chooses the sandbox. Swap either for your
+config file and nothing in the library changes.
 
 **The registry is derived, not generated.** `registry.FromFiles(taskv1.File_task_proto)`
 reads the descriptors already compiled into the binary. No `registry.json`, no

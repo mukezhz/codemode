@@ -36,7 +36,8 @@ lookup, no matter how convincing the prompt was.
 
 ## What you write, what you get
 
-You write protobuf service definitions with two annotations. Everything else is
+You write protobuf service definitions with two required annotations (roles and
+permissions are optional). Everything else is
 generated or configured.
 
 ```proto

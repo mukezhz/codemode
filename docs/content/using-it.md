@@ -28,9 +28,9 @@ nobody can write for you.
 | You supply | How | Effort |
 | --- | --- | --- |
 | A registry | one call to `registry.FromFiles` | One line |
-| A search function | `capability.Index.Search`, or a keyword loop | A few lines |
+| A search function | `capability.Keyword(registry)`, or `capability.Index.Search` | One line |
 | An execute function | Dispatch an RPC path to your code | **Yours** |
-| A model and a sandbox | `claude.New()` and `goja.New()`, or the `FromEnv` pair | Two calls |
+| A model and a sandbox | `claude.New(claude.Options{...})` and `goja.New(sandbox.Options{})`, or `llm.NewFromEnv()` and `sandbox.NewFromEnv(sandbox.Options{})` | Two calls |
 
 `ExecuteFunc` is the one that matters. Everything else has a default; this is
 where your application actually lives.
@@ -223,8 +223,9 @@ is told field names like `due_date` and that `id` is a number; plain protojson
 sends `dueDate`, quotes 64-bit integers, and leaves out empty lists, so a correct
 program reads `undefined`.
 
-Build `files` once at startup with `protodesc.NewFiles` over the same
-`protoset.pb` the registry was generated from. Reusing that one artifact is what
+Build `files` once at startup: `protoregistry.GlobalFiles` already holds every
+generated package linked into your binary, or use `protodesc.NewFiles` over the
+same `protoset.pb` if you generate `registry.json`. Reusing that one artifact is what
 keeps the two in step.
 
 ::: danger Your permissions still apply
@@ -259,14 +260,14 @@ store, err := capability.OpenStoreFromEnv(ctx)   // CAPABILITY_DB, CAPABILITY_DB
 if err != nil {
 	log.Fatal(err)
 }
-embedder, err := openai.NewEmbedder()   // llm/openai; the only embeddings protocol
+embedder, err := openai.NewEmbedderFromEnv(openai.EmbedOptions{}) // llm/openai; the only embeddings protocol
 if err != nil {
 	log.Fatal(err)
 }
 embed := capability.Embedder{Model: embedder.Model, Embed: embedder.Embed}
 
 // Rebuild when contracts or the embedding model change — not per request.
-if err := capability.Rebuild(ctx, store, registry, embed); err != nil {
+if err := capability.Rebuild(ctx, store, capabilities, embed); err != nil {
 	log.Fatal(err)
 }
 
@@ -287,7 +288,7 @@ See [Search](/search) for the backends.
 ## 5. Wire it together
 
 ```go
-mode, err := codemode.New(registry, search, execute)
+mode, err := codemode.New(capabilities, search, execute)
 ```
 
 `codemode.New` validates the registry once — no blank names, no duplicates — and
@@ -382,14 +383,14 @@ it — see [configuring the model](/models#configuring-the-model).
 Every constructor takes explicit options, so your application's own
 configuration — flags, a config file, a mounted secret — is the only source of
 truth. If you *want* the environment read, ask for it by name:
-`llm.OptionsFromEnv()`, `sandbox.NewFromEnv()`, `capability.OpenStoreFromEnv()`.
+`llm.OptionsFromEnv()`, `sandbox.NewFromEnv(sandbox.Options{})`, `capability.OpenStoreFromEnv(ctx)`.
 Only a name containing `FromEnv` touches it, and a check in CI enforces that.
 :::
 
-::: tip Pass your own runner
-`agent.Options{Runner: nil}` builds a runner per request and closes it. Building
-one at startup and passing it in avoids that, and a `Runner` is safe to share:
-each `Run` creates a fresh interpreter, so programs cannot see each other.
+::: tip Build the runner once
+`agent.Options.Runner` is required. Build one at startup and share it: a `Runner`
+is safe to share, because each `Run` creates a fresh interpreter (or, with
+`SANDBOX_ISOLATION=process`, a fresh worker), so programs cannot see each other.
 :::
 
 ## The whole thing

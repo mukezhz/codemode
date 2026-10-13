@@ -79,7 +79,7 @@ make docs-build  # build the static site
 
 | Path | What it is |
 | --- | --- |
-| `proto/` | `codemode.proto`: the two annotations, embedded for consumers |
+| `proto/` | `codemode.proto`: the service and method annotations (namespace, description, roles, permissions), embedded for consumers |
 | `registry/` | Builds a registry from linked descriptors or a Buf descriptor set; CLI in `cmd/codemode-registry/` |
 | `gen/` | Generated Go for `codemode.proto`. Each example generates into its own tree |
 | `capability/` | Registry types and the vector index; backends in `sqlitestore/` and `pgstore/` |

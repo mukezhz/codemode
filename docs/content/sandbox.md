@@ -201,8 +201,9 @@ SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
 `make test-container` runs the engine suite this way (`RUNTIME=runsc` to add gVisor).
 
 The bridge shape is identical in all four — `(name, input) → output`. Only the
-transport changes, so moving up the ladder is a new file implementing `Runner`,
-not a change to `agent`, the host, or any prompt.
+transport changes, so moving up the ladder is a package that registers a
+`sandbox.Isolation` from `init` (as `sandbox/subprocess` does for `process`), not
+a change to `agent`, the host, or any prompt.
 
 A production sandbox for genuinely untrusted programs should additionally enforce:
 

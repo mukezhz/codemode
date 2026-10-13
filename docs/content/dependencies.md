@@ -53,7 +53,7 @@ upside.
 semantic search, use `pgstore`.
 
 ::: tip Embeddings always come from `llm/openai`
-Anthropic publishes no embeddings API, so `openai.NewEmbedder()` is the only
+Anthropic publishes no embeddings API, so `openai.NewEmbedder(openai.EmbedOptions{...})` (or `NewEmbedderFromEnv`) is the only
 embedder — including when Claude writes the programs. Point
 `EMBEDDING_BASE_URL` at any compatible endpoint to embed locally.
 :::
@@ -151,8 +151,10 @@ func init() {
 func New(options sandbox.Options) (sandbox.Runner, error) { /* ... */ }
 ```
 
-A `Runner` written this way is also how you move the sandbox out of process —
-see [the isolation ladder](/sandbox#the-isolation-ladder). For a `Store`,
+To run programs out of process, set `SANDBOX_ISOLATION=process` and blank-import
+`sandbox/subprocess`; a new place to run programs (wasm, a remote service)
+registers with `sandbox.RegisterIsolation` — see
+[the isolation ladder](/sandbox#the-isolation-ladder). For a `Store`,
 `capability.ScanMatches`, `EncodeSchemas`, and `DecodeSchemas` are exported so a
 third-party backend stores and reads rows the same way the shipped ones do.
 

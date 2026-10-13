@@ -126,22 +126,25 @@ same time. `(codemode.default_roles)` on the service sets a default its methods
 inherit, so a new RPC in a privileged service arrives restricted rather than
 open.
 
-`Registry.Unrestricted()` returns everything with no roles declared. Asserting
+`Registry.Unrestricted()` returns everything with neither roles nor permissions declared. Asserting
 that list in a test is what catches the one somebody still forgets.
 :::
 
 Policy that is *not* part of the design — a plan a customer is on, a feature
-flag, a rule in a database — reaches the registry through `Require`:
+flag, a rule in a database — removes capabilities with `Select`, per request:
 
 ```go
 // Everything destructive needs the admin role on this deployment.
-full = full.Require("admin", func(item capability.Capability) bool {
-	return strings.HasSuffix(item.Name, ".delete")
-})
+if !slices.Contains(caller.Roles, "admin") {
+	allowed = allowed.Select(func(item capability.Capability) bool {
+		return !strings.HasSuffix(item.Name, ".delete")
+	})
+}
 ```
 
-It only ever narrows. There is no call that widens a registry, because a mistake
-that widens is the one nobody notices.
+`Select` and `For` only ever remove capabilities, so a mistake loses access
+rather than granting it. (`Require` is different: it adds a role to what a
+capability accepts, so on an already-restricted capability it lets that role in.)
 
 A member's runtime does not contain `tasks.assign` **at all** — it is missing
 from the map `Execute` resolves against, not merely hidden from the model. And
@@ -245,7 +248,7 @@ what a tenant is:
 - **Compute.** Use process isolation (`SANDBOX_ISOLATION=process`), and a container worker for hostile
   input, so a program cannot exhaust the host or reach past its bridge. See
   [Sandbox](/sandbox#container-workers). Development keeps the in-process
-  default: the program and prompt are identical, only `SANDBOX_ENGINE` changes.
+  default: the program and prompt are identical, only `SANDBOX_ISOLATION` changes.
 - **Fairness.** Limit each user's request rate and how many programs they run at
   once, before `agent.Run`. One heavy user should cost themselves latency, not
   everyone.

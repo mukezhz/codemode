@@ -69,7 +69,7 @@ publishes no embeddings API. See [Search](/search#embeddings).
 | `SANDBOX_MAX_CALLS` | integer | `50` |
 | `SANDBOX_WORKER` | argv for `codemode-worker`, space-separated; `process` only | `codemode-worker` on `PATH` |
 | `SANDBOX_WORKER_CONTAINER` | `true` when `SANDBOX_WORKER` starts a container | `false` |
-| `SANDBOX_MAX_HEAP_BYTES` | integer; subprocess engines only | `268435456` |
+| `SANDBOX_MAX_HEAP_BYTES` | integer; `process` isolation only | `268435456` |
 
 Options passed in code win over these. See [Sandbox](/sandbox) and
 [Running the worker](/worker).

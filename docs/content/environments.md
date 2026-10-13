@@ -61,7 +61,7 @@ func main() {
 	}
 	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
-		log.Fatal(err) // e.g. subprocess engine chosen but codemode-worker not installed
+		log.Fatal(err) // e.g. process isolation chosen but codemode-worker not installed
 	}
 	defer runner.Close()
 	search := keywordOrIndex(ctx, full)
@@ -149,7 +149,7 @@ Useful while building:
 | Drive it from Claude Code or Cursor | `make mcp-todo`, or serve your own `mode` with [`mcpserver`](/mcp) |
 | Check the production sandbox locally | `make worker`, then `SANDBOX_ISOLATION=process SANDBOX_WORKER=$PWD/bin/codemode-worker` |
 
-Run the subprocess engine locally at least once before shipping. The program
+Run with `SANDBOX_ISOLATION=process` locally at least once before shipping. The program
 and the prompt are identical, but results cross JSON in that mode, so an
 integer comes back as a `float64`. That is the one behaviour difference.
 
@@ -193,7 +193,7 @@ FROM golang:1.27 AS build
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app . && \
-    CGO_ENABLED=0 go install github.com/mukezhz/codemode/cmd/codemode-worker@latest
+    CGO_ENABLED=0 go build -o /go/bin/codemode-worker github.com/mukezhz/codemode/cmd/codemode-worker
 
 FROM gcr.io/distroless/static
 COPY --from=build /app /app

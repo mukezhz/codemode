@@ -25,8 +25,10 @@ the host, outside the program's reach.
 
 - **Row scoping.** `ExecuteFunc` decides whose data a call sees. Never take a
   tenant or owner from the program's input.
-- **Roles in protos.** Restrict RPCs with `(codemode.roles)` /
-  `(codemode.default_roles)` and build `mode` from `registry.ForRole(role)`.
+- **Roles and permissions in protos.** Restrict RPCs with `(codemode.roles)` /
+  `(codemode.permissions)` (or their service defaults) and build `mode` per
+  request from `registry.For(capability.Caller{Roles, Permissions})`, with what
+  your app holds for the signed-in user.
 - **Credentials stay in the host.** The bridge carries `(name, input) → output`
   and nothing else.
 - **Rate limits and audit** per user, via `agent.Options.OnCall`.

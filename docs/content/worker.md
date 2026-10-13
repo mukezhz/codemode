@@ -5,7 +5,7 @@
 process instead of inside your application. This page is how to install it,
 configure it, check it is working, and run it in a container.
 
-You do not need it for development. Leave `SANDBOX_ENGINE` unset and programs
+You do not need it for development. Leave `SANDBOX_ISOLATION` unset (or `inprocess`) and programs
 run in-process with goja; see [Development and production](/environments).
 
 ## What changes when you turn it on
@@ -29,7 +29,7 @@ your app                                  your app                         codem
 | Cost per run | none | a process start (milliseconds) |
 | Numbers in the result | `int64` or `float64` | always `float64` (results cross JSON) |
 
-The important row is the fifth. Everything that decides what a program may do
+The important row is the fourth. Everything that decides what a program may do
 stays in your application. The worker only interprets; every capability call it
 makes is a message your application checks before anything runs.
 
@@ -76,7 +76,7 @@ your `go.mod`, which is what keeps them matched.
 
 ## Step 2: import the engine
 
-Blank-import the subprocess engine **and** the language engine. The language
+Blank-import `sandbox/subprocess` **and** the language engine. The language
 engine is still needed in your app: it writes the prompt.
 
 ```go

@@ -163,8 +163,9 @@ sequenceDiagram
   Model-->>Agent: program source
   Agent->>Runner: Run(ctx, mode, source)
   loop each codemode.execute in the program
+    Runner->>Runner: call budget left?
     Runner->>Mode: Execute("orders.list", {"status":"paid"})
-    Mode->>Mode: name in registry? budget left?
+    Mode->>Mode: name in this caller's registry?
     Mode->>Exec: ("orders.v1.OrderService/List", input)
     Exec-->>Mode: JSON
     Mode-->>Runner: JSON, back into the program
