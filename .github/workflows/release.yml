@@ -11,8 +11,8 @@ jobs:
   worker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - name: Build codemode-worker
@@ -24,7 +24,7 @@ jobs:
               -o "dist/codemode-worker-$os-$arch" ./cmd/codemode-worker
           done
           (cd dist && sha256sum codemode-worker-* > SHA256SUMS)
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
