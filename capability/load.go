@@ -8,7 +8,6 @@ import (
 	"os"
 )
 
-// Load decodes a registry produced by codemode-registry.
 func Load(reader io.Reader) (Registry, error) {
 	var registry Registry
 	decoder := json.NewDecoder(reader)
@@ -22,7 +21,6 @@ func Load(reader io.Reader) (Registry, error) {
 	return registry, nil
 }
 
-// LoadFile reads and decodes the registry at path.
 func LoadFile(path string) (Registry, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -32,7 +30,6 @@ func LoadFile(path string) (Registry, error) {
 	return Load(file)
 }
 
-// LoadFS reads and decodes the registry at path within filesystem, such as an embed.FS.
 func LoadFS(filesystem fs.FS, path string) (Registry, error) {
 	file, err := filesystem.Open(path)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"github.com/mukezhz/codemode/codemode"
 )
 
-// stub is a test-only engine.
 type stub struct{ options Options }
 
 func (stub *stub) Run(context.Context, codemode.CodeMode, string) (any, error) { return nil, nil }

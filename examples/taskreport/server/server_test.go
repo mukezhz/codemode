@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -22,7 +23,6 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/view"
 )
 
-// model returns a fixed program and records its system prompt.
 type model struct {
 	program string
 	system  string
@@ -43,7 +43,7 @@ func (model *model) CompleteStream(_ context.Context, system, _ string, chunk fu
 	return model.program, nil
 }
 
-func newServer(t *testing.T, author *model) http.Handler {
+func newServer(t *testing.T, author *model, configure ...func(*server.Options)) http.Handler {
 	t.Helper()
 
 	tasks, err := store.Open(":memory:")
@@ -86,6 +86,9 @@ func newServer(t *testing.T, author *model) http.Handler {
 	}
 	if author != nil {
 		options.Model = author
+	}
+	for _, change := range configure {
+		change(&options)
 	}
 
 	built, err := server.New(options)
@@ -391,5 +394,50 @@ func TestChatStreamServesACachedProgramWithoutTheModel(t *testing.T) {
 	}
 	if !strings.Contains(body, `"cached":true`) {
 		t.Fatalf("the second answer was not reported as cached:\n%s", body)
+	}
+}
+
+const countProgram = `
+	const counts = codemode.execute("reports.statusCounts", {});
+	return { title: "Counts", blocks: [{ type: "text", text: "open: " + counts.open }] };
+`
+
+func TestChatIsRateLimitedPerUser(t *testing.T) {
+	handler := newServer(t, &model{program: countProgram}, func(options *server.Options) {
+		options.ChatsPerMinute = 2
+	})
+	for range 2 {
+		if code := do(t, handler, "POST", "/api/chat", `{"request":"counts"}`, "ada", "member").Code; code != http.StatusOK {
+			t.Fatalf("chat within the limit returned %d", code)
+		}
+	}
+	response := do(t, handler, "POST", "/api/chat", `{"request":"counts"}`, "ada", "member")
+	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") == "" {
+		t.Fatalf("third chat returned %d, Retry-After %q", response.Code, response.Header().Get("Retry-After"))
+	}
+	if code := do(t, handler, "POST", "/api/chat", `{"request":"counts"}`, "linus", "member").Code; code != http.StatusOK {
+		t.Fatalf("another user was limited too: %d", code)
+	}
+}
+
+func TestChatWritesAnAuditLine(t *testing.T) {
+	var audit bytes.Buffer
+	handler := newServer(t, &model{program: countProgram}, func(options *server.Options) {
+		options.Audit = &audit
+	})
+	if code := do(t, handler, "POST", "/api/chat", `{"request":"counts"}`, "ada", "member").Code; code != http.StatusOK {
+		t.Fatalf("chat returned %d", code)
+	}
+	var record struct {
+		User       string `json:"user"`
+		Role       string `json:"role"`
+		Capability string `json:"capability"`
+		InputHash  string `json:"input_sha256"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(audit.Bytes()), &record); err != nil {
+		t.Fatalf("audit = %q: %v", audit.String(), err)
+	}
+	if record.User != "ada" || record.Role != "member" || record.Capability != "reports.statusCounts" || len(record.InputHash) != 64 {
+		t.Fatalf("record = %+v", record)
 	}
 }

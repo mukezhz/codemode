@@ -10,8 +10,6 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-// FromFiles builds a registry from file descriptors that are already compiled
-// into the binary, following their imports.
 func FromFiles(files ...protoreflect.FileDescriptor) (Registry, error) {
 	if len(files) == 0 {
 		return Registry{}, fmt.Errorf("no file descriptors given")
@@ -24,8 +22,7 @@ func FromFiles(files ...protoreflect.FileDescriptor) (Registry, error) {
 	return generateRegistry(set)
 }
 
-// FromGlobalFiles builds a registry from every file descriptor linked into the
-// binary. Only services carrying (codemode.namespace) contribute.
+// Only services carrying (codemode.namespace) contribute.
 func FromGlobalFiles() (Registry, error) {
 	// RangeFiles order is random; sort so the prompt is byte-stable for caching.
 	var files []protoreflect.FileDescriptor
@@ -46,7 +43,6 @@ func FromGlobalFiles() (Registry, error) {
 	return generateRegistry(set)
 }
 
-// collect appends file and everything it imports, depth first and once each.
 func collect(file protoreflect.FileDescriptor, set *descriptorpb.FileDescriptorSet, seen map[string]bool) {
 	path := file.Path()
 	if seen[path] {

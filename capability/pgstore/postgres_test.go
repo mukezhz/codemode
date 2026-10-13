@@ -11,7 +11,6 @@ import (
 	"github.com/mukezhz/codemode/capability/pgstore"
 )
 
-// TestPostgresSearch skips unless CAPABILITY_TEST_POSTGRES_DSN is set.
 func TestPostgresSearch(t *testing.T) {
 	dsn := os.Getenv("CAPABILITY_TEST_POSTGRES_DSN")
 	if dsn == "" {

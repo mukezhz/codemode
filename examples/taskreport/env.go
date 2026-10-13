@@ -45,7 +45,6 @@ func loadEnvFile(path string) error {
 	return scanner.Err()
 }
 
-// unquote strips one matching pair of quotes.
 func unquote(value string) string {
 	if len(value) >= 2 {
 		for _, quote := range []byte{'"', '\''} {

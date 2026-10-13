@@ -11,10 +11,8 @@ import (
 	"github.com/mukezhz/codemode/llm"
 )
 
-// DefaultEmbeddingModel is used when neither EmbedOptions.Model nor EMBEDDING_MODEL is set.
 const DefaultEmbeddingModel = "text-embedding-3-small"
 
-// EmbedOptions configures the embedder; only Model, APIKey, BaseURL, and Timeout are read.
 type EmbedOptions = llm.Options
 
 // NewEmbedder builds an OpenAI-protocol embedder; it returns llm.ErrNoProvider when neither a key nor a base URL is set.

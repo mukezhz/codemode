@@ -1,4 +1,3 @@
-// Package sqlitestore indexes capabilities in SQLite using the sqlite-vector extension; it requires cgo.
 package sqlitestore
 
 import (
@@ -15,12 +14,13 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// sqliteStore indexes capabilities in SQLite using the sqlite-vector extension.
 type sqliteStore struct {
 	db *sql.DB
 }
 
-// Open opens the SQLite index at path, loading the sqlite-vector library from extensionPath; the caller closes the store.
+var _ capability.Store = (*sqliteStore)(nil)
+
+// The caller closes the store.
 func Open(ctx context.Context, path, extensionPath string) (capability.Store, error) {
 	if extensionPath == "" {
 		return nil, errors.New("sqlite-vector extension path is required (SQLITE_VECTOR_EXTENSION)")
@@ -143,7 +143,6 @@ func (store *sqliteStore) Search(ctx context.Context, vector []float32, limit in
 	return capability.ScanMatches(rows, limit)
 }
 
-// execer is satisfied by both *sql.DB and *sql.Tx.
 type execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }

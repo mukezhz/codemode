@@ -1,4 +1,3 @@
-// Package pgstore indexes capabilities in PostgreSQL using the pgvector extension.
 package pgstore
 
 import (
@@ -22,12 +21,13 @@ func init() {
 	})
 }
 
-// store indexes capabilities in PostgreSQL using pgvector.
 type pgStore struct {
 	db *sql.DB
 }
 
-// Open connects to the Postgres index named by dsn; the caller closes the store.
+var _ capability.Store = (*pgStore)(nil)
+
+// The caller closes the store.
 func Open(ctx context.Context, dsn string) (capability.Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -129,7 +129,6 @@ func (store *pgStore) Search(ctx context.Context, vector []float32, limit int) (
 	return capability.ScanMatches(rows, limit)
 }
 
-// formatVector renders a vector in pgvector's text form, "[1,2,3]".
 func formatVector(vector []float32) string {
 	var builder strings.Builder
 	builder.WriteByte('[')

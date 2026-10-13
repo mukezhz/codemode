@@ -9,41 +9,41 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mukezhz/codemode/capability"
 )
 
-// CodeMode discovers application capabilities and executes an explicitly named
-// capability through a trusted transport.
 type CodeMode interface {
-	// Search returns at most limit capabilities relevant to query, closest first.
 	Search(ctx context.Context, query string, limit int) ([]capability.Match, error)
 
-	// Execute invokes the registered capability name with JSON input; unregistered names are rejected.
+	// Unregistered names are rejected.
 	Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error)
 }
 
-// Fingerprinter reports a stable identifier for the capability set a runtime
-// will execute, used to scope cached programs.
+// The identifier scopes cached programs.
 type Fingerprinter interface {
 	Fingerprint() string
 }
 
-// Fingerprint hashes the name and RPC path of every registered capability.
+// Hashes each full contract so a schema, role, or effect change invalidates cached programs.
 func (runtime *runtime) Fingerprint() string {
 	names := make([]string, 0, len(runtime.capabilities))
-	for name, item := range runtime.capabilities {
-		names = append(names, name+"\x00"+item.RPC)
+	for name := range runtime.capabilities {
+		names = append(names, name)
 	}
 	sort.Strings(names)
-	sum := sha256.Sum256([]byte(strings.Join(names, "\x1e")))
-	return hex.EncodeToString(sum[:])
+	hash := sha256.New()
+	for _, name := range names {
+		contract, _ := json.Marshal(runtime.capabilities[name])
+		hash.Write(contract)
+		hash.Write([]byte{0x1e})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
-// SearchFunc implements capability ranking.
 type SearchFunc func(ctx context.Context, query string, limit int) ([]capability.Match, error)
 
-// ExecuteFunc invokes a trusted transport with the protobuf RPC path resolved from the registry.
 type ExecuteFunc func(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error)
 
 type runtime struct {
@@ -52,8 +52,7 @@ type runtime struct {
 	execute      ExecuteFunc
 }
 
-// New creates a CodeMode using registry as its executable capability allowlist,
-// search for discovery, and execute for trusted RPC invocation.
+// registry is the executable capability allowlist.
 func New(registry capability.Registry, search SearchFunc, execute ExecuteFunc) (CodeMode, error) {
 	if search == nil {
 		return nil, errors.New("search function is required")
@@ -74,8 +73,26 @@ func New(registry capability.Registry, search SearchFunc, execute ExecuteFunc) (
 	return &runtime{capabilities: capabilities, search: search, execute: execute}, nil
 }
 
+// Search drops matches this runtime cannot execute, so an index shared across roles
+// or tenants never tells the model about a capability outside its registry.
 func (runtime *runtime) Search(ctx context.Context, query string, limit int) ([]capability.Match, error) {
-	return runtime.search(ctx, query, limit)
+	// ponytail: fixed 4x over-fetch; a caller seeing a quarter or less of a shared index may get fewer than limit. Filter in the store if that bites.
+	matches, err := runtime.search(ctx, query, limit*4)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make([]capability.Match, 0, min(limit, len(matches)))
+	for _, match := range matches {
+		item, ok := runtime.capabilities[match.Capability.Name]
+		if !ok {
+			continue
+		}
+		match.Capability = item
+		if allowed = append(allowed, match); len(allowed) == limit {
+			break
+		}
+	}
+	return allowed, nil
 }
 
 func (runtime *runtime) Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
@@ -83,9 +100,32 @@ func (runtime *runtime) Execute(ctx context.Context, name string, input json.Raw
 	if !ok {
 		return nil, fmt.Errorf("capability %q is not registered", name)
 	}
+	recorder := recorderFrom(ctx)
+	if recorder == nil {
+		return runtime.call(ctx, item, input)
+	}
+	call := Call{Name: name, Input: input, ReadOnly: item.ReadOnly}
+	if recorder.Plan && !item.ReadOnly {
+		call.Planned = true
+		call.Output = json.RawMessage("{}")
+		recorder.add(call)
+		return call.Output, nil
+	}
+	started := time.Now()
+	output, err := runtime.call(ctx, item, input)
+	call.Duration = time.Since(started)
+	call.Output = output
+	if err != nil {
+		call.Error, call.err = err.Error(), err
+	}
+	recorder.add(call)
+	return output, err
+}
+
+func (runtime *runtime) call(ctx context.Context, item capability.Capability, input json.RawMessage) (json.RawMessage, error) {
 	output, err := runtime.execute(ctx, item.RPC, input)
 	if err != nil {
-		return nil, fmt.Errorf("execute %s: %w", name, err)
+		return nil, fmt.Errorf("execute %s: %w", item.Name, err)
 	}
 	return output, nil
 }

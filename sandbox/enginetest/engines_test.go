@@ -2,6 +2,10 @@ package enginetest
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +15,7 @@ import (
 	"github.com/mukezhz/codemode/sandbox/goja"
 	"github.com/mukezhz/codemode/sandbox/lua"
 	"github.com/mukezhz/codemode/sandbox/starlark"
+	_ "github.com/mukezhz/codemode/sandbox/subprocess"
 )
 
 type engine struct {
@@ -22,9 +27,58 @@ type engine struct {
 	budget       string
 	forever      string
 	nothing      string
+	bomb         string
+	isolated     bool
 }
 
+var worker []string
+
+// TestMain builds codemode-worker once so every engine test also runs out of process.
+// CODEMODE_TEST_WORKER replaces it with another argv, such as a docker run.
+func TestMain(m *testing.M) {
+	if argv := strings.Fields(os.Getenv("CODEMODE_TEST_WORKER")); len(argv) > 0 {
+		worker = argv
+		os.Exit(m.Run())
+	}
+	dir, err := os.MkdirTemp("", "enginetest-")
+	if err != nil {
+		panic(err)
+	}
+	worker = []string{filepath.Join(dir, "codemode-worker")}
+	build := exec.Command("go", "build", "-o", worker[0], "github.com/mukezhz/codemode/cmd/codemode-worker")
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// dialect is the in-process engine whose prompt a variant shares.
+func (engine engine) dialect() string { return strings.TrimSuffix(engine.name, "-process") }
+
 func engines() []engine {
+	inProcess := inProcessEngines()
+	all := inProcess
+	for _, inner := range inProcess {
+		variant := inner
+		variant.name = inner.name + "-process"
+		variant.isolated = true
+		engineName := inner.name
+		variant.new = func(options sandbox.Options) (sandbox.Runner, error) {
+			options.Engine = engineName
+			options.Isolation = sandbox.IsolationProcess
+			options.Worker = worker
+			options.WorkerContainer = os.Getenv("CODEMODE_TEST_WORKER") != ""
+			return sandbox.New(options)
+		}
+		all = append(all, variant)
+	}
+	return all
+}
+
+func inProcessEngines() []engine {
 	return []engine{
 		{
 			name: "goja",
@@ -38,6 +92,7 @@ return "done: " + pending[0].title;`,
 return "unreachable";`,
 			forever: `while (true) {}`,
 			nothing: `const x = 1;`,
+			bomb:    `const a = []; while (true) { a.push(new Array(1e6).fill(1)); }`,
 		},
 		{
 			name: "starlark",
@@ -56,6 +111,10 @@ for i in range(100000000):
     total = total + i
 return total`,
 			nothing: `x = 1`,
+			bomb: `a = []
+for i in range(100000000):
+    a.append([i] * 1000000)
+return len(a)`,
 		},
 		{
 			name: "lua",
@@ -72,6 +131,12 @@ return "done: " .. pending[1].title`,
 return "unreachable"`,
 			forever: `while true do end`,
 			nothing: `local x = 1`,
+			bomb: `local a = {}
+while true do
+  local t = {}
+  for i = 1, 1000000 do t[i] = i end
+  a[#a + 1] = t
+end`,
 		},
 	}
 }
@@ -210,7 +275,7 @@ func TestEnginesRenderTheirOwnDialect(t *testing.T) {
 			defer runner.Close()
 
 			prompt := runner.Prompt(matches)
-			for _, fragment := range want[engine.name] {
+			for _, fragment := range want[engine.dialect()] {
 				if !strings.Contains(prompt, fragment) {
 					t.Fatalf("prompt is missing %q:\n%s", fragment, prompt)
 				}
@@ -247,7 +312,7 @@ func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
 			defer runner.Close()
 
 			prompt := runner.Prompt(matches)
-			for _, fragment := range want[engine.name] {
+			for _, fragment := range want[engine.dialect()] {
 				if !strings.Contains(prompt, fragment) {
 					t.Errorf("prompt is missing %q:\n%s", fragment, prompt)
 				}
@@ -256,7 +321,6 @@ func TestEnginesRenderNeutralTypesInTheirOwnNotation(t *testing.T) {
 	}
 }
 
-// exampleOf extracts the worked example from a rendered prompt.
 func exampleOf(t *testing.T, runner sandbox.Runner) string {
 	t.Helper()
 	const marker = "Example of the shape expected:\n\n"
@@ -276,7 +340,7 @@ func TestNewBuildsEveryEngine(t *testing.T) {
 		"starlark":   "starlark",
 		"python":     "starlark",
 		"lua":        "lua",
-		"":           "javascript", // the default
+		"":           "javascript",
 	} {
 		t.Run("alias="+alias, func(t *testing.T) {
 			runner, err := sandbox.New(sandbox.Options{Engine: alias})
@@ -325,8 +389,8 @@ func TestEnginesDeclareReferencedShapes(t *testing.T) {
 			defer runner.Close()
 
 			prompt := runner.Prompt(matches)
-			if !strings.Contains(prompt, want[engine.name]) {
-				t.Fatalf("prompt is missing %q:\n%s", want[engine.name], prompt)
+			if !strings.Contains(prompt, want[engine.dialect()]) {
+				t.Fatalf("prompt is missing %q:\n%s", want[engine.dialect()], prompt)
 			}
 		})
 	}
@@ -350,4 +414,113 @@ func TestEnginesOmitTheShapesSectionWhenEmpty(t *testing.T) {
 		}
 		runner.Close()
 	}
+}
+
+func TestEnginesRejectOversizedResponses(t *testing.T) {
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second, MaxResponseBytes: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
+
+			_, err = runner.Run(context.Background(), newFake(), engine.compose)
+			if err == nil || !strings.Contains(err.Error(), "byte limit") {
+				t.Fatalf("err = %v, want the response limit", err)
+			}
+		})
+	}
+}
+
+func TestEnginesSurviveMemoryBombs(t *testing.T) {
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			if !engine.isolated {
+				t.Skip("in-process engines share the host heap; only subprocess engines cap memory")
+			}
+			runner, err := engine.new(sandbox.Options{Timeout: 20 * time.Second, MaxHeapBytes: 64 << 20})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
+
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			_, err = runner.Run(context.Background(), newFake(), engine.bomb)
+			runtime.ReadMemStats(&after)
+			if err == nil || !strings.Contains(err.Error(), "memory limit") {
+				t.Fatalf("err = %v, want the memory limit", err)
+			}
+			if grown := int64(after.HeapAlloc) - int64(before.HeapAlloc); grown > 32<<20 {
+				t.Fatalf("host heap grew by %d bytes", grown)
+			}
+		})
+	}
+}
+
+func TestEnginesRejectHugeResults(t *testing.T) {
+	programs := map[string]string{
+		"goja":     `return "a".repeat(2 * 1024 * 1024);`,
+		"starlark": `return "a" * (2 * 1024 * 1024)`,
+		"lua":      `return string.rep("a", 2 * 1024 * 1024)`,
+	}
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			if !engine.isolated {
+				t.Skip("in-process engines hand the value over in memory")
+			}
+			runner, err := engine.new(sandbox.Options{Timeout: 5 * time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
+
+			_, err = runner.Run(context.Background(), newFake(), programs[engine.dialect()])
+			if err == nil || !strings.Contains(err.Error(), "size limit") {
+				t.Fatalf("err = %v, want the size limit", err)
+			}
+		})
+	}
+}
+
+func TestNewValidatesIsolation(t *testing.T) {
+	for name, test := range map[string]struct {
+		options sandbox.Options
+		want    string
+	}{
+		"unknown isolation":            {sandbox.Options{Isolation: "wasm"}, `isolation "wasm" is unknown`},
+		"worker without isolation":     {sandbox.Options{Worker: []string{"codemode-worker"}}, "SANDBOX_ISOLATION=process"},
+		"container without isolation":  {sandbox.Options{WorkerContainer: true}, "SANDBOX_ISOLATION=process"},
+		"container without a command":  {sandbox.Options{Isolation: "process", WorkerContainer: true}, "set SANDBOX_WORKER"},
+		"worker that is not a worker":  {sandbox.Options{Isolation: "process", Worker: []string{"true"}}, "codemode-worker check failed"},
+		"worker that does not exist":   {sandbox.Options{Isolation: "process", Worker: []string{"/nonexistent/codemode-worker"}}, "codemode-worker check failed"},
+		"unknown engine under process": {sandbox.Options{Isolation: "process", Engine: "ruby", Worker: worker}, `engine "ruby"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := sandbox.New(test.options)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestNewAcceptsAWorkingWorker(t *testing.T) {
+	runner, err := sandbox.New(sandbox.Options{Isolation: "process", Worker: worker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runner.Close()
+	if !strings.Contains(runner.Name(), "child process") && !strings.Contains(runner.Name(), "container") {
+		t.Fatalf("Name() = %q", runner.Name())
+	}
+}
+
+func TestNewChecksTheWorkerWithItsOwnDeadline(t *testing.T) {
+	runner, err := sandbox.New(sandbox.Options{Isolation: "process", Worker: worker, Timeout: time.Nanosecond})
+	if err != nil {
+		t.Fatalf("a program timeout shorter than a worker start failed New: %v", err)
+	}
+	runner.Close()
 }

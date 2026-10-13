@@ -236,6 +236,37 @@ model will fill the silence.**
 owner is `identity.User`. A program cannot file work under someone else's name
 because there is nothing to set.
 
+## Many tenants
+
+Roles and row scoping stop one user reading another's data. With users you do
+not trust, three more things matter, and none of them needs codemode to know
+what a tenant is:
+
+- **Compute.** Use process isolation (`SANDBOX_ISOLATION=process`), and a container worker for hostile
+  input, so a program cannot exhaust the host or reach past its bridge. See
+  [Sandbox](/sandbox#container-workers). Development keeps the in-process
+  default: the program and prompt are identical, only `SANDBOX_ENGINE` changes.
+- **Fairness.** Limit each user's request rate and how many programs they run at
+  once, before `agent.Run`. One heavy user should cost themselves latency, not
+  everyone.
+- **Audit.** `agent.Options.OnCall` sees every capability call. Write one line
+  per call with the user, role, capability and a hash of the input: enough to
+  answer "who called what", without the log becoming a second copy of the data.
+
+```go
+agent.Run(ctx, mode, model, request, agent.Options{
+    Runner: runner,
+    OnCall: func(call codemode.Call) {
+        sum := sha256.Sum256(call.Input)
+        audit.Log(identity.User, identity.Role, call.Name, hex.EncodeToString(sum[:]), call.Error)
+    },
+})
+```
+
+`examples/taskreport` does all three: `-audit calls.jsonl` turns on the audit
+log, chat is limited per user (10 a minute, 2 at once; `429` with `Retry-After`
+beyond that), and `SANDBOX_ENGINE` picks the engine.
+
 ## Where it is demonstrated
 
 [`examples/taskreport`](https://github.com/mukezhz/codemode/tree/main/examples/taskreport)

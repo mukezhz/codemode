@@ -38,7 +38,6 @@ func names(matches []capability.Match) []string {
 	return found
 }
 
-// Regression: one weak match ("many") must not suppress the other capabilities.
 func TestSearchAlwaysFillsTheLimit(t *testing.T) {
 	registry := full(t)
 	find := search.New(registry)

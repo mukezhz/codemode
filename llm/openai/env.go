@@ -7,7 +7,6 @@ import (
 	"github.com/mukezhz/codemode/llm"
 )
 
-// Environment variables read by OptionsFromEnv and EmbedOptionsFromEnv.
 const (
 	EnvAPIKey  = "OPENAI_API_KEY"
 	EnvModel   = "OPENAI_MODEL"
@@ -31,7 +30,6 @@ func OptionsFromEnv() (llm.Options, bool, error) {
 	return options, configured, nil
 }
 
-// NewFromEnv is OptionsFromEnv followed by New.
 func NewFromEnv(options Options) (llm.Client, error) {
 	fromEnv, _, err := OptionsFromEnv()
 	if err != nil {
@@ -62,7 +60,6 @@ func EmbedOptionsFromEnv() (EmbedOptions, error) {
 	return options, nil
 }
 
-// NewEmbedderFromEnv is EmbedOptionsFromEnv followed by NewEmbedder.
 func NewEmbedderFromEnv(options EmbedOptions) (llm.Embedder, error) {
 	fromEnv, err := EmbedOptionsFromEnv()
 	if err != nil {

@@ -27,7 +27,8 @@ type gojaRunner struct {
 	options sandbox.Options
 }
 
-// New returns a Runner backed by the in-process goja interpreter.
+var _ sandbox.Runner = (*gojaRunner)(nil)
+
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
@@ -46,7 +47,6 @@ var javascriptTypes = prompt.Types{
 	Dict: func(key, value string) string { return "Record<" + key + ", " + value + ">" },
 }
 
-// javascript is the dialect goja evaluates.
 var javascript = prompt.Dialect{
 	ID:    "javascript",
 	Prose: "JavaScript",
@@ -90,7 +90,6 @@ func (runner *gojaRunner) Name() string {
 		runner.options.Timeout, runner.options.MaxCalls)
 }
 
-// Close is a no-op: the interpreter is created per run.
 func (runner *gojaRunner) Close() error { return nil }
 
 func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, source string) (any, error) {
@@ -116,6 +115,9 @@ func (runner *gojaRunner) Run(ctx context.Context, mode codemode.CodeMode, sourc
 			panic(vm.NewGoError(fmt.Errorf("encode input for %s: %w", name, err)))
 		}
 		response, err := mode.Execute(ctx, name, request)
+		if err == nil {
+			err = runner.options.CheckResponse(name, response)
+		}
 		if err != nil {
 			panic(vm.NewGoError(err))
 		}

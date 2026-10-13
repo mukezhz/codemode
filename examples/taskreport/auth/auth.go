@@ -1,4 +1,3 @@
-// Package auth carries the caller's identity on the context, never in a capability argument a program could set.
 package auth
 
 import (
@@ -6,38 +5,33 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/mukezhz/codemode/codemode"
 )
 
-// Role decides which capabilities exist for a caller and how widely queries reach.
 type Role string
 
 const (
-	// RoleMember sees and changes only their own tasks.
 	RoleMember Role = "member"
-	// RoleAdmin sees the whole workspace.
-	RoleAdmin Role = "admin"
+	RoleAdmin  Role = "admin"
 )
 
-// Identity is the signed-in user, built from a verified token in a real service.
 type Identity struct {
 	User string
 	Role Role
 }
 
-// Admin reports whether this identity may reach across owners.
 func (identity Identity) Admin() bool { return identity.Role == RoleAdmin }
 
-// ErrNoIdentity reports a request with no identity; it never falls back to a default.
-var ErrNoIdentity = errors.New("no identity on the request context")
+// ErrNoIdentity is a wiring failure, never defaulted, and permanent so the agent does not retry.
+var ErrNoIdentity = codemode.Permanent(errors.New("no identity on the request context"))
 
 type contextKey struct{}
 
-// NewContext returns a context carrying identity.
 func NewContext(ctx context.Context, identity Identity) context.Context {
 	return context.WithValue(ctx, contextKey{}, identity)
 }
 
-// From returns the identity on ctx.
 func From(ctx context.Context) (Identity, error) {
 	identity, ok := ctx.Value(contextKey{}).(Identity)
 	if !ok || identity.User == "" {
@@ -58,7 +52,6 @@ func RequireAdmin(ctx context.Context, capability string) (Identity, error) {
 	return identity, nil
 }
 
-// ParseRole validates a role name.
 func ParseRole(role string) (Role, error) {
 	switch Role(strings.ToLower(strings.TrimSpace(role))) {
 	case RoleMember, "":

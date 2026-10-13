@@ -1,5 +1,3 @@
-// Package registry turns a protobuf descriptor set into a capability registry,
-// the allowlist mapping capability names to RPC paths.
 package registry
 
 import (
@@ -22,14 +20,11 @@ type Registry = capability.Registry
 type Capability = capability.Capability
 type TypeSchema = capability.TypeSchema
 
-// Generate builds a registry from a Buf descriptor set. Every service carrying
-// (codemode.namespace) contributes its methods, each of which must declare
-// (codemode.description).
+// Every method of a (codemode.namespace) service must declare (codemode.description).
 func Generate(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	return generateRegistry(files)
 }
 
-// Parse unmarshals a Buf descriptor set and generates a registry from it.
 func Parse(descriptor []byte) (Registry, error) {
 	var files descriptorpb.FileDescriptorSet
 	if err := proto.Unmarshal(descriptor, &files); err != nil {
@@ -133,6 +128,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 					Output:      output,
 					Types:       types,
 					Roles:       roles,
+					ReadOnly:    method.GetOptions().GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS,
 				})
 			}
 		}
@@ -141,8 +137,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	return registry, nil
 }
 
-// optionalRoles reads a space-separated role list, nil when absent; a declared
-// but blank list is an error rather than a silent "everyone".
+// A declared but blank list is an error rather than a silent "everyone".
 func optionalRoles(options proto.Message, number protowire.Number) ([]string, error) {
 	if number == 0 {
 		return nil, nil
@@ -178,8 +173,7 @@ func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee st
 	return 0, fmt.Errorf("custom option %s is not defined", name)
 }
 
-// stringOption reads the custom option with the given field number, whether
-// resolved as a linked extension or left in unknown fields (Buf descriptor sets).
+// Handles both linked extensions and unknown fields (Buf descriptor sets).
 func stringOption(options proto.Message, number protowire.Number) (string, error) {
 	if options == nil {
 		return "", nil
@@ -216,7 +210,6 @@ func stringOption(options proto.Message, number protowire.Number) (string, error
 	return value, nil
 }
 
-// resolvedOption reads an extension the runtime already knows how to decode.
 func resolvedOption(options proto.Message, number protowire.Number) string {
 	value := ""
 	proto.RangeExtensions(options, func(extension protoreflect.ExtensionType, current any) bool {
@@ -271,7 +264,6 @@ func schemaFor(typeName string, messages map[string]*descriptorpb.DescriptorProt
 	return TypeSchema{Type: shortTypeName(typeName), Fields: fields}, nil
 }
 
-// collectTypes records the shape of every message reachable from typeName;
 // into doubles as the visited set, so recursive messages terminate.
 func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorProto, into map[string]TypeSchema) error {
 	message, ok := messages[typeName]
@@ -309,8 +301,7 @@ func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorP
 	return nil
 }
 
-// neutralType renders a field in protobuf-style language-neutral notation;
-// all numeric scalars become "number".
+// All numeric scalars become "number".
 func neutralType(field *descriptorpb.FieldDescriptorProto, messages map[string]*descriptorpb.DescriptorProto) (string, error) {
 	if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 		if message := messages[field.GetTypeName()]; message != nil && message.GetOptions().GetMapEntry() {

@@ -122,18 +122,83 @@ goja / JavaScript (in-process, 30s timeout, 50 call budget)
 
 ## The isolation ladder
 
-::: danger None of these is a security boundary
-All three engines run in-process, in your address space. They deny ambient
+::: danger The in-process engines are not a security boundary
+goja, starlark and lua run in your address space. They deny ambient
 capabilities and bound time and calls, which is right for code your own host asked
-a model to write. They are **not** a defence against a determined attacker.
+a model to write. They are **not** a defence against a determined attacker, and a
+program that allocates without limit can exhaust the host's memory.
 :::
 
 | Engine | Isolation | Cost |
 | --- | --- | --- |
 | goja / starlark / lua | Same process, same heap. Bounds and allowlist only | Zero, pure Go |
-| Subprocess + JSON lines over stdio | OS process; seccomp and rlimits available | ~60 lines, needs a runtime |
+| `SANDBOX_ISOLATION=process` | Child process: own heap, empty environment, heap cap; on Linux no network and a private mount namespace | A process spawn per run, a `codemode-worker` binary |
 | wasm | Memory-isolated, deterministic | Heavier toolchain |
 | Container | Real | Infrastructure |
+
+### Subprocess engines
+
+Step-by-step setup, every option, and troubleshooting: [Running the worker](/worker).
+
+Each run starts `codemode-worker`, which runs the same interpreter in a child
+process and sends every `codemode.execute` back to the host as a JSON line. The
+registry check, roles, call budget, response limit and timeout all stay in the
+host, so a program that escapes its interpreter still has nothing to call but
+the bridge.
+
+```sh
+go install github.com/mukezhz/codemode/cmd/codemode-worker@latest
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
+SANDBOX_WORKER=codemode-worker      # argv; defaults to codemode-worker on PATH
+SANDBOX_MAX_HEAP_BYTES=268435456    # worker exits when its heap passes this
+```
+
+```go
+import (
+    _ "github.com/mukezhz/codemode/sandbox/goja"       // for the prompt
+    _ "github.com/mukezhz/codemode/sandbox/subprocess" // for the process
+)
+```
+
+Programs and prompts are unchanged; only results differ in one way: they cross
+JSON, so numbers come back as `float64`.
+
+On Linux the worker also runs in new user, network and mount namespaces, and
+under `RLIMIT_CPU` and `RLIMIT_NOFILE`, and installs a seccomp filter before
+running the program: sockets, `exec`, file opens and writes, `ptrace`, mounts,
+namespaces, `bpf` and module loading all fail with `EPERM`. It is a denylist,
+so a Go upgrade cannot break the worker; on a kernel without seccomp the worker
+says so on stderr and runs without it. Where unprivileged user
+namespaces are disabled, the runner falls back to a plain child process.
+
+### Container workers
+
+Against a hostile tenant, run the worker in a container. The protocol and the
+host's limits are the same; only the argv changes.
+
+```sh
+docker build -f deploy/worker.Dockerfile -t codemode-worker .
+SANDBOX_ENGINE=goja
+SANDBOX_ISOLATION=process
+SANDBOX_WORKER_CONTAINER=true
+SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --user 65534:65534 \
+  --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
+  --runtime runsc codemode-worker"
+```
+
+- `SANDBOX_WORKER_CONTAINER=true` stops the host unsharing namespaces around the
+  `docker` CLI, which would cut it off from the Docker socket. The container
+  provides the isolation instead.
+- `--runtime runsc` is gVisor: a separate kernel between the program and yours.
+  Without it the container shares the host kernel.
+- The image is `codemode-worker` on `scratch`: no shell, no libc.
+- Each run starts a fresh container (about 150–400 ms) and nothing is reused.
+  The worker exits on its own one second after its timeout, so a killed CLI
+  cannot leave it running.
+
+`make test-container` runs the engine suite this way (`RUNTIME=runsc` to add gVisor).
 
 The bridge shape is identical in all four — `(name, input) → output`. Only the
 transport changes, so moving up the ladder is a new file implementing `Runner`,

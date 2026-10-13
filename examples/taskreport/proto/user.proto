@@ -18,11 +18,12 @@ service UserService {
   option (codemode.namespace) = "users";
 
   rpc Me(MeRequest) returns (UserResponse) {
-    option (codemode.description) =
-      "Returns the signed-in user: their name and role. Takes no arguments — the caller is already known.";
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Returns the signed-in user: their name and role. Takes no arguments — the caller is already known.";
   }
 
   rpc List(ListUsersRequest) returns (ListUsersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Lists everyone in the workspace with their role. Administrators only.";
     option (codemode.roles) = "admin";
   }

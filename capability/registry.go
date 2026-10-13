@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Merge combines registries, rejecting a capability name that appears twice.
+// Rejects a capability name that appears twice.
 func Merge(registries ...Registry) (Registry, error) {
 	merged := Registry{Capabilities: []Capability{}}
 	owner := map[string]int{}
@@ -26,7 +26,6 @@ func Merge(registries ...Registry) (Registry, error) {
 	return merged, nil
 }
 
-// Select returns the capabilities matching keep, in their original order.
 // Narrowing removes a capability from what may run, not only from what the model sees.
 func (registry Registry) Select(keep func(Capability) bool) Registry {
 	selected := Registry{Capabilities: make([]Capability, 0, len(registry.Capabilities))}
@@ -38,13 +37,12 @@ func (registry Registry) Select(keep func(Capability) bool) Registry {
 	return selected
 }
 
-// ForRole returns the capabilities role may use; it does not replace row-level checks in ExecuteFunc.
+// Does not replace row-level checks in ExecuteFunc.
 func (registry Registry) ForRole(role string) Registry {
 	return registry.Select(func(item Capability) bool { return item.AllowsRole(role) })
 }
 
-// Require returns a copy in which every capability matching keep also accepts role.
-// It only ever narrows: a capability with no roles now requires role.
+// Only ever narrows: a capability with no roles now requires role.
 func (registry Registry) Require(role string, keep func(Capability) bool) Registry {
 	role = strings.TrimSpace(role)
 	if role == "" {
@@ -62,12 +60,10 @@ func (registry Registry) Require(role string, keep func(Capability) bool) Regist
 	return required
 }
 
-// Unrestricted returns the capabilities that declare no roles.
 func (registry Registry) Unrestricted() Registry {
 	return registry.Select(func(item Capability) bool { return len(item.Roles) == 0 })
 }
 
-// Roles returns every role named by any capability, sorted.
 func (registry Registry) Roles() []string {
 	unique := map[string]bool{}
 	for _, item := range registry.Capabilities {
@@ -83,7 +79,6 @@ func (registry Registry) Roles() []string {
 	return roles
 }
 
-// Namespaces returns each namespace (the name part before the dot) once, sorted.
 func (registry Registry) Namespaces() []string {
 	unique := map[string]bool{}
 	for _, item := range registry.Capabilities {
@@ -99,7 +94,6 @@ func (registry Registry) Namespaces() []string {
 	return namespaces
 }
 
-// InNamespace returns a predicate for Select matching any of namespaces.
 func InNamespace(namespaces ...string) func(Capability) bool {
 	wanted := make(map[string]bool, len(namespaces))
 	for _, namespace := range namespaces {
@@ -111,7 +105,6 @@ func InNamespace(namespaces ...string) func(Capability) bool {
 	}
 }
 
-// Named returns a predicate for Select matching exactly these capability names.
 func Named(names ...string) func(Capability) bool {
 	wanted := make(map[string]bool, len(names))
 	for _, name := range names {
@@ -120,7 +113,6 @@ func Named(names ...string) func(Capability) bool {
 	return func(item Capability) bool { return wanted[item.Name] }
 }
 
-// Names returns every capability name, in registry order.
 func (registry Registry) Names() []string {
 	names := make([]string, len(registry.Capabilities))
 	for index, item := range registry.Capabilities {

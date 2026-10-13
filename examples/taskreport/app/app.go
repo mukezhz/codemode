@@ -1,4 +1,3 @@
-// Package app dispatches registry-resolved RPC paths to the store, scoping every call to the caller's identity.
 package app
 
 import (
@@ -13,13 +12,11 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/store"
 )
 
-// App implements codemode.ExecuteFunc over a store.
 type App struct {
 	store  *store.Store
 	admins map[string]bool
 }
 
-// New returns an App; admins names the workspace administrators.
 func New(store *store.Store, admins ...string) *App {
 	set := make(map[string]bool, len(admins))
 	for _, admin := range admins {
@@ -58,7 +55,6 @@ const (
 	userList = "user.v1.UserService/List"
 )
 
-// Execute dispatches one capability call. Its signature is codemode.ExecuteFunc.
 func (app *App) Execute(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -327,7 +323,6 @@ type user struct {
 	Role string `json:"role"`
 }
 
-// members lists the workspace: task owners plus the configured admins.
 func (app *App) members() []user {
 	owners, err := app.store.Owners()
 	if err != nil {

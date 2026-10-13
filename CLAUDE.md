@@ -10,6 +10,18 @@ Code mode: protobuf RPCs become capabilities a model composes inside a sandbox. 
 
 Flow: protos → `buf generate` (Go carries its own descriptors, so `registry.FromFiles` works at runtime) → registry → capability store/vector search picks relevant capabilities → LLM provider writes program → sandbox engine runs it → `agent/` orchestrates (with program caching and streaming). End-to-end walkthrough: `docs/content/flow.md`.
 
+## Ports and adapters
+
+| Port | Adapters |
+|---|---|
+| `capability.Store` | `capability/sqlitestore`, `capability/pgstore` |
+| `program.Cache` | `program.New` (semantic), `program.NewExactCache` |
+| `program.Store` | `program.NewMemoryStore`, `capability/sqlitestore`, `capability/pgstore` |
+| `llm.Client`, `llm.Streamer` | `llm/claude`, `llm/openai` |
+| `sandbox.Runner` | `sandbox/goja`, `sandbox/starlark`, `sandbox/lua` |
+
+`agent/` is the core and depends only on ports. Every adapter declares `var _ <Port> = (*impl)(nil)` beside its type; add one to any new adapter. Find implementations with `git grep 'var _ sandbox.Runner'`.
+
 ## Commands
 
 - `mise install` — pinned tools (buf, node, pnpm)

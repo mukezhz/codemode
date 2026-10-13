@@ -10,8 +10,7 @@ import (
 	"github.com/mukezhz/codemode/program"
 )
 
-// OpenProgramCache returns the program store in the same database as store, which this package must have opened.
-// Closing it does not close store, which owns the shared pool.
+// store must have been opened by this package; closing the cache does not close it.
 func OpenProgramCache(ctx context.Context, store capability.Store, dimension int) (program.Store, error) {
 	backing, ok := store.(*pgStore)
 	if !ok {
@@ -30,6 +29,8 @@ func OpenProgramCache(ctx context.Context, store capability.Store, dimension int
 type pgProgramStore struct {
 	db *sql.DB
 }
+
+var _ program.Store = (*pgProgramStore)(nil)
 
 func (store *pgProgramStore) migrate(ctx context.Context, dimension int) error {
 	// A table at a different dimension is replaced; the cache is derived data.
@@ -68,7 +69,7 @@ func (store *pgProgramStore) migrate(ctx context.Context, dimension int) error {
 }
 
 func (store *pgProgramStore) Nearest(ctx context.Context, scope string, vector []float32, limit int) ([]program.Hit, error) {
-	// Scope is filtered in the query so a program for another dialect, capability set, or caller is never returned.
+	// Scope is filtered in the query so another dialect, capability set, or caller is never returned.
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT id::text, source, embedding <=> $1 AS distance
 		FROM cached_programs

@@ -30,7 +30,8 @@ type starlarkRunner struct {
 	options sandbox.Options
 }
 
-// New returns a Runner backed by the in-process Starlark interpreter.
+var _ sandbox.Runner = (*starlarkRunner)(nil)
+
 func New(options sandbox.Options) (sandbox.Runner, error) {
 	options, err := options.Checked()
 	if err != nil {
@@ -49,7 +50,6 @@ var starlarkTypes = prompt.Types{
 	Dict: func(key, value string) string { return "{" + key + ": " + value + "}" },
 }
 
-// starlarkDialect is the dialect the Starlark engine evaluates.
 var starlarkDialect = prompt.Dialect{
 	ID:    "starlark",
 	Prose: "Starlark (a small Python dialect)",
@@ -94,7 +94,6 @@ func (runner *starlarkRunner) Name() string {
 		runner.options.Timeout, runner.options.MaxCalls)
 }
 
-// Close is a no-op: the interpreter is created per run.
 func (runner *starlarkRunner) Close() error { return nil }
 
 func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, source string) (any, error) {
@@ -133,6 +132,9 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 		}
 
 		response, err := mode.Execute(ctx, name, request)
+		if err == nil {
+			err = runner.options.CheckResponse(name, response)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -180,7 +182,6 @@ func (runner *starlarkRunner) Run(ctx context.Context, mode codemode.CodeMode, s
 	return fromStarlark(result)
 }
 
-// indentLines indents every line by four spaces to form a function body.
 func indentLines(source string) string {
 	lines := strings.Split(strings.TrimRight(source, "\n"), "\n")
 	for i, line := range lines {
@@ -193,7 +194,6 @@ func indentLines(source string) string {
 	return strings.Join(lines, "\n")
 }
 
-// toStarlark converts a JSON-decoded Go value into a Starlark value.
 func toStarlark(value any) (starlarkvm.Value, error) {
 	switch typed := value.(type) {
 	case nil:
@@ -234,7 +234,6 @@ func toStarlark(value any) (starlarkvm.Value, error) {
 	}
 }
 
-// fromStarlark converts a Starlark value into a JSON-encodable Go value.
 func fromStarlark(value starlarkvm.Value) (any, error) {
 	switch typed := value.(type) {
 	case starlarkvm.NoneType:

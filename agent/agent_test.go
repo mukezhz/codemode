@@ -18,7 +18,6 @@ import (
 	"github.com/mukezhz/codemode/sandbox/goja"
 )
 
-// mode answers searches and capability calls from a fixed script.
 type mode struct {
 	calls []string
 }
@@ -44,7 +43,6 @@ func (mode *mode) Execute(_ context.Context, name string, _ json.RawMessage) (js
 	return json.RawMessage(`{"todos":[{"id":1,"title":"write docs"}]}`), nil
 }
 
-// model returns queued responses in order and records the prompts it received.
 type model struct {
 	responses []string
 	prompts   []string
@@ -146,7 +144,6 @@ func TestAnswerRendersValues(t *testing.T) {
 	}
 }
 
-// runner records the programs it evaluates and returns a fixed answer.
 type runner struct {
 	sources []string
 	closed  bool
@@ -254,7 +251,6 @@ func TestRunRequiresARunner(t *testing.T) {
 	}
 }
 
-// fingerprinted is a mode that reports its capability set, enabling caching.
 type fingerprinted struct {
 	*mode
 	fingerprint string
@@ -430,7 +426,6 @@ func TestRunReportsTimingWhenItGivesUp(t *testing.T) {
 	}
 }
 
-// An empty fingerprint must disable caching.
 func TestRunTreatsAnEmptyFingerprintAsNoCache(t *testing.T) {
 	runtime := fingerprinted{mode: &mode{}, fingerprint: ""}
 	author := &model{responses: []string{workingProgram, workingProgram}}

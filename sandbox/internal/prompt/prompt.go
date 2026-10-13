@@ -1,4 +1,3 @@
-// Package prompt holds the prompt frame shared by this module's sandbox engines.
 package prompt
 
 import (
@@ -9,25 +8,16 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// Dialect describes how programs are written for one engine.
 type Dialect struct {
-	// ID is the short, stable name of the language that callers key on.
-	ID string
-	// Prose is how the language is described to a model.
-	Prose string
-	// Rules are the engine-specific instructions, one per line.
-	Rules []string
-	// Example is a short, complete program in this dialect.
-	Example string
-	// Signature renders one capability as a call the model can copy.
+	ID        string
+	Prose     string
+	Rules     []string
+	Example   string
 	Signature func(capability.Capability) string
-	// Comment wraps a description in this dialect's comment syntax.
-	Comment func(string) string
-	// Shape renders one referenced message type as a named object.
-	Shape func(name string, schema capability.TypeSchema) string
+	Comment   func(string) string
+	Shape     func(name string, schema capability.TypeSchema) string
 }
 
-// Render produces the shared frame around a dialect's rules and the declarations for matches.
 func (dialect Dialect) Render(matches []capability.Match) string {
 	var builder strings.Builder
 
@@ -59,7 +49,6 @@ func (dialect Dialect) Render(matches []capability.Match) string {
 	return builder.String()
 }
 
-// Declarations renders each match as a commented call signature.
 func (dialect Dialect) Declarations(matches []capability.Match) string {
 	var builder strings.Builder
 	for _, match := range matches {
@@ -98,14 +87,11 @@ func (dialect Dialect) Types(matches []capability.Match) string {
 	return builder.String()
 }
 
-// Types renders the registry's language-neutral field types into one dialect's notation.
 type Types struct {
 	// Scalar maps a neutral scalar name to this dialect's; absent names pass through.
 	Scalar map[string]string
-	// List renders a repeated field given its already-rendered element type.
-	List func(element string) string
-	// Dict renders a map field given its already-rendered key and value types.
-	Dict func(key, value string) string
+	List   func(element string) string
+	Dict   func(key, value string) string
 }
 
 // Render converts one neutral type; protobuf forbids nesting, so shapes never nest.

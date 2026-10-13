@@ -1,4 +1,3 @@
-// Package openai implements llm.Client and an embedder for OpenAI-compatible APIs.
 package openai
 
 import (
@@ -22,23 +21,17 @@ func init() {
 	})
 }
 
-// DefaultModel is used when neither Options.Model nor OPENAI_MODEL is set.
 const DefaultModel = "gpt-5"
 
-// DefaultMaxTokens bounds reasoning and response text together.
 const DefaultMaxTokens = 16000
 
-// Options configures the OpenAI client with OpenAI-specific fields.
 type Options struct {
 	llm.Options
 
-	// ReasoningEffort tunes reasoning depth; empty keeps the model default.
 	ReasoningEffort string
 
-	// Seed asks for reproducible sampling where supported; nil leaves it unset.
 	Seed *int64
 
-	// Request are raw SDK request options.
 	Request []option.RequestOption
 }
 
@@ -48,7 +41,11 @@ type client struct {
 	params Options
 }
 
-// New builds an OpenAI client from options without reading the environment.
+var (
+	_ llm.Client   = (*client)(nil)
+	_ llm.Streamer = (*client)(nil)
+)
+
 func New(options Options) (llm.Client, error) {
 	resolved, err := options.Options.WithDefaults(llm.Defaults{
 		Model:     DefaultModel,
@@ -80,7 +77,6 @@ func New(options Options) (llm.Client, error) {
 
 func (client *client) Name() string { return "openai/" + client.model }
 
-// request builds the completion parameters shared by Complete and CompleteStream.
 func (client *client) request(system, user string) openaisdk.ChatCompletionNewParams {
 	params := openaisdk.ChatCompletionNewParams{
 		Model:               client.model,
@@ -115,6 +111,7 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 	if err != nil {
 		return "", fmt.Errorf("openai: %w", err)
 	}
+	llm.Report(ctx, llm.Usage{Input: response.Usage.PromptTokens, Output: response.Usage.CompletionTokens})
 	if len(response.Choices) == 0 {
 		return "", fmt.Errorf("openai: no choices returned")
 	}
@@ -125,14 +122,19 @@ func (client *client) Complete(ctx context.Context, system, user string) (string
 	return content, nil
 }
 
-// CompleteStream implements llm.Streamer.
 func (client *client) CompleteStream(ctx context.Context, system, user string, chunk func(string)) (string, error) {
-	stream := client.client.Chat.Completions.NewStreaming(ctx, client.request(system, user))
+	params := client.request(system, user)
+	params.StreamOptions = openaisdk.ChatCompletionStreamOptionsParam{IncludeUsage: openaisdk.Bool(true)}
+	stream := client.client.Chat.Completions.NewStreaming(ctx, params)
 	defer stream.Close()
 
 	var builder strings.Builder
 	for stream.Next() {
 		event := stream.Current()
+		// Usage arrives on a final chunk with no choices.
+		if event.Usage.TotalTokens > 0 {
+			llm.Report(ctx, llm.Usage{Input: event.Usage.PromptTokens, Output: event.Usage.CompletionTokens})
+		}
 		if len(event.Choices) == 0 {
 			continue
 		}

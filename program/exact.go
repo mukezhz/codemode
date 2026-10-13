@@ -7,8 +7,7 @@ import (
 	"sync"
 )
 
-// exactCache reuses a program only for a request it has already seen, matched
-// on the text after trimming and case folding.
+// Matched on the text after trimming and case folding.
 type exactCache struct {
 	mutex   sync.RWMutex
 	entries map[string]Entry  // scope + request -> entry
@@ -16,8 +15,8 @@ type exactCache struct {
 	next    int64
 }
 
-// NewExactCache returns a Cache that reuses a program only for a repeat of the
-// same request, ignoring surrounding whitespace and letter case.
+var _ Cache = (*exactCache)(nil)
+
 func NewExactCache() Cache {
 	return &exactCache{entries: map[string]Entry{}, ids: map[string]string{}}
 }

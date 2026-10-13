@@ -15,7 +15,8 @@ echo "==> core packages build with CGO_ENABLED=0"
 CGO_ENABLED=0 go build \
 	"$root/capability" "$root/capability/pgstore" "$root/codemode" \
 	"$root/agent" "$root/llm" "$root/llm/claude" "$root/llm/openai" \
-	"$root/sandbox" "$root/sandbox/goja" "$root/sandbox/starlark" "$root/sandbox/lua"
+	"$root/sandbox" "$root/sandbox/goja" "$root/sandbox/starlark" "$root/sandbox/lua" \
+	"$root/sandbox/subprocess" "$root/cmd/codemode-worker"
 
 goversion=$(go mod edit -json "$root/go.mod" | sed -n 's/.*"Go": "\([^"]*\)".*/\1/p')
 printf 'module consumer\n\ngo %s\n\nrequire github.com/mukezhz/codemode v0.0.0\n\nreplace github.com/mukezhz/codemode => %s\n' \

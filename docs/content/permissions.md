@@ -66,6 +66,109 @@ With the annotation, the RPC and its policy are edited in the same place at the
 same time.
 :::
 
+## Several roles on one RPC or service
+
+Every role option is a **space-separated list**. A caller holding **any one** of
+the listed roles may call the RPC.
+
+### On one method
+
+```protobuf
+rpc Assign(AssignRequest) returns (Task) {
+  option (codemode.description) = "Moves a task to another person.";
+  option (codemode.roles) = "manager admin";        // manager OR admin
+}
+```
+
+### On a whole service
+
+```protobuf
+service BillingService {
+  option (codemode.namespace) = "billing";
+  option (codemode.default_roles) = "billing admin"; // every method: billing OR admin
+
+  rpc Invoices(InvoicesRequest) returns (InvoiceList) {
+    option (codemode.description) = "Lists invoices.";            // billing, admin
+  }
+  rpc Refund(RefundRequest) returns (RefundResult) {
+    option (codemode.description) = "Refunds an invoice.";
+    option (codemode.roles) = "admin";                             // admin only
+  }
+  rpc Summary(SummaryRequest) returns (BillingSummary) {
+    option (codemode.description) = "Totals for this month.";
+    option (codemode.roles) = "billing admin viewer";              // adds viewer
+  }
+}
+```
+
+### How a method's roles are decided
+
+| Service `default_roles` | Method `roles` | Who may call the method |
+| --- | --- | --- |
+| not set | not set | everyone |
+| not set | `"admin"` | admin |
+| not set | `"manager admin"` | manager or admin |
+| `"billing admin"` | not set | billing or admin |
+| `"billing admin"` | `"admin"` | admin (narrowed) |
+| `"billing admin"` | `"billing admin viewer"` | billing, admin or viewer (widened) |
+| `"billing admin"` | `""` | billing or admin: an empty string counts as not set |
+| either | `" "` (whitespace only) | **build error**: `roles option is blank; remove it to place no restriction` |
+
+Three rules follow from the table:
+
+- **A method's `roles` replaces the service default; it never adds to it.** To
+  widen, repeat the default's roles and add the new one, as `Summary` does. To
+  narrow, list fewer.
+- **A method in a restricted service cannot be made public.** There is no value
+  meaning "everyone". Put a public method in a service without
+  `default_roles`. This is deliberate: in a service declared privileged,
+  opening a method to everyone should take a visible move, not one string.
+- **Order and spacing do not matter.** `"admin manager"` and `"manager  admin"`
+  are the same set. Role names are case-sensitive: `Admin` is not `admin`.
+
+### What a caller with several roles gets
+
+`ForRole` takes one role. For a user who holds several, keep every capability
+any of their roles allows:
+
+```go
+allowed := full.Select(func(item capability.Capability) bool {
+	for _, role := range identity.Roles {
+		if item.AllowsRole(role) {
+			return true
+		}
+	}
+	return false
+})
+```
+
+With the service above, a user with `["billing", "viewer"]` gets `billing.invoices`
+and `billing.summary`, but not `billing.refund`. Do not `capability.Merge` several
+`ForRole` results: the unrestricted capabilities appear in each and `Merge`
+rejects duplicates. [Roles and tenants](/tenants) builds the full request path
+around this.
+
+### Pin each role's set in a test
+
+```go
+func TestRolesSeeTheIntendedCapabilities(t *testing.T) {
+	want := map[string][]string{
+		"viewer":  {"billing.summary", "tasks.list"},
+		"billing": {"billing.invoices", "billing.summary", "tasks.list"},
+		"admin":   {"billing.invoices", "billing.refund", "billing.summary", "tasks.assign", "tasks.list"},
+	}
+	for role, names := range want {
+		got := slices.Sorted(slices.Values(full.ForRole(role).Names()))
+		if !slices.Equal(got, names) {
+			t.Errorf("%s sees %v, want %v", role, got, names)
+		}
+	}
+}
+```
+
+A role quietly gaining a capability fails here, in review, instead of in
+production.
+
 ## Narrow per request
 
 ```go
@@ -155,7 +258,8 @@ If `tasks.list` takes an `owner`, the program can set it. A program written by a
 model is untrusted input, and the first thing to try is someone else's name.
 :::
 
-See [Many services, many users](/scaling-up) for the rules that follow from
+For users with several roles, tenants, and per-tenant plans, see
+[Roles and tenants](/tenants). See [Many services, many users](/scaling-up) for the rules that follow from
 that — scope as a parameter, a zero value that reaches nothing, "not found"
 rather than "forbidden".
 

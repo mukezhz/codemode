@@ -543,8 +543,9 @@ program, and any repair attempts after it.
 - **Set `SANDBOX_MAX_CALLS` and `SANDBOX_TIMEOUT` deliberately.** The defaults — 50 calls, 30 seconds — are demo numbers.
 - **Log `Result.Source`.** When an answer is wrong, the program is the evidence.
 - **Regenerate the registry in CI.** A drifted `registry.json` is a silent failure.
-- **Read [the isolation ladder](/sandbox#the-isolation-ladder)** if programs will ever be shaped by untrusted end users. All three engines run in-process.
+- **Run programs out of process** if they will ever be shaped by untrusted end users: `SANDBOX_ISOLATION=process`, and a container worker for tenants you do not trust. See [Development and production](/environments).
 - **Blank-import exactly what you run.** An unregistered backend fails at `New`, not at startup — see [what your binary links](/dependencies).
 
-Then [Configuration](/configuration) for every environment variable, and
+Then [Development and production](/environments) for configuring the same binary for both,
+[Configuration](/configuration) for every environment variable, and
 [Troubleshooting](/troubleshooting) for what the errors mean.

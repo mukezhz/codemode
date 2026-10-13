@@ -66,6 +66,7 @@ flowchart TB
     cap["capability<br/><small>Store</small>"]
     llm["llm<br/><small>Client</small>"]
     sb["sandbox<br/><small>Runner</small>"]
+    prog["program<br/><small>Cache, Store</small>"]
   end
   subgraph impls["implementation packages — one vendor each"]
     pg["capability/pgstore"]
@@ -83,11 +84,25 @@ flowchart TB
   goja -->|"RegisterEngine"| sb
   star -->|"RegisterEngine"| sb
   lua -->|"RegisterEngine"| sb
+  lite -->|"implements"| prog
+  pg -->|"implements"| prog
 ```
 
 Registration is one-way. An implementation imports its interface package; the
 interface package never imports back. That is what keeps `capability`,
 `llm`, and `sandbox` free of vendor code.
+
+| Interface | Implementations |
+|---|---|
+| `capability.Store` | `capability/sqlitestore`, `capability/pgstore` |
+| `program.Cache` | `program.New` (semantic), `program.NewExactCache` |
+| `program.Store` | `program.NewMemoryStore`, `capability/sqlitestore`, `capability/pgstore` |
+| `llm.Client`, `llm.Streamer` | `llm/claude`, `llm/openai` |
+| `sandbox.Runner` | `sandbox/goja`, `sandbox/starlark`, `sandbox/lua` |
+
+Each implementation asserts its interface at compile time with a line such as
+`var _ sandbox.Runner = (*luaRunner)(nil)`, so
+`git grep 'var _ sandbox.Runner'` lists every engine.
 
 ## When you forget an import
 

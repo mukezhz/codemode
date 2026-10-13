@@ -7,16 +7,12 @@ import (
 	"strings"
 )
 
-// Environment variables read by OpenStoreFromEnv.
 const (
-	// EnvBackend selects the backend: sqlite or postgres.
 	EnvBackend = "CAPABILITY_DB"
-	// EnvDSN is the SQLite file path or the Postgres connection URL.
-	EnvDSN = "CAPABILITY_DB_DSN"
+	EnvDSN     = "CAPABILITY_DB_DSN"
 )
 
-// OpenStoreFromEnv opens the registered backend named by CAPABILITY_DB using CAPABILITY_DB_DSN.
-// It returns ErrNoStore when nothing is configured; the caller closes the store.
+// Returns ErrNoStore when nothing is configured; the caller closes the store.
 func OpenStoreFromEnv(ctx context.Context) (Store, error) {
 	name := strings.ToLower(strings.TrimSpace(os.Getenv(EnvBackend)))
 	dsn := strings.TrimSpace(os.Getenv(EnvDSN))

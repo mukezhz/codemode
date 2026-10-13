@@ -7,29 +7,26 @@ import (
 	"strings"
 )
 
-// EmbedFunc turns text into a vector. Ctx carries cancellation.
 type EmbedFunc func(context.Context, string) ([]float32, error)
 
-// Embedder names the embedding model, which the index records to reject a mismatched query model.
+// The index records the model name to reject a mismatched query model.
 type Embedder struct {
 	Model string
 	Embed EmbedFunc
 }
 
-// Match is a capability contract and its distance from the query; lower is closer.
 type Match struct {
 	Capability Capability `json:"capability"`
 	Distance   float64    `json:"distance"`
 }
 
-// Index answers semantic capability searches from a Store.
 type Index struct {
 	store     Store
 	embedder  Embedder
 	dimension int
 }
 
-// Rebuild embeds every capability in registry and replaces the contents of store; the caller closes store.
+// The caller closes store.
 func Rebuild(ctx context.Context, store Store, registry Registry, embedder Embedder) error {
 	if store == nil {
 		return errors.New("store is required")
@@ -62,7 +59,7 @@ func Rebuild(ctx context.Context, store Store, registry Registry, embedder Embed
 	return store.Rebuild(ctx, embedder.Model, dimension, records)
 }
 
-// Open reads store's metadata and returns an Index that queries it; closing the Index closes store.
+// Closing the Index closes store.
 func Open(ctx context.Context, store Store, embedder Embedder) (*Index, error) {
 	if store == nil {
 		return nil, errors.New("store is required")
@@ -81,10 +78,8 @@ func Open(ctx context.Context, store Store, embedder Embedder) (*Index, error) {
 	return &Index{store: store, embedder: embedder, dimension: dimension}, nil
 }
 
-// Close releases the underlying store.
 func (index *Index) Close() error { return index.store.Close() }
 
-// Search returns at most limit capabilities most relevant to query, closest first.
 func (index *Index) Search(ctx context.Context, query string, limit int) ([]Match, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {

@@ -1,5 +1,3 @@
-// Package sandbox runs model-authored programs whose only host binding is
-// codemode.execute; engines live in subpackages and register from init.
 package sandbox
 
 import (
@@ -15,44 +13,44 @@ import (
 	"github.com/mukezhz/codemode/codemode"
 )
 
-// Runner evaluates untrusted, model-authored programs; every engine exposes
-// only codemode.execute.
 type Runner interface {
-	// Run evaluates untrusted source with codemode.execute bound to mode and
-	// returns the program's final value decoded into Go types.
 	Run(ctx context.Context, mode codemode.CodeMode, source string) (any, error)
 
-	// Language names the dialect programs must be written in.
 	Language() string
 
-	// Prompt renders the system prompt for this engine with the declarations for matches.
 	Prompt(matches []capability.Match) string
 
-	// Name identifies the engine and its isolation level.
 	Name() string
 
-	// Close releases engine resources.
 	Close() error
 }
 
-// Options selects an engine and bounds a single program run.
 type Options struct {
-	// Engine names the interpreter; empty applies DefaultEngine.
+	// Engine is the language: goja, starlark or lua.
 	Engine string
+	// Isolation is where programs run: IsolationInProcess (default) or a registered one such as IsolationProcess.
+	Isolation string
 
-	// Timeout bounds the run; zero applies DefaultTimeout.
-	Timeout time.Duration
-	// MaxCalls limits capability calls per run; zero applies DefaultMaxCalls.
+	Timeout  time.Duration
 	MaxCalls int
+	// ponytail: bounds input, not interpreter heap; MaxHeapBytes is the hard cap, subprocess engines only.
+	MaxResponseBytes int
+
+	// Worker is the argv that starts codemode-worker; process isolation only.
+	Worker []string
+	// WorkerContainer says Worker starts a container that isolates itself, so the
+	// host must not unshare namespaces around the container CLI.
+	WorkerContainer bool
+	MaxHeapBytes    int
 }
 
-// Defaults applied when the matching Options field is zero.
 const (
-	DefaultMaxCalls = 50
-	DefaultTimeout  = 30 * time.Second
+	DefaultMaxCalls         = 50
+	DefaultTimeout          = 30 * time.Second
+	DefaultMaxResponseBytes = 1 << 20
+	DefaultMaxHeapBytes     = 256 << 20
 )
 
-// Checked validates options and applies defaults.
 func (options Options) Checked() (Options, error) {
 	if options.Timeout < 0 {
 		return options, errors.New("timeout must not be negative")
@@ -60,37 +58,71 @@ func (options Options) Checked() (Options, error) {
 	if options.MaxCalls < 0 {
 		return options, errors.New("max calls must not be negative")
 	}
+	if options.MaxResponseBytes < 0 {
+		return options, errors.New("max response bytes must not be negative")
+	}
+	if options.MaxHeapBytes < 0 {
+		return options, errors.New("max heap bytes must not be negative")
+	}
 	if options.Timeout == 0 {
 		options.Timeout = DefaultTimeout
 	}
 	if options.MaxCalls == 0 {
 		options.MaxCalls = DefaultMaxCalls
 	}
+	if options.MaxResponseBytes == 0 {
+		options.MaxResponseBytes = DefaultMaxResponseBytes
+	}
+	if options.MaxHeapBytes == 0 {
+		options.MaxHeapBytes = DefaultMaxHeapBytes
+	}
 	return options, nil
 }
 
-// Engine describes one registered interpreter.
 type Engine struct {
-	// Name is the canonical name that selects it.
-	Name string
-	// Aliases are other accepted spellings.
+	Name    string
 	Aliases []string
-	// New builds a Runner bounded by options.
-	New func(Options) (Runner, error)
+	New     func(Options) (Runner, error)
 }
 
-// Engines this module ships; blank-import the matching package to register one.
 const (
-	// EngineGoja evaluates JavaScript (sandbox/goja).
-	EngineGoja = "goja"
-	// EngineStarlark evaluates Starlark (sandbox/starlark).
+	EngineGoja     = "goja"
 	EngineStarlark = "starlark"
-	// EngineLua evaluates Lua 5.1 (sandbox/lua).
-	EngineLua = "lua"
+	EngineLua      = "lua"
 )
 
-// DefaultEngine is used when Options.Engine is empty.
 const DefaultEngine = EngineGoja
+
+const (
+	IsolationInProcess = "inprocess"
+	IsolationProcess   = "process"
+)
+
+// Isolation runs an engine somewhere other than this process. New receives the
+// options with Engine still naming the language.
+type Isolation struct {
+	Name string
+	New  func(Options) (Runner, error)
+}
+
+var shippedIsolations = map[string]string{
+	IsolationProcess: "github.com/mukezhz/codemode/sandbox/subprocess",
+}
+
+var isolations = map[string]Isolation{}
+
+// RegisterIsolation makes isolation selectable by New; registering a name twice panics.
+func RegisterIsolation(isolation Isolation) {
+	if isolation.Name == "" || isolation.Name == IsolationInProcess || isolation.New == nil {
+		panic("sandbox: isolation needs a name other than inprocess and a constructor")
+	}
+	enginesMutex.Lock()
+	defer enginesMutex.Unlock()
+	if _, exists := isolations[isolation.Name]; exists {
+		panic("sandbox: isolation " + isolation.Name + " is already registered")
+	}
+	isolations[isolation.Name] = isolation
+}
 
 // shipped maps each built-in engine to its package, so errors can name the missing import.
 var shipped = map[string]string{
@@ -119,7 +151,6 @@ func RegisterEngine(engine Engine) {
 	}
 }
 
-// RegisteredEngines lists the canonical names of every registered engine, sorted.
 func RegisteredEngines() []string {
 	enginesMutex.RLock()
 	defer enginesMutex.RUnlock()
@@ -135,8 +166,24 @@ func RegisteredEngines() []string {
 	return names
 }
 
-// New builds the runner named by options.Engine from the registered engines.
 func New(options Options) (Runner, error) {
+	isolation := strings.ToLower(strings.TrimSpace(options.Isolation))
+	if isolation != "" && isolation != IsolationInProcess {
+		enginesMutex.RLock()
+		registered, ok := isolations[isolation]
+		enginesMutex.RUnlock()
+		if !ok {
+			return nil, unregisteredIsolation(isolation)
+		}
+		options.Isolation = isolation
+		return registered.New(options)
+	}
+	// Worker settings with in-process isolation almost always mean SANDBOX_ISOLATION was forgotten,
+	// and running in-process then is the unsafe way to be wrong.
+	if len(options.Worker) > 0 || options.WorkerContainer {
+		return nil, errors.New("a worker is configured but isolation is inprocess: set SANDBOX_ISOLATION=process, or remove SANDBOX_WORKER and SANDBOX_WORKER_CONTAINER")
+	}
+
 	name := strings.ToLower(strings.TrimSpace(options.Engine))
 	if name == "" {
 		name = DefaultEngine
@@ -151,7 +198,6 @@ func New(options Options) (Runner, error) {
 	return engine.New(options)
 }
 
-// unregisteredEngine distinguishes a missing import from an unknown engine.
 func unregisteredEngine(name string) error {
 	if path, ships := shipped[name]; ships {
 		return fmt.Errorf("sandbox engine %q is not registered: add `_ %q` to your imports", name, path)
@@ -165,6 +211,20 @@ func unregisteredEngine(name string) error {
 		name, strings.Join(available, ", "))
 }
 
+func unregisteredIsolation(name string) error {
+	if path, ships := shippedIsolations[name]; ships {
+		return fmt.Errorf("sandbox isolation %q is not registered: add `_ %q` to your imports", name, path)
+	}
+	known := []string{IsolationInProcess}
+	enginesMutex.RLock()
+	for registered := range isolations {
+		known = append(known, registered)
+	}
+	enginesMutex.RUnlock()
+	sort.Strings(known)
+	return fmt.Errorf("sandbox isolation %q is unknown: use one of %s", name, strings.Join(known, ", "))
+}
+
 func values(paths map[string]string) []string {
 	list := make([]string, 0, len(paths))
 	for _, path := range paths {
@@ -174,7 +234,6 @@ func values(paths map[string]string) []string {
 	return list
 }
 
-// Run evaluates source on a one-shot runner built from options.
 func Run(ctx context.Context, mode codemode.CodeMode, source string, options Options) (any, error) {
 	runner, err := New(options)
 	if err != nil {
@@ -182,4 +241,11 @@ func Run(ctx context.Context, mode codemode.CodeMode, source string, options Opt
 	}
 	defer runner.Close()
 	return runner.Run(ctx, mode, source)
+}
+
+func (options Options) CheckResponse(name string, response []byte) error {
+	if len(response) > options.MaxResponseBytes {
+		return fmt.Errorf("response of %s is %d bytes, over the %d byte limit", name, len(response), options.MaxResponseBytes)
+	}
+	return nil
 }

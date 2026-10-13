@@ -25,7 +25,7 @@ export default withMermaid(
           text: "Guide",
           link: "/overview",
           activeMatch:
-            "^/(overview|flow|using-it|dependencies|permissions|caching|scaling-up)",
+            "^/(overview|flow|using-it|dependencies|permissions|writes|caching|scaling-up)",
         },
         {
           text: "Reference",
@@ -46,10 +46,14 @@ export default withMermaid(
           text: "Using it",
           items: [
             { text: "Add it to your application", link: "/using-it" },
+            { text: "Development and production", link: "/environments" },
             { text: "What your binary links", link: "/dependencies" },
             { text: "Permissions", link: "/permissions" },
+            { text: "Roles and tenants", link: "/tenants" },
+            { text: "Writes and retries", link: "/writes" },
             { text: "Caching programs", link: "/caching" },
             { text: "Many services, many users", link: "/scaling-up" },
+            { text: "Serving MCP clients", link: "/mcp" },
           ],
         },
         {
@@ -59,6 +63,7 @@ export default withMermaid(
             { text: "Search", link: "/search" },
             { text: "Models", link: "/models" },
             { text: "Sandbox", link: "/sandbox" },
+            { text: "Running the worker", link: "/worker" },
           ],
         },
         {
@@ -82,6 +87,11 @@ export default withMermaid(
       // VitePress grounds without hard-coding a palette per diagram.
       theme: "default",
       themeVariables: { fontFamily: "inherit" },
+    },
+
+    // Pre-bundle mermaid: under pnpm the plugin's own CJS includes (dayjs, ...) do not resolve.
+    vite: {
+      optimizeDeps: { include: ["mermaid"] },
     },
   }),
 );

@@ -1,4 +1,3 @@
-// Package server serves the task app's REST API and the code-mode /api/chat endpoint.
 package server
 
 import (
@@ -29,39 +28,34 @@ import (
 	"github.com/mukezhz/codemode/examples/taskreport/view"
 )
 
-// Options configures the server; nothing here reads the environment.
 type Options struct {
-	Store *store.Store
-	// Full is the whole capability surface, narrowed per request by role.
-	Full capability.Registry
-	// Admins names the workspace administrators.
-	Admins []string
-	// Model answers chat requests; nil disables /api/chat.
-	Model llm.Client
-	// Runner evaluates the generated programs. Required.
-	Runner sandbox.Runner
-	// Limit is how many capabilities are described to the model.
-	Limit int
-	// Attempts is how many programs may be generated before giving up.
+	Store    *store.Store
+	Full     capability.Registry
+	Admins   []string
+	Model    llm.Client
+	Runner   sandbox.Runner
+	Limit    int
 	Attempts int
-	// Assets serves the built frontend; nil serves build instructions.
-	Assets fs.FS
-	// Programs receives each generated program; nil prints none.
+	Assets   fs.FS
 	Programs io.Writer
-	// Logger records request steps; nil discards them.
-	Logger *slog.Logger
-	// Cache reuses programs across repeated requests; nil disables it.
-	Cache program.Cache
+	Logger   *slog.Logger
+	Cache    program.Cache
+
+	// Per user; zero takes the default.
+	ChatsPerMinute int
+	ChatsAtOnce    int
+	// Audit receives one JSON line per capability call; nil keeps none.
+	Audit io.Writer
 }
 
-// Server is the HTTP handler.
 type Server struct {
-	options Options
-	app     *app.App
-	log     *slog.Logger
+	options  Options
+	app      *app.App
+	log      *slog.Logger
+	fairness *fairness
+	audit    *auditor
 }
 
-// New builds a Server.
 func New(options Options) (*Server, error) {
 	if options.Store == nil || options.Runner == nil {
 		return nil, errors.New("server needs a store and a runner")
@@ -75,6 +69,16 @@ func New(options Options) (*Server, error) {
 	if options.Attempts == 0 {
 		options.Attempts = 3
 	}
+	if options.ChatsPerMinute == 0 {
+		options.ChatsPerMinute = 10
+	}
+	if options.ChatsAtOnce == 0 {
+		options.ChatsAtOnce = 2
+	}
+	var audit *auditor
+	if options.Audit != nil {
+		audit = &auditor{writer: options.Audit}
+	}
 	logger := options.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -82,13 +86,14 @@ func New(options Options) (*Server, error) {
 	options.Runner = trace.Runner(options.Runner, logger, options.Programs)
 
 	return &Server{
-		options: options,
-		app:     app.New(options.Store, options.Admins...),
-		log:     logger,
+		options:  options,
+		app:      app.New(options.Store, options.Admins...),
+		log:      logger,
+		fairness: &fairness{perMinute: options.ChatsPerMinute, concurrent: options.ChatsAtOnce},
+		audit:    audit,
 	}, nil
 }
 
-// Handler returns the mux, with identity resolved for every /api request.
 func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -99,16 +104,14 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/reopen", server.reopenTask)
 	mux.HandleFunc("DELETE /api/tasks/{id}", server.deleteTask)
 	mux.HandleFunc("GET /api/summary", server.summary)
-	mux.HandleFunc("POST /api/chat", server.chat)
-	mux.HandleFunc("POST /api/chat/stream", server.chatStream)
+	mux.HandleFunc("POST /api/chat", server.fairness.guard(server.chat))
+	mux.HandleFunc("POST /api/chat/stream", server.fairness.guard(server.chatStream))
 
-	// SPA: unmatched paths serve the shell.
 	mux.Handle("/", server.assets())
 
 	return server.withIdentity(mux)
 }
 
-// withIdentity resolves who is asking, once, for the whole request.
 // Demo reads headers; a real deployment must verify a session or token here.
 func (server *Server) withIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -126,7 +129,6 @@ func (server *Server) withIdentity(next http.Handler) http.Handler {
 	})
 }
 
-// scoped narrows the registry to the caller's role and builds search over that same set.
 func (server *Server) scoped(ctx context.Context) (codemode.CodeMode, capability.Registry, error) {
 	identity, err := auth.From(ctx)
 	if err != nil {
@@ -213,7 +215,6 @@ func (server *Server) summary(writer http.ResponseWriter, request *http.Request)
 	server.execute(writer, request, "reports.statusCounts", map[string]any{})
 }
 
-// execute runs one capability for the board through CodeMode so the registry authorizes it.
 func (server *Server) execute(writer http.ResponseWriter, request *http.Request, name string, input map[string]any) {
 	mode, _, err := server.scoped(request.Context())
 	if err != nil {
@@ -244,9 +245,8 @@ type chatResponse struct {
 	Attempts int                `json:"attempts"`
 	Used     []capability.Match `json:"used"`
 	Took     string             `json:"took"`
-	// Cached reports that the program was reused rather than written again.
-	Cached bool         `json:"cached"`
-	Timing agent.Timing `json:"timing"`
+	Cached   bool               `json:"cached"`
+	Timing   agent.Timing       `json:"timing"`
 }
 
 // chatCallBudget bounds capability calls per answer, so workarounds like per-letter search loops fail.
@@ -265,7 +265,6 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	send(writer, response)
 }
 
-// chatStream answers over server-sent events, streaming the program then the document.
 func (server *Server) chatStream(writer http.ResponseWriter, request *http.Request) {
 	body, identity, mode, ok := server.chatRequest(writer, request)
 	if !ok {
@@ -306,7 +305,6 @@ func (server *Server) chatStream(writer http.ResponseWriter, request *http.Reque
 	event("result", response)
 }
 
-// chatRequest runs shared checks, writing any failure itself and returning false.
 func (server *Server) chatRequest(writer http.ResponseWriter, request *http.Request) (chatRequest, auth.Identity, codemode.CodeMode, bool) {
 	var body chatRequest
 	if server.options.Model == nil {
@@ -335,7 +333,6 @@ func (server *Server) chatRequest(writer http.ResponseWriter, request *http.Requ
 	return body, identity, mode, true
 }
 
-// answer runs one request to a rendered document; OnChunk receives the program as it streams.
 func (server *Server) answer(
 	parent context.Context,
 	body chatRequest,
@@ -357,6 +354,7 @@ func (server *Server) answer(
 		// A program targets one role's capabilities, so cache per role.
 		CacheCaller: string(identity.Role),
 		OnChunk:     onChunk,
+		OnCall:      server.audit.hook(identity),
 	})
 	if err != nil {
 		server.log.Error("chat failed", "request", body.Request, "error", err, "program", result.Source)

@@ -19,22 +19,21 @@ service TaskService {
   option (codemode.namespace) = "tasks";
 
   rpc Create(CreateTaskRequest) returns (TaskResponse) {
-    option (codemode.description) =
-      "Creates a task. Title is required. Priority is low, medium, or high and defaults to medium. Due date is YYYY-MM-DD.";
+    option (codemode.description) = "Creates a task. Title is required. Priority is low, medium, or high and defaults to medium. Due date is YYYY-MM-DD.";
   }
 
   rpc Get(GetTaskRequest) returns (TaskResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Returns one task by its numeric ID.";
   }
 
   rpc List(ListTasksRequest) returns (TaskListResponse) {
-    option (codemode.description) =
-      "Lists tasks, newest first. Every filter is optional and they combine: status is open or completed, and tag matches a single tag.";
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Lists tasks, newest first. Every filter is optional and they combine: status is open or completed, and tag matches a single tag.";
   }
 
   rpc Update(UpdateTaskRequest) returns (TaskResponse) {
-    option (codemode.description) =
-      "Changes a task's title, project, priority, or due date. Only the fields you set are written; the rest keep their current values.";
+    option (codemode.description) = "Changes a task's title, project, priority, or due date. Only the fields you set are written; the rest keep their current values.";
   }
 
   rpc Complete(TaskIDRequest) returns (TaskResponse) {
@@ -58,6 +57,7 @@ service TaskService {
   }
 
   rpc Search(SearchTasksRequest) returns (TaskListResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Finds tasks whose title contains the given text, case-insensitively.";
   }
 
@@ -69,8 +69,8 @@ service TaskService {
   // has no list to keep in step and a new privileged RPC cannot arrive
   // unguarded because somebody edited one file and not the other.
   rpc ListFor(ListForRequest) returns (TaskListResponse) {
-    option (codemode.description) =
-      "Lists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.";
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Lists another user's tasks. Administrators only; everyone else uses tasks.list, which returns their own.";
     option (codemode.roles) = "admin";
   }
 
@@ -86,6 +86,7 @@ service ProjectService {
   option (codemode.namespace) = "projects";
 
   rpc List(ListProjectsRequest) returns (ListProjectsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Lists every project name that has at least one task, with how many tasks each holds.";
   }
 
@@ -102,34 +103,38 @@ service ReportService {
   option (codemode.namespace) = "reports";
 
   rpc StatusCounts(ReportRequest) returns (StatusCountsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Totals every task by state: open, completed, overdue, and due today.";
   }
 
   rpc ByProject(ReportRequest) returns (GroupCountsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Counts open and completed tasks per project, so one call answers where the work sits.";
   }
 
   rpc ByPriority(ReportRequest) returns (GroupCountsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Counts open and completed tasks per priority level.";
   }
 
   rpc Overdue(OverdueRequest) returns (TaskListResponse) {
-    option (codemode.description) =
-      "Lists open tasks whose due date is before as_of, oldest first. Leave as_of empty for today.";
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Lists open tasks whose due date is before as_of, oldest first. Leave as_of empty for today.";
   }
 
   rpc CompletedBetween(DateRangeRequest) returns (TaskListResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (codemode.description) = "Lists tasks completed between two YYYY-MM-DD dates, inclusive.";
   }
 
   rpc Throughput(ThroughputRequest) returns (ThroughputResponse) {
-    option (codemode.description) =
-      "Counts tasks completed on each of the last N days, most recent first, including days with none.";
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Counts tasks completed on each of the last N days, most recent first, including days with none.";
   }
 
   rpc ByOwner(ReportRequest) returns (GroupCountsResponse) {
-    option (codemode.description) =
-      "Counts open and completed tasks per person across the whole workspace. Administrators only.";
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (codemode.description) = "Counts open and completed tasks per person across the whole workspace. Administrators only.";
     option (codemode.roles) = "admin";
   }
 }

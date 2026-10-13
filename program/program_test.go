@@ -9,7 +9,6 @@ import (
 	"github.com/mukezhz/codemode/capability"
 )
 
-// wordEmbedder is a bag-of-words embedder over vocabulary.
 func wordEmbedder(vocabulary ...string) capability.Embedder {
 	index := map[string]int{}
 	for position, word := range vocabulary {

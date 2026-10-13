@@ -11,11 +11,9 @@ import (
 	"github.com/mukezhz/codemode/program"
 )
 
-// programTable holds cached programs in the same database file as the capability index.
 const programTable = "cached_programs"
 
-// OpenProgramCache returns the program store in the same SQLite database as store, which this package must have opened.
-// Closing it does not close store, which owns the shared connection.
+// store must have been opened by this package; closing the cache does not close it.
 func OpenProgramCache(ctx context.Context, store capability.Store, dimension int) (program.Store, error) {
 	backing, ok := store.(*sqliteStore)
 	if !ok {
@@ -36,6 +34,8 @@ type sqliteProgramStore struct {
 	dimension int
 }
 
+var _ program.Store = (*sqliteProgramStore)(nil)
+
 func (store *sqliteProgramStore) migrate(ctx context.Context) error {
 	if _, err := store.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS `+programTable+` (
@@ -54,8 +54,7 @@ func (store *sqliteProgramStore) migrate(ctx context.Context) error {
 	return store.initVector(ctx)
 }
 
-// initVector re-declares the vector column, which the extension requires on
-// every connection before the column can be queried.
+// The extension requires this on every connection before the column can be queried.
 func (store *sqliteProgramStore) initVector(ctx context.Context) error {
 	if _, err := store.db.ExecContext(ctx,
 		`SELECT vector_init('`+programTable+`', 'embedding', ?)`,
@@ -67,7 +66,7 @@ func (store *sqliteProgramStore) initVector(ctx context.Context) error {
 }
 
 func (store *sqliteProgramStore) Nearest(ctx context.Context, scope string, vector []float32, limit int) ([]program.Hit, error) {
-	// Filter to scope so a program for another dialect, capability set, or caller is never returned.
+	// Scope is filtered so another dialect, capability set, or caller is never returned.
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT p.id, p.source, v.distance
 		FROM vector_full_scan('cached_programs', 'embedding', ?, ?) AS v
@@ -116,7 +115,7 @@ func (store *sqliteProgramStore) Delete(ctx context.Context, id string) error {
 // Close is a no-op: the connection belongs to the capability store.
 func (store *sqliteProgramStore) Close() error { return nil }
 
-// scanHits decodes rows in the column order id, source, distance.
+// Column order: id, source, distance.
 func scanHits(rows *sql.Rows, limit int) ([]program.Hit, error) {
 	hits := make([]program.Hit, 0, limit)
 	for rows.Next() {
