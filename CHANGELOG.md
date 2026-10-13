@@ -20,6 +20,8 @@ version is 0, a minor bump may break the API.
 - `examples/taskreport`: per-user chat rate limit and concurrency cap, `-audit`
   JSON-lines log of every capability call, and `SANDBOX_ENGINE` now selects the
   chat sandbox.
+- `capability/mcpsource`: import an MCP server's tools as capabilities, restricted
+  to a role and treated as writes; tools with imprecise schemas are skipped.
 - `SECURITY.md` with the threat model per runner.
 - Fuzz tests for the worker protocol and the descriptor parser; govulncheck in CI.
 

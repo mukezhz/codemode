@@ -259,3 +259,34 @@ The Todo application already decodes strictly into concrete Go structs and
 rejects unknown fields. Once Go types are generated from the contracts, a generic
 helper can give trusted Go callers typed calls while still delegating to the raw
 interface.
+
+## Capabilities from an MCP server
+
+`capability/mcpsource` imports an MCP server's tools as capabilities, so one
+program can call `github.listIssues` next to `tasks.list`.
+
+```go
+session, _ := mcp.NewClient(&mcp.Implementation{Name: "host"}, nil).Connect(ctx, transport, nil)
+github, _ := mcpsource.Import(ctx, session, "github", "engineer")
+
+registry, _ := capability.Merge(own, github.Registry) // fails on a duplicate name
+execute := func(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error) {
+    if strings.HasPrefix(rpc, mcpsource.RPCPrefix("github")) {
+        return github.Execute(ctx, rpc, input)
+    }
+    return app.Execute(ctx, rpc, input)
+}
+mode, _ := codemode.New(registry.ForRole(role), search, execute)
+```
+
+What it does not trust:
+
+- **Roles.** MCP has no role annotations, so `Import` requires a role and every
+  imported tool requires it. An empty role is an error, never "unrestricted".
+- **Hints.** A server's `readOnlyHint` is a claim by code you do not control.
+  Every imported tool is a write, so plan mode and retries treat it carefully.
+- **Vague schemas.** A tool whose JSON Schema cannot be named precisely (`oneOf`,
+  untyped properties) is left out and listed in `Skipped`, rather than loosened to
+  "anything", which would tell the model a call is valid when it is not.
+
+A tool without an output schema returns `{ text }`, its text content joined.
