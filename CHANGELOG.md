@@ -25,5 +25,10 @@ version is 0, a minor bump may break the API.
 - `SECURITY.md` with the threat model per runner.
 - Fuzz tests for the worker protocol and the descriptor parser; govulncheck in CI.
 
+### Fixed
+- `CodeMode.Search` drops matches outside its registry and returns the
+  registry's copy of each, so a search index shared across roles or tenants no
+  longer tells the model about capabilities it cannot call.
+
 ### Changed
 - Results from subprocess engines cross JSON, so numbers are `float64`.

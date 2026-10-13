@@ -73,8 +73,26 @@ func New(registry capability.Registry, search SearchFunc, execute ExecuteFunc) (
 	return &runtime{capabilities: capabilities, search: search, execute: execute}, nil
 }
 
+// Search drops matches this runtime cannot execute, so an index shared across roles
+// or tenants never tells the model about a capability outside its registry.
 func (runtime *runtime) Search(ctx context.Context, query string, limit int) ([]capability.Match, error) {
-	return runtime.search(ctx, query, limit)
+	// ponytail: fixed 4x over-fetch; a caller seeing a quarter or less of a shared index may get fewer than limit. Filter in the store if that bites.
+	matches, err := runtime.search(ctx, query, limit*4)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make([]capability.Match, 0, min(limit, len(matches)))
+	for _, match := range matches {
+		item, ok := runtime.capabilities[match.Capability.Name]
+		if !ok {
+			continue
+		}
+		match.Capability = item
+		if allowed = append(allowed, match); len(allowed) == limit {
+			break
+		}
+	}
+	return allowed, nil
 }
 
 func (runtime *runtime) Execute(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
