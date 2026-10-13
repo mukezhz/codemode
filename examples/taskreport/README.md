@@ -103,6 +103,50 @@ Same data, same code. The difference is a scope derived from the identity and a
 registry narrowed by role — see
 [Many services, many users](../../docs/content/scaling-up.md).
 
+### 5. Run programs out of process
+
+So far every program ran inside the server's own process. That is right while
+you develop: breakpoints work and nothing else needs installing. Before real
+users write prompts, run each program in `codemode-worker` instead:
+
+```sh
+make worker                                     # builds bin/codemode-worker
+SANDBOX_ISOLATION=process SANDBOX_WORKER=$PWD/bin/codemode-worker \
+  go run ./examples/taskreport -serve :8080
+```
+
+The banner says where programs now run:
+
+```
+sandbox
+  goja / javascript (child process, 30s timeout, 60 call budget, 256 MiB heap)
+```
+
+Ask the same question; the answer is the same. A program that allocates without
+limit now kills its own worker instead of the server, and the worker never sees
+your `.env`. If the worker is missing or broken the server refuses to start with
+`codemode-worker check failed`, rather than failing on the first question. For a
+container per run, see [Running the worker](../../docs/content/worker.md#step-5-a-container-per-run).
+
+### 6. Limits and the audit log
+
+Chat is limited per user: 10 questions a minute and 2 running at once. Past that
+the server answers `429 Too Many Requests` with `Retry-After`, so one user cannot
+slow everyone else down.
+
+`-audit` writes one JSON line per capability call:
+
+```sh
+go run ./examples/taskreport -serve :8080 -audit calls.jsonl
+```
+
+```json
+{"time":"2026-10-13T10:02:11Z","user":"ada","role":"member","capability":"reports.overdue","input_sha256":"44136fa3...","duration_ms":0}
+```
+
+The input is hashed, so the log answers "who called what, when" without becoming
+a second copy of the data.
+
 ---
 
 ## Without the .env
@@ -274,6 +318,9 @@ so observing them needs no change to the thing observed.
 | Answer says someone "has no tasks" | Stale build — the caller's reach is now in the prompt |
 | "no capability returns the full task list" | A capability is restricted that should not be; check `(codemode.roles)` |
 | An answer is wrong or zero | Run with `-log debug`, or click **Show the program** |
+| Ask returns `too many requests` | the per-user chat limit; wait for `Retry-After` |
+| `codemode-worker check failed` at startup | run `make worker` and set `SANDBOX_WORKER=$PWD/bin/codemode-worker` |
+| `a worker is configured but isolation is inprocess` | add `SANDBOX_ISOLATION=process`, or unset `SANDBOX_WORKER` |
 
 ---
 
@@ -386,6 +433,16 @@ what to do first — stays in the program the model writes. There is no
 | `-user` | `ada` | who is asking (command line only; the UI has a dropdown) |
 | `-role` | `member` | `member` or `admin` |
 | `-seed` | on | seed a sample backlog when the database is empty |
+| `-audit` | — | with `-serve`, append one JSON line per capability call to this file |
+
+The sandbox is configured from the environment, the same way the library's
+`sandbox.NewFromEnv` reads it:
+
+| Variable | Default | |
+| --- | --- | --- |
+| `SANDBOX_ENGINE` | `goja` | the language; only `goja` has a document renderer here |
+| `SANDBOX_ISOLATION` | `inprocess` | `process` runs every program in `codemode-worker` |
+| `SANDBOX_WORKER` | `codemode-worker` on `PATH` | path or argv of the worker |
 
 One environment variable, read by this command and not by the library:
 `TASKREPORT_ENV` moves the `.env` file.
@@ -449,11 +506,20 @@ a field a program can set is a field it can set to someone else's name. See
 
 ## Not production
 
-The sandbox runs in-process. It denies ambient capabilities and bounds time and
-call count, which is right for code your own host asked a model to write. It is
-not a defence against a determined attacker — see
-[the isolation ladder](../../docs/content/sandbox.md#the-isolation-ladder).
+What this example already does that production needs: roles from the protos,
+rows scoped by the identity on the context, a validated result shape, per-user
+rate limits, an audit log, and, with `SANDBOX_ISOLATION=process`, programs that
+run outside the server.
 
-`ExecuteFunc` here runs with the application's full authority. A real deployment
-carries identity on the `ctx` and checks it in every branch: the registry gates
-which *capability* may run, never which *user* is asking.
+What it does not do:
+
+- **Authentication.** Identity comes from `X-Demo-User` / `X-Demo-Role` headers
+  so you can switch users from a dropdown. A real deployment verifies a session
+  or token in `withIdentity` and nowhere else.
+- **Tenants.** Everyone shares one organisation. Adding a tenant column and
+  scoping by it first is the path in
+  [Roles and tenants](../../docs/content/tenants.md).
+- **One replica.** Rate limits and the program cache are in memory.
+
+[Development and production](../../docs/content/environments.md) walks through
+configuring the same binary for both.

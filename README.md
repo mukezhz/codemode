@@ -35,10 +35,10 @@ go run ./examples/todo -request "finish anything about docs"
 
 For something complete — a task tracker with a web UI, SQLite storage,
 twenty-three capabilities, per-user scoping, and charts rendered from a prompt —
-see [`examples/taskreport`](examples/taskreport):
+see [`examples/taskreport`](examples/taskreport). Go is the only requirement;
+the frontend is built and committed:
 
 ```sh
-cd examples/taskreport/web && pnpm install && pnpm build && cd -
 go run ./examples/taskreport -serve :8080 \
   -base-url https://api.deepseek.com/v1 -api-key sk-... -model deepseek-chat
 ```
@@ -46,6 +46,12 @@ go run ./examples/taskreport -serve :8080 \
 Ask it *"what is overdue, and which of it is high priority?"* and one model turn
 produces one program, which returns a document the browser renders as stat
 cards, a chart, and a table. Works against any OpenAI-compatible endpoint.
+
+Each example has a step-by-step README: [`examples/todo`](examples/todo/README.md)
+(no key, no database, also an MCP server for Claude Code) and
+[`examples/taskreport`](examples/taskreport/README.md) (web UI, roles, rate
+limits, audit log). Both run programs in-process by default; add
+`SANDBOX_ISOLATION=process` after `make worker` to run them in `codemode-worker`.
 
 ## Documentation
 
@@ -78,8 +84,8 @@ make docs-build  # build the static site
 | `llm/` | The `Client` interface; providers in `claude/` and `openai/` |
 | `sandbox/` | The `Runner` interface; engines in `goja/`, `starlark/`, `lua/` |
 | `agent/` | Search → prompt → model → sandbox, with a repair loop |
-| `examples/todo/` | The smallest end-to-end example |
-| `examples/taskreport/` | A complete app: SQLite tasks, 18 capabilities, reporting |
+| `examples/todo/` | The smallest end-to-end example, also served over MCP |
+| `examples/taskreport/` | A complete app: SQLite tasks, 23 capabilities, roles, reporting |
 | `docs/` | The published documentation site |
 | `notes/` | Internal writing: PRDs, milestones, decisions. Never published. |
 
