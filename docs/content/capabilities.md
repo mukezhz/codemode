@@ -38,8 +38,8 @@ service AdminService {
 }
 ```
 
-A method's `(codemode.roles)` replaces its service's default rather than adding
-to it. No annotation means no restriction. `Registry.For(capability.Caller{Roles: ..., Permissions: ...})`
+A method that declares `(codemode.roles)` or `(codemode.permissions)` uses only
+its own declaration, replacing both service defaults rather than adding to them. No annotation means no restriction. `Registry.For(capability.Caller{Roles: ..., Permissions: ...})`
 then narrows a registry per caller, and `Registry.Unrestricted()` returns what
 nobody restricted — worth asserting in a test, since that is where a forgotten
 annotation shows up. See [Many services, many users](/scaling-up).

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -148,6 +149,73 @@ func TestMalformedPermissionFailsAtLoad(t *testing.T) {
 		// "Deals Write" splits into two names, and "Deals" alone is not resource.action.
 		if err == nil {
 			t.Fatalf("%q loaded; want an error naming the pattern", permission)
+		}
+	}
+}
+
+// A method restricted by roles alone must not inherit the service's default
+// permissions: that would reopen it to everyone holding them.
+func TestMethodAnnotationsReplaceBothServiceDefaults(t *testing.T) {
+	str := descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()
+	option := func(message proto.Message, number protowire.Number, value string) {
+		message.ProtoReflect().SetUnknown(append(message.ProtoReflect().GetUnknown(),
+			protowire.AppendString(protowire.AppendTag(nil, number, protowire.BytesType), value)...))
+	}
+	serviceOptions := &descriptorpb.ServiceOptions{}
+	option(serviceOptions, 50000, "deals")
+	option(serviceOptions, 50001, "member")     // default_roles
+	option(serviceOptions, 50002, "deals.read") // default_permissions
+	inherit := &descriptorpb.MethodOptions{}
+	option(inherit, 50000, "Lists deals.")
+	rolesOnly := &descriptorpb.MethodOptions{}
+	option(rolesOnly, 50000, "Deletes every deal.")
+	option(rolesOnly, 50001, "admin")
+	permissionsOnly := &descriptorpb.MethodOptions{}
+	option(permissionsOnly, 50000, "Moves a deal.")
+	option(permissionsOnly, 50002, "deals.write")
+
+	files := &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{{
+		Name: proto.String("codemode.proto"), Package: proto.String("codemode"),
+		Extension: []*descriptorpb.FieldDescriptorProto{
+			{Name: proto.String("namespace"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: str},
+			{Name: proto.String("default_roles"), Number: proto.Int32(50001), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: str},
+			{Name: proto.String("default_permissions"), Number: proto.Int32(50002), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: str},
+			{Name: proto.String("description"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: str},
+			{Name: proto.String("roles"), Number: proto.Int32(50001), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: str},
+			{Name: proto.String("permissions"), Number: proto.Int32(50002), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: str},
+		},
+	}, {
+		Package:     proto.String("deal.v1"),
+		MessageType: []*descriptorpb.DescriptorProto{{Name: proto.String("Empty")}},
+		Service: []*descriptorpb.ServiceDescriptorProto{{Name: proto.String("DealService"), Options: serviceOptions,
+			Method: []*descriptorpb.MethodDescriptorProto{
+				{Name: proto.String("List"), InputType: proto.String(".deal.v1.Empty"), OutputType: proto.String(".deal.v1.Empty"), Options: inherit},
+				{Name: proto.String("PurgeAll"), InputType: proto.String(".deal.v1.Empty"), OutputType: proto.String(".deal.v1.Empty"), Options: rolesOnly},
+				{Name: proto.String("Move"), InputType: proto.String(".deal.v1.Empty"), OutputType: proto.String(".deal.v1.Empty"), Options: permissionsOnly},
+			}}},
+	}}}
+
+	built, err := generateRegistry(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, roles, permissions string
+	}{
+		{"deals.list", "member", "deals.read"}, // declares nothing: inherits both defaults
+		{"deals.purgeAll", "admin", ""},        // roles only: no inherited permission
+		{"deals.move", "", "deals.write"},      // permissions only: no inherited role
+	} {
+		for _, item := range built.Capabilities {
+			if item.Name != test.name {
+				continue
+			}
+			if got := strings.Join(item.Roles, " "); got != test.roles {
+				t.Errorf("%s roles = %q, want %q", test.name, got, test.roles)
+			}
+			if got := strings.Join(item.Permissions, " "); got != test.permissions {
+				t.Errorf("%s permissions = %q, want %q", test.name, got, test.permissions)
+			}
 		}
 	}
 }

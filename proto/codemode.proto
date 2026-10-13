@@ -24,7 +24,8 @@ extend google.protobuf.ServiceOptions {
   // service's methods, separated by spaces, such as "deals.read". Use them when
   // your application's roles are data an administrator edits at runtime: the
   // proto names what an RPC needs, and your application decides which roles
-  // grant it. A method's own (permissions) replaces this.
+  // grant it. A method that declares roles or permissions of its own replaces
+  // this and default_roles.
   string default_permissions = 50002;
 }
 
@@ -34,8 +35,8 @@ extend google.protobuf.MethodOptions {
   string description = 50000;
 
   // roles are the caller roles allowed to use this method, separated by
-  // spaces. It replaces the service's (default_roles) rather than adding to
-  // them, so a method can narrow a permissive service or open one method of a
+  // spaces. Declaring roles or permissions on a method replaces both of the
+  // service's defaults rather than adding to them, so a method can narrow a permissive service or open one method of a
   // restricted one — deliberately, and visibly, in the contract.
   //
   // Declaring the policy beside the RPC rather than in a list somewhere in the
@@ -50,7 +51,8 @@ extend google.protobuf.MethodOptions {
   // matching a caller's grants, resource.write also satisfies resource.read,
   // and resource.manage satisfies every action on that resource and its
   // sub-resources (deals.manage grants deals.discounts.write). A caller holding any listed
-  // role or any listed permission may call the method. It replaces the
-  // service's (default_permissions), as roles replace default_roles.
+  // role or any listed permission may call the method. Declaring either on a
+  // method replaces both service defaults, so a method restricted with roles
+  // alone does not inherit default_permissions.
   string permissions = 50002;
 }

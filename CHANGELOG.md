@@ -9,6 +9,7 @@ version is 0, a minor bump may break the API.
 - `(codemode.permissions)` and `(codemode.default_permissions)` beside roles, for
   applications whose roles are defined at runtime: the proto names the
   permission an RPC needs, the application decides which roles grant it.
+  A method that declares roles or permissions replaces both service defaults.
 - `capability.Registry.For(capability.Caller{Roles, Permissions})`: the
   capabilities a caller may call when they hold any listed role or permission,
   plus every unrestricted one. Build the caller per request from your app.

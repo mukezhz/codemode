@@ -81,18 +81,20 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
 				}
-				// Method roles replace service roles rather than adding to them.
-				roles := defaultRoles
-				if methodRoles, err := optionalRoles(method.GetOptions(), methodRolesOption); err != nil {
+				// A method that declares roles or permissions replaces both service
+				// defaults. Replacing them separately would let an inherited default
+				// permission reopen a method the author restricted with roles alone.
+				methodRoles, err := optionalRoles(method.GetOptions(), methodRolesOption)
+				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
-				} else if methodRoles != nil {
-					roles = methodRoles
 				}
-				permissions := defaultPermissions
-				if methodPermissions, err := optionalRoles(method.GetOptions(), methodPermissionsOption); err != nil {
+				methodPermissions, err := optionalRoles(method.GetOptions(), methodPermissionsOption)
+				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
-				} else if methodPermissions != nil {
-					permissions = methodPermissions
+				}
+				roles, permissions := defaultRoles, defaultPermissions
+				if methodRoles != nil || methodPermissions != nil {
+					roles, permissions = methodRoles, methodPermissions
 				}
 				for _, permission := range permissions {
 					if err := capability.ValidatePermission(permission); err != nil {

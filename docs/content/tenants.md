@@ -75,7 +75,8 @@ service BillingService {
 ```
 
 - Several roles on one RPC: separate them with spaces. Any one of them grants it.
-- A method's `roles` **replaces** the service's `default_roles`; it does not add.
+- A method that declares `roles` or `permissions` **replaces** both service
+  defaults; it does not add to them, and does not inherit the other one.
 - No annotation means every role. Pin that set in a test (below).
 
 ## Users with several roles

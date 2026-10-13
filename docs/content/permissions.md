@@ -160,9 +160,9 @@ service AdminService {
 }
 ```
 
-A method's `(codemode.roles)` **replaces** its service's default rather than
-adding to it, so one method of a restricted service can be opened deliberately
-and visibly.
+A method's `(codemode.roles)` or `(codemode.permissions)` **replaces** both of its
+service's defaults rather than adding to them, so one method of a restricted
+service can be opened or locked down deliberately and visibly.
 
 ::: tip Why not a list of names in Go
 A list of privileged capability names in your host is fail-open. Add a
@@ -221,10 +221,25 @@ service BillingService {
 | `"billing admin"` | `""` | billing or admin: an empty string counts as not set |
 | either | `" "` (whitespace only) | **build error**: `roles option is blank; remove it to place no restriction` |
 
-Three rules follow from the table:
+With permissions too, one rule decides: **a method that declares `roles` or
+`permissions` uses only its own declaration; a method that declares neither
+inherits both service defaults.**
 
-- **A method's `roles` replaces the service default; it never adds to it.** To
-  widen, repeat the default's roles and add the new one, as `Summary` does. To
+| Service defaults | Method declares | Who may call the method |
+| --- | --- | --- |
+| `default_roles = "member"`, `default_permissions = "deals.read"` | nothing | members, or holders of `deals.read` |
+| same | `roles = "admin"` | admin only: `deals.read` is **not** inherited |
+| same | `permissions = "deals.write"` | holders of `deals.write` (or `deals.manage`) only |
+| same | both | the method's roles or the method's permissions |
+
+The second row is the one that matters. If defaults were replaced one at a time,
+a method locked to `admin` would still be open to everyone holding the service's
+default permission, and nobody reading the method would see it.
+
+Rules that follow:
+
+- **A method's declaration replaces the service defaults; it never adds to them.**
+  To widen, repeat the default's roles and add the new one, as `Summary` does. To
   narrow, list fewer.
 - **A method in a restricted service cannot be made public.** There is no value
   meaning "everyone". Put a public method in a service without

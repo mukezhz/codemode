@@ -93,7 +93,8 @@ var (
 	// service's methods, separated by spaces, such as "deals.read". Use them when
 	// your application's roles are data an administrator edits at runtime: the
 	// proto names what an RPC needs, and your application decides which roles
-	// grant it. A method's own (permissions) replaces this.
+	// grant it. A method that declares roles or permissions of its own replaces
+	// this and default_roles.
 	//
 	// optional string default_permissions = 50002;
 	E_DefaultPermissions = &file_codemode_proto_extTypes[2]
@@ -107,8 +108,8 @@ var (
 	// optional string description = 50000;
 	E_Description = &file_codemode_proto_extTypes[3]
 	// roles are the caller roles allowed to use this method, separated by
-	// spaces. It replaces the service's (default_roles) rather than adding to
-	// them, so a method can narrow a permissive service or open one method of a
+	// spaces. Declaring roles or permissions on a method replaces both of the
+	// service's defaults rather than adding to them, so a method can narrow a permissive service or open one method of a
 	// restricted one — deliberately, and visibly, in the contract.
 	//
 	// Declaring the policy beside the RPC rather than in a list somewhere in the
@@ -118,13 +119,15 @@ var (
 	// optional string roles = 50001;
 	E_Roles = &file_codemode_proto_extTypes[4]
 	// permissions are the permissions that allow a caller to use this method,
-	// separated by spaces, such as "deals.write". Each must look like
-	// resource.action: lowercase letters, digits and underscores, separated by
-	// dots. A malformed name fails registry loading. When matching a caller's
-	// grants, resource.write also satisfies resource.read, and resource.manage
-	// satisfies every action on that resource. A caller holding any listed
-	// role or any listed permission may call the method. It replaces the
-	// service's (default_permissions), as roles replace default_roles.
+	// separated by spaces, such as "deals.write". Each is resource.action: the
+	// resource is lowercase segments separated by dots, the action is read,
+	// write, delete or manage. Anything else fails registry loading. When
+	// matching a caller's grants, resource.write also satisfies resource.read,
+	// and resource.manage satisfies every action on that resource and its
+	// sub-resources (deals.manage grants deals.discounts.write). A caller holding any listed
+	// role or any listed permission may call the method. Declaring either on a
+	// method replaces both service defaults, so a method restricted with roles
+	// alone does not inherit default_permissions.
 	//
 	// optional string permissions = 50002;
 	E_Permissions = &file_codemode_proto_extTypes[5]
