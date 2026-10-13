@@ -6,6 +6,8 @@ version is 0, a minor bump may break the API.
 ## [Unreleased]
 
 ### Added
+- `capability.Keyword`: keyword search over a registry with no database, so a
+  first integration needs no search code of its own.
 - `SANDBOX_ISOLATION=process` (`sandbox.Options.Isolation`) and the
   `codemode-worker` binary: programs run in a child process with a heap cap, an
   empty environment and, on Linux, rlimits and namespaces.

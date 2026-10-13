@@ -12,7 +12,6 @@ It runs with no API key, no database and no Docker. Start here; move to
 proto/todo.proto      the contract: three RPCs and their descriptions
 gen/                  generated Go, committed so `go run` needs no buf
 app/                  ExecuteFunc: RPC path → in-memory todo list
-search/               keyword ranking over the registry
 main.go               the command-line demo
 cmd/todo-mcp/         the same app as an MCP server for Claude Code, Cursor, ...
 ```

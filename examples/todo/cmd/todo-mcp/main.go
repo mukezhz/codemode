@@ -9,10 +9,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/examples/todo/app"
 	todov1 "github.com/mukezhz/codemode/examples/todo/gen/todo/v1"
-	demosearch "github.com/mukezhz/codemode/examples/todo/search"
 	"github.com/mukezhz/codemode/mcpserver"
 	coderegistry "github.com/mukezhz/codemode/registry"
 	"github.com/mukezhz/codemode/sandbox"
@@ -35,7 +35,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mode, err := codemode.New(registry, demosearch.New(registry), app.New().Execute)
+	mode, err := codemode.New(registry, capability.Keyword(registry), app.New().Execute)
 	if err != nil {
 		return err
 	}

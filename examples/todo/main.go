@@ -15,7 +15,6 @@ import (
 
 	"github.com/mukezhz/codemode/examples/todo/app"
 	todov1 "github.com/mukezhz/codemode/examples/todo/gen/todo/v1"
-	demosearch "github.com/mukezhz/codemode/examples/todo/search"
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
 
@@ -106,7 +105,7 @@ func newSearch(ctx context.Context, registry capability.Registry) (codemode.Sear
 	store, err := capability.OpenStoreFromEnv(ctx)
 	if errors.Is(err, capability.ErrNoStore) {
 		fmt.Println("search\n  keyword ranker (set CAPABILITY_DB_DSN for semantic search)")
-		return demosearch.New(registry), func() {}, nil
+		return capability.Keyword(registry), func() {}, nil
 	}
 	if err != nil {
 		return nil, nil, err
