@@ -27,6 +27,7 @@ import (
 	_ "github.com/mukezhz/codemode/sandbox/goja"
 	_ "github.com/mukezhz/codemode/sandbox/lua"
 	_ "github.com/mukezhz/codemode/sandbox/starlark"
+	_ "github.com/mukezhz/codemode/sandbox/subprocess"
 )
 
 func main() {

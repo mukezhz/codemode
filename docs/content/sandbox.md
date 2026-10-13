@@ -122,18 +122,50 @@ goja / JavaScript (in-process, 30s timeout, 50 call budget)
 
 ## The isolation ladder
 
-::: danger None of these is a security boundary
-All three engines run in-process, in your address space. They deny ambient
+::: danger The in-process engines are not a security boundary
+goja, starlark and lua run in your address space. They deny ambient
 capabilities and bound time and calls, which is right for code your own host asked
-a model to write. They are **not** a defence against a determined attacker.
+a model to write. They are **not** a defence against a determined attacker, and a
+program that allocates without limit can exhaust the host's memory.
 :::
 
 | Engine | Isolation | Cost |
 | --- | --- | --- |
 | goja / starlark / lua | Same process, same heap. Bounds and allowlist only | Zero, pure Go |
-| Subprocess + JSON lines over stdio | OS process; seccomp and rlimits available | ~60 lines, needs a runtime |
+| `subprocess-goja` / `-starlark` / `-lua` | Child process: own heap, empty environment, heap cap; on Linux no network and a private mount namespace | A process spawn per run, a `codemode-worker` binary |
 | wasm | Memory-isolated, deterministic | Heavier toolchain |
 | Container | Real | Infrastructure |
+
+### Subprocess engines
+
+Each run starts `codemode-worker`, which runs the same interpreter in a child
+process and sends every `codemode.execute` back to the host as a JSON line. The
+registry check, roles, call budget, response limit and timeout all stay in the
+host, so a program that escapes its interpreter still has nothing to call but
+the bridge.
+
+```sh
+go install github.com/mukezhz/codemode/cmd/codemode-worker@latest
+SANDBOX_ENGINE=subprocess-goja
+SANDBOX_WORKER=codemode-worker      # argv; defaults to codemode-worker on PATH
+SANDBOX_MAX_HEAP_BYTES=268435456    # worker exits when its heap passes this
+```
+
+```go
+import (
+    _ "github.com/mukezhz/codemode/sandbox/goja"       // for the prompt
+    _ "github.com/mukezhz/codemode/sandbox/subprocess" // for the process
+)
+```
+
+Programs and prompts are unchanged; only results differ in one way: they cross
+JSON, so numbers come back as `float64`.
+
+On Linux the worker also runs in new user, network and mount namespaces, and
+under `RLIMIT_AS`, `RLIMIT_CPU` and `RLIMIT_NOFILE`. Where unprivileged user
+namespaces are disabled, the runner falls back to a plain child process. Against
+a hostile tenant, run the worker in a container (the next rung) by setting
+`SANDBOX_WORKER` to a `docker run -i ...` argv; the protocol is the same.
 
 The bridge shape is identical in all four — `(name, input) → output`. Only the
 transport changes, so moving up the ladder is a new file implementing `Runner`,

@@ -12,6 +12,8 @@ const (
 	EnvEngine   = "SANDBOX_ENGINE"
 	EnvTimeout  = "SANDBOX_TIMEOUT"
 	EnvMaxCalls = "SANDBOX_MAX_CALLS"
+	EnvWorker   = "SANDBOX_WORKER"
+	EnvMaxHeap  = "SANDBOX_MAX_HEAP_BYTES"
 )
 
 func OptionsFromEnv(options Options) (Options, error) {
@@ -34,6 +36,18 @@ func OptionsFromEnv(options Options) (Options, error) {
 				return options, fmt.Errorf("%s: %w", EnvMaxCalls, err)
 			}
 			options.MaxCalls = maxCalls
+		}
+	}
+	if len(options.Worker) == 0 {
+		options.Worker = strings.Fields(os.Getenv(EnvWorker))
+	}
+	if options.MaxHeapBytes == 0 {
+		if value := strings.TrimSpace(os.Getenv(EnvMaxHeap)); value != "" {
+			maxHeap, err := strconv.Atoi(value)
+			if err != nil {
+				return options, fmt.Errorf("%s: %w", EnvMaxHeap, err)
+			}
+			options.MaxHeapBytes = maxHeap
 		}
 	}
 	return options, nil

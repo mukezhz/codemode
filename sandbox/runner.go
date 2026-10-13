@@ -30,14 +30,19 @@ type Options struct {
 
 	Timeout  time.Duration
 	MaxCalls int
-	// ponytail: bounds input, not interpreter heap; a hard memory cap needs process isolation.
+	// ponytail: bounds input, not interpreter heap; MaxHeapBytes is the hard cap, subprocess engines only.
 	MaxResponseBytes int
+
+	// Worker is the argv that starts codemode-worker; subprocess engines only.
+	Worker       []string
+	MaxHeapBytes int
 }
 
 const (
 	DefaultMaxCalls         = 50
 	DefaultTimeout          = 30 * time.Second
 	DefaultMaxResponseBytes = 1 << 20
+	DefaultMaxHeapBytes     = 256 << 20
 )
 
 func (options Options) Checked() (Options, error) {
@@ -50,6 +55,9 @@ func (options Options) Checked() (Options, error) {
 	if options.MaxResponseBytes < 0 {
 		return options, errors.New("max response bytes must not be negative")
 	}
+	if options.MaxHeapBytes < 0 {
+		return options, errors.New("max heap bytes must not be negative")
+	}
 	if options.Timeout == 0 {
 		options.Timeout = DefaultTimeout
 	}
@@ -58,6 +66,9 @@ func (options Options) Checked() (Options, error) {
 	}
 	if options.MaxResponseBytes == 0 {
 		options.MaxResponseBytes = DefaultMaxResponseBytes
+	}
+	if options.MaxHeapBytes == 0 {
+		options.MaxHeapBytes = DefaultMaxHeapBytes
 	}
 	return options, nil
 }
