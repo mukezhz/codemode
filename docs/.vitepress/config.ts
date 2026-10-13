@@ -23,9 +23,9 @@ export default withMermaid(
       nav: [
         {
           text: "Guide",
-          link: "/overview",
+          link: "/quickstart",
           activeMatch:
-            "^/(overview|flow|using-it|dependencies|permissions|writes|caching|scaling-up)",
+            "^/(quickstart|overview|architecture|flow|using-it|environments|dependencies|permissions|tenants|writes|caching|scaling-up|mcp|capabilities|search|models|sandbox|worker)",
         },
         {
           text: "Reference",
@@ -39,12 +39,14 @@ export default withMermaid(
           text: "Understanding it",
           items: [
             { text: "What code mode is", link: "/overview" },
+            { text: "Architecture", link: "/architecture" },
             { text: "The flow, step by step", link: "/flow" },
           ],
         },
         {
           text: "Using it",
           items: [
+            { text: "Quickstart", link: "/quickstart" },
             { text: "Add it to your application", link: "/using-it" },
             { text: "Development and production", link: "/environments" },
             { text: "What your binary links", link: "/dependencies" },

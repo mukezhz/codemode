@@ -1,6 +1,8 @@
 # Add it to your application
 
-This page goes from an empty `main.go` to a working request. Every Go snippet
+This page goes from an empty `main.go` to a working request, explaining each
+choice along the way. For the shortest path, follow the [Quickstart](/quickstart)
+first; for how the pieces fit, see [Architecture](/architecture). Every Go snippet
 here compiles against the module as it stands.
 
 ## Install
@@ -229,25 +231,14 @@ arrived over HTTP. A program written by a model is untrusted input.
 Search decides what the model is told exists. It never decides what may run —
 see [the two lists](/flow#_4-the-model-writes-a-program).
 
-**Start with keywords.** No database, no embedding calls, and honest about being
-a placeholder:
+**Start with keywords.** No database, no embedding calls, one line:
 
 ```go
-func keywordSearch(capabilities capability.Registry) codemode.SearchFunc {
-	return func(ctx context.Context, query string, limit int) ([]capability.Match, error) {
-		matches := []capability.Match{}
-		for _, item := range capabilities.Capabilities {
-			if strings.Contains(strings.ToLower(item.Description), strings.ToLower(query)) {
-				matches = append(matches, capability.Match{Capability: item})
-			}
-			if len(matches) == limit {
-				break
-			}
-		}
-		return matches, nil
-	}
-}
+search := capability.Keyword(capabilities)
 ```
+
+It ranks capabilities by how many words of the request appear in their name and
+description. Pass the same narrowed registry you give `codemode.New`.
 
 **Move to semantic search when the registry outgrows the prompt.** Below roughly
 twenty capabilities you can describe all of them every time and skip search
@@ -403,7 +394,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
+	"os"
 
 	"github.com/mukezhz/codemode/agent"
 	"github.com/mukezhz/codemode/capability"
@@ -411,6 +402,7 @@ import (
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/llm/claude"
 	"github.com/mukezhz/codemode/registry"
+	"github.com/mukezhz/codemode/sandbox"
 	"github.com/mukezhz/codemode/sandbox/goja"
 
 	todov1 "myapp/gen/todo/v1"
@@ -427,7 +419,7 @@ func main() {
 	}
 
 	// 2. Search: what the model gets told about.
-	search := keywordSearch(capabilities)
+	search := capability.Keyword(capabilities)
 
 	// 3. The runtime: name -> RPC, then your transport.
 	mode, err := codemode.New(capabilities, search, execute)
@@ -438,7 +430,7 @@ func main() {
 	// 4. Model and sandbox, configured by your application. Nothing here
 	// reads the environment.
 	model, err := claude.New(claude.Options{
-		Options: llm.Options{APIKey: config.AnthropicKey},
+		Options: llm.Options{APIKey: os.Getenv("ANTHROPIC_API_KEY")}, // or your own config
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -463,21 +455,6 @@ func execute(ctx context.Context, rpc string, input json.RawMessage) (json.RawMe
 		return json.Marshal(map[string]any{"todos": []any{}})
 	default:
 		return nil, fmt.Errorf("RPC %q is not implemented", rpc)
-	}
-}
-
-func keywordSearch(capabilities capability.Registry) codemode.SearchFunc {
-	return func(ctx context.Context, query string, limit int) ([]capability.Match, error) {
-		matches := []capability.Match{}
-		for _, item := range capabilities.Capabilities {
-			if strings.Contains(strings.ToLower(item.Description), strings.ToLower(query)) {
-				matches = append(matches, capability.Match{Capability: item})
-			}
-			if len(matches) == limit {
-				break
-			}
-		}
-		return matches, nil
 	}
 }
 ```

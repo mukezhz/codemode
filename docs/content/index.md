@@ -9,14 +9,14 @@ hero:
     Fifty tasks become one model turn, and a registry decides what may actually run.
   actions:
     - theme: brand
+      text: Quickstart
+      link: /quickstart
+    - theme: alt
       text: What code mode is
       link: /overview
     - theme: alt
-      text: Add it to your application
-      link: /using-it
-    - theme: alt
-      text: The flow, step by step
-      link: /flow
+      text: Architecture
+      link: /architecture
 
 features:
   - title: One turn, not fifty
@@ -39,11 +39,11 @@ features:
       Annotate a protobuf service with a namespace and a description per method.
       The registry, the schemas, and the model-facing declarations all fall out of
       make generate.
-  - title: Three sandbox dialects
+  - title: In-process to container, one setting
     details: >
-      JavaScript, Starlark, or Lua — all pure Go, all with the same single binding.
-      The engine writes its own prompt, so switching it switches the language the
-      model is asked for and nothing else.
+      JavaScript, Starlark, or Lua, run in your process while you develop and in a
+      separate worker or a container per run in production. SANDBOX_ISOLATION
+      changes where; the program and the prompt stay the same.
   - title: Swap the pieces, not the code
     details: >
       Search runs on sqlite-vector or pgvector. Models come from Claude, OpenAI, or
@@ -103,6 +103,6 @@ per-user scoping, and charts rendered from a prompt:
 go run ./examples/taskreport -serve :8080
 ```
 
-Start with [what code mode is](/overview), go straight to
-[the flow](/flow) if you would rather see the mechanism first, or skip to
-[adding it to your application](/using-it) if you already know what you want.
+Then build your own in fifteen minutes with the [Quickstart](/quickstart).
+Read [what code mode is](/overview) for the idea, [Architecture](/architecture)
+for how the pieces fit, or [the flow](/flow) for one request traced step by step.

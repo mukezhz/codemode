@@ -16,7 +16,7 @@ before letting anything run.
 
 ```mermaid
 flowchart LR
-  proto["proto/*.proto"] -->|make generate| registry["registry.json"]
+  proto["proto/*.proto"] -->|buf generate + registry.FromFiles| registry["registry"]
   registry --> search["search"]
   registry --> allow["allowlist"]
   search --> prompt["prompt"] --> model["model"] --> program["program"]
@@ -59,16 +59,17 @@ return "completed " + pending[0].title;
 Your application never changes. It validates its own input, enforces its own
 permissions, and owns what "complete" actually means.
 
-## Three swappable parts
+## Four swappable parts
 
 Each is an interface with more than one implementation, chosen by an environment
 variable. Nothing else in the system knows which is in play.
 
 | Piece | Interface | Options | Variable |
 | --- | --- | --- | --- |
-| Search | `capability.Store` | sqlite-vector, pgvector | `CAPABILITY_DB` |
+| Search | `capability.Store` | keywords (no store), sqlite-vector, pgvector | `CAPABILITY_DB` |
 | Model | `llm.Client` | Claude, OpenAI + compatible | `LLM_PROVIDER` |
-| Sandbox | `sandbox.Runner` | JavaScript, Starlark, Lua | `SANDBOX_ENGINE` |
+| Sandbox language | `sandbox.Runner` | JavaScript, Starlark, Lua | `SANDBOX_ENGINE` |
+| Where programs run | `sandbox.Runner` | in-process, `codemode-worker`, a container | `SANDBOX_ISOLATION` |
 
 The sandbox engine also writes its own prompt, so choosing one chooses the
 language the model is asked to write in — and nothing upstream notices.
@@ -95,15 +96,17 @@ go run ./examples/taskreport -serve :8080
 
 ## Where to go next
 
-- [Add it to your application](/using-it) — empty `main.go` to a working request.
+- [Quickstart](/quickstart) — an empty directory to a model answering, in eight steps.
+- [Architecture](/architecture) — packages, ports, the request lifecycle, trust boundaries.
+- [Add it to your application](/using-it) — every integration choice, explained.
 - [Permissions](/permissions) — roles in the contract, rows in your code.
 - [The flow, step by step](/flow) — one request from plain English to a real RPC.
 - [Capabilities](/capabilities) — writing contracts and generating the registry.
 - [Configuration](/configuration) — every environment variable in one table.
 
-::: warning The sandbox is not a security boundary
-All three engines run in-process. They deny ambient capabilities and bound time
-and call count, which is right for code your own host asked a model to write.
-Before running programs authored for untrusted end users, implement `Runner` over
-a separate process or a container. See [Sandbox](/sandbox#the-isolation-ladder).
+::: tip Development and production run the same code
+Programs run in your process by default, which is what you want while building.
+For users you do not control, set `SANDBOX_ISOLATION=process` and every program
+runs in a separate `codemode-worker`, or a container per run for many tenants.
+See [Development and production](/environments).
 :::

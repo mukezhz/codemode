@@ -57,14 +57,16 @@ limits, audit log). Both run programs in-process by default; add
 
 Full docs are a VitePress site under [`docs/`](docs/content):
 
-- [What code mode is](docs/content/overview.md)
-- [**Add it to your application**](docs/content/using-it.md) — empty `main.go` to a working request
+- [**Quickstart**](docs/content/quickstart.md) — an empty directory to a model answering, in eight steps
+- [What code mode is](docs/content/overview.md) · [**Architecture**](docs/content/architecture.md) — packages, ports, request lifecycle, trust boundaries
+- [Add it to your application](docs/content/using-it.md) — every integration choice, explained
+- [Development and production](docs/content/environments.md) · [Running the worker](docs/content/worker.md) — same binary, different isolation
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
-- [Permissions](docs/content/permissions.md) — roles in the contract, rows in your code
+- [Permissions](docs/content/permissions.md) · [Roles and tenants](docs/content/tenants.md) — roles in the contract, rows in your code
 - [Caching programs](docs/content/caching.md) — answer repeats in milliseconds, and plug in your own store
 - [Many services, many users](docs/content/scaling-up.md) — composing proto files, and per-user scoping
 - [The flow, step by step](docs/content/flow.md) — one request end to end
-- [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
+- [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md) · [MCP](docs/content/mcp.md)
 - [Configuration](docs/content/configuration.md) · [Latency](docs/content/latency.md) · [Troubleshooting](docs/content/troubleshooting.md)
 
 ```sh

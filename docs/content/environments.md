@@ -101,7 +101,7 @@ func main() {
 func keywordOrIndex(ctx context.Context, full capability.Registry) codemode.SearchFunc {
 	store, err := capability.OpenStoreFromEnv(ctx)
 	if errors.Is(err, capability.ErrNoStore) {
-		return keywordSearch(full)
+		return capability.Keyword(full)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -110,7 +110,7 @@ func keywordOrIndex(ctx context.Context, full capability.Registry) codemode.Sear
 }
 ```
 
-`identify`, `executeFor`, `keywordSearch` and `semanticSearch` are yours:
+`identify`, `executeFor` and `semanticSearch` are yours:
 [Add it to your application](/using-it) covers `ExecuteFunc` and both kinds of
 search. The point here is that nothing in this file says "development" or
 "production".
