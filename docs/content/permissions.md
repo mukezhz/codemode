@@ -128,25 +128,16 @@ Three rules follow from the table:
 
 ### What a caller with several roles gets
 
-`ForRole` takes one role. For a user who holds several, keep every capability
-any of their roles allows:
+Pass every role the caller holds, fetched from your app per request:
 
 ```go
-allowed := full.Select(func(item capability.Capability) bool {
-	for _, role := range identity.Roles {
-		if item.AllowsRole(role) {
-			return true
-		}
-	}
-	return false
-})
+allowed := full.ForRoles(identity.Roles...)
 ```
 
 With the service above, a user with `["billing", "viewer"]` gets `billing.invoices`
-and `billing.summary`, but not `billing.refund`. Do not `capability.Merge` several
-`ForRole` results: the unrestricted capabilities appear in each and `Merge`
-rejects duplicates. [Roles and tenants](/tenants) builds the full request path
-around this.
+and `billing.summary`, but not `billing.refund`. A user with no roles keeps the
+unrestricted capabilities. [Roles and tenants](/tenants) builds the full request
+path around this.
 
 Roles that admins create at runtime cannot be named in a proto. Name the
 *permission* each RPC needs instead, and map roles to permissions in your

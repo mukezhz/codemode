@@ -87,9 +87,10 @@ Leave out anything you would not let a junior employee do on the user's behalf
 without asking: bulk deletes, exports, permission changes. A capability that does
 not exist cannot be talked into.
 
-If your CRM lets admins create roles at runtime, annotate RPCs with
-**permissions** (`deals.write`) rather than role names, and resolve each user's
-roles to permissions from your database per request. See
+Fixed roles (`admin`, `manager`) can go straight into the proto. If your CRM
+also lets admins create roles at runtime, annotate those RPCs with
+**permissions** (`deals.write`) instead, fetch each user's permissions from the
+CRM per request, and pass both lists to `full.ForRoles(...)`. See
 [Dynamic roles](/tenants#dynamic-roles-name-permissions-in-the-proto-not-roles).
 
 ### Step 2: write the contract
@@ -448,16 +449,10 @@ func (assistant *Assistant) Apply(ctx context.Context, planned []codemode.Call) 
 	return agent.Apply(ctx, mode, planned)
 }
 
-// modeFor narrows the registry to what this user's roles allow. reports.* need manager or admin.
+// modeFor narrows the registry to what this user's roles allow; the roles come
+// from the CRM's own session, fetched per request. reports.* need manager or admin.
 func (assistant *Assistant) modeFor(session auth.Session) (codemode.CodeMode, error) {
-	allowed := assistant.full.Select(func(item capability.Capability) bool {
-		for _, role := range append([]string{"rep"}, session.Roles...) {
-			if item.AllowsRole(role) {
-				return true
-			}
-		}
-		return false
-	})
+	allowed := assistant.full.ForRoles(session.Roles...)
 	return codemode.New(allowed, capability.Keyword(allowed), assistant.execute)
 }
 
@@ -739,6 +734,32 @@ func Execute(base string, client *http.Client) codemode.ExecuteFunc {
 		return registry.MarshalJSON(message)
 	}
 }
+
+// Permissions asks the CRM what the signed-in user may do, with the user's own
+// token, so codemode always follows the CRM's current role settings.
+func Permissions(ctx context.Context, base string, client *http.Client) ([]string, error) {
+	token, _ := ctx.Value(tokenKey{}).(string)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/me/permissions", nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("permissions: %s", response.Status) // fail closed
+	}
+	var body struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<16)).Decode(&body); err != nil {
+		return nil, err
+	}
+	return body.Permissions, nil
+}
 ```
 
 - **One line per capability** in `routes`. Adding a capability is a proto change
@@ -750,6 +771,10 @@ func Execute(base string, client *http.Client) codemode.ExecuteFunc {
   never reaches the program), and `registry.MarshalJSON` emits the declared shape.
 - `403` and `404` become permanent "not found", so a program cannot tell
   "forbidden" from "missing".
+- **Roles come from the CRM on every request.** `Permissions` asks the CRM what
+  this user may do, with their token, and the result goes straight into
+  `full.ForRoles(permissions...)`. An admin's change to a role applies on the
+  user's next question.
 
 The sidecar's own HTTP handler is the same `ask`/`apply` pair as in step 5,
 reading the user's token from the incoming request instead of a Go session.

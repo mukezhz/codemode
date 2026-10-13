@@ -80,28 +80,17 @@ service BillingService {
 
 ## Users with several roles
 
-`ForRole` takes one role. For a user with several, keep every capability any of
-their roles allows:
+Pass everything the caller holds to `ForRoles`, fetched per request from your
+app's session or database:
 
 ```go
-func forRoles(full capability.Registry, roles []string) capability.Registry {
-	return full.Select(func(item capability.Capability) bool {
-		for _, role := range roles {
-			if item.AllowsRole(role) {
-				return true
-			}
-		}
-		return false
-	})
-}
+allowed := full.ForRoles(identity.Roles...)
 ```
 
 A user with `["member", "billing"]` gets the unrestricted capabilities, plus
-`billing.invoices`, but not `tasks.assign` or `billing.refund`. An unknown role
-adds nothing, so a typo loses access rather than gaining it.
-
-Do not `capability.Merge` the results of several `ForRole` calls: the
-unrestricted capabilities appear in each, and `Merge` rejects duplicates.
+`billing.invoices`, but not `tasks.assign` or `billing.refund`. A user with no
+roles still gets the unrestricted ones. Blank, unknown or wrongly cased names
+add nothing, so a typo loses access rather than gaining it.
 
 ## Tenants: scope every query in `ExecuteFunc`
 
@@ -214,25 +203,14 @@ Put `default_roles` on every service. A new RPC then requires the service's
 permission until someone decides otherwise, instead of arriving open to every
 role an admin ever created.
 
-**2. Per request, resolve the user's roles to permissions and filter by them.**
+**2. Per request, fetch the user's permissions from your app and pass them in.**
+Codemode does not store roles; it filters by whatever list you hand it, so it
+always follows your app's current settings.
 
 ```go
 // Grants is what the admin screen edits: role → permissions, per org.
 type Grants interface {
 	Permissions(ctx context.Context, org string, roles []string) ([]string, error)
-}
-
-// Allowed keeps the capabilities whose required permission the caller holds.
-// Unknown or revoked permissions grant nothing.
-func Allowed(full capability.Registry, permissions []string) capability.Registry {
-	return full.Select(func(item capability.Capability) bool {
-		for _, permission := range permissions {
-			if item.AllowsRole(permission) {
-				return true
-			}
-		}
-		return false
-	})
 }
 ```
 
@@ -241,9 +219,21 @@ permissions, err := grants.Permissions(ctx, session.Org, session.Roles)
 if err != nil {
 	return err // fail closed: no permissions, no assistant
 }
-allowed := Allowed(full, permissions)
+allowed := full.ForRoles(permissions...)
 mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
 ```
+
+If your app is not written in Go, the codemode service asks it over HTTP, with
+the user's own token, on every request:
+
+```go
+permissions, err := sidecar.Permissions(ctx, crmURL, client) // GET /api/me/permissions as the user
+allowed := full.ForRoles(permissions...)
+```
+
+That function is in [A CRM not written in Go](/existing-app#a-crm-not-written-in-go).
+Either way, an admin's edit applies on the user's next request, with nothing to
+restart; a test in that example changes a role between two requests and checks it.
 
 With these roles in the database:
 
@@ -257,6 +247,14 @@ With these roles in the database:
 That table is a passing test against the proto above. Write the same test for
 your own permissions: it is what catches a permission typo, which would
 otherwise fail closed silently.
+
+**Fixed and dynamic together.** One proto can mix both: `(codemode.roles) =
+"admin deals.write"` admits the fixed `admin` role and anyone whose runtime role
+grants `deals.write`. Pass both lists:
+
+```go
+allowed := full.ForRoles(append(session.Roles, permissions...)...)
+```
 
 **3. Enforce limits in `ExecuteFunc`.** The registry answers *may this caller
 call `deals.discount` at all*. "Up to 15%" or "only deals under $50,000" is a
@@ -399,7 +397,7 @@ func (server *Server) ask(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "permissions unavailable", http.StatusServiceUnavailable) // fail closed
 		return
 	}
-	allowed := Allowed(forTenant(server.full, tenant), permissions)
+	allowed := forTenant(server.full, tenant).ForRoles(permissions...)
 	mode, err := codemode.New(allowed, server.search, server.app.Execute)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -432,7 +430,7 @@ serves every tenant and still scopes each call.
 | Test | Catches |
 | --- | --- |
 | `full.Unrestricted().Names()` equals a pinned list | a new privileged RPC that forgot `(codemode.roles)` |
-| for each role, `forRoles(full, role).Names()` equals a pinned list | a role quietly gaining a capability |
+| for each role, `full.ForRoles(role).Names()` equals a pinned list | a role quietly gaining a capability |
 | a user of tenant A calls every read capability with ids from tenant B → "not found" | a query missing its tenant scope |
 | `Execute` with no identity on the context → error | a code path that defaults to "everyone" |
 | a program calls a capability its role lacks → `capability "x" is not registered` | the registry being built too wide |
