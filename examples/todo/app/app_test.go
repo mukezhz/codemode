@@ -26,3 +26,13 @@ func TestWorkflow(t *testing.T) {
 		t.Fatalf("todos = %#v", response.Todos)
 	}
 }
+
+func TestEmptyListIsAnArray(t *testing.T) {
+	output, err := New().Execute(context.Background(), listRPC, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != `{"todos":[]}` {
+		t.Fatalf("output = %s, want an empty array so .length works", output)
+	}
+}

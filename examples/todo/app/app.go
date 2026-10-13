@@ -76,7 +76,7 @@ func (app *App) Execute(ctx context.Context, rpc string, input json.RawMessage) 
 		if err := decode(input, &request); err != nil {
 			return nil, err
 		}
-		output = listResponse{Todos: append([]Todo(nil), app.todos...)}
+		output = listResponse{Todos: append([]Todo{}, app.todos...)}
 
 	case completeRPC:
 		var request completeRequest

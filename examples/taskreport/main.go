@@ -14,7 +14,6 @@ import (
 	"github.com/mukezhz/codemode/llm/openai"
 	coderegistry "github.com/mukezhz/codemode/registry"
 	"github.com/mukezhz/codemode/sandbox"
-	"github.com/mukezhz/codemode/sandbox/goja"
 
 	"github.com/mukezhz/codemode/capability"
 	taskv1 "github.com/mukezhz/codemode/examples/taskreport/gen/task/v1"
@@ -124,7 +123,8 @@ func run(ctx context.Context, config config) error {
 		return err
 	}
 
-	runner, err := goja.New(sandbox.Options{MaxCalls: 60, Timeout: 30 * time.Second})
+	// goja in-process by default; SANDBOX_ISOLATION=process runs it in codemode-worker.
+	runner, err := sandbox.NewFromEnv(sandbox.Options{MaxCalls: 60, Timeout: 30 * time.Second})
 	if err != nil {
 		return err
 	}

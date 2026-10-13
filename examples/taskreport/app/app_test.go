@@ -396,3 +396,14 @@ func TestSandboxCannotReachWithheldCapabilities(t *testing.T) {
 		t.Fatalf("a caught rejection yielded %#v", value)
 	}
 }
+
+func TestEmptyResultsAreArrays(t *testing.T) {
+	mode, _, ctx := member(t, "nobody")
+	value := run(t, ctx, mode, `
+		const { tasks } = codemode.execute("tasks.list", {});
+		const { projects } = codemode.execute("projects.list", {});
+		return tasks.length + projects.length;`)
+	if value != int64(0) {
+		t.Fatalf("value = %#v, want 0", value)
+	}
+}

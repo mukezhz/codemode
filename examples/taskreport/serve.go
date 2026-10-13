@@ -90,7 +90,11 @@ func serve(
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	fmt.Printf("serving\n  http://localhost%s\n", config.serve)
+	address := config.serve
+	if strings.HasPrefix(address, ":") {
+		address = "localhost" + address
+	}
+	fmt.Printf("serving\n  http://%s\n", address)
 	if model == nil {
 		fmt.Println("  the board works; /api/chat needs -api-key and -base-url")
 	}
