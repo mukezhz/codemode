@@ -33,8 +33,11 @@ version is 0, a minor bump may break the API.
   empty environment and, on Linux, rlimits and namespaces.
 - `sandbox.Options.Worker` and `MaxHeapBytes` (`SANDBOX_WORKER`,
   `SANDBOX_MAX_HEAP_BYTES`).
-- `mcpserver`: serves a `CodeMode` to MCP clients as `search_capabilities` and
-  `run_program`; `examples/todo/cmd/todo-mcp`.
+- `mcpserver`: serves codemode to MCP clients as `search_capabilities` and
+  `run_program`. `New` takes a `ModeFunc` that builds the caller's runtime on
+  every tool call, so one HTTP server can serve many users with their own,
+  current permissions; `Static(mode)` serves one stdio user.
+  `examples/todo/cmd/todo-mcp`.
 - `deploy/worker.Dockerfile`, `sandbox.Options.WorkerContainer`
   (`SANDBOX_WORKER_CONTAINER`) and `make test-container`: subprocess engines can
   run each worker in a locked-down container, optionally under gVisor.

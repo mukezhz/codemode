@@ -48,11 +48,29 @@ type RunOutput struct {
 	Calls []Call `json:"calls"`
 }
 
-// New serves mode through runner. The role is already applied: mode's registry is
-// the whole allowlist, and no tool argument can widen it.
-func New(mode codemode.CodeMode, runner sandbox.Runner, options Options) (*mcp.Server, error) {
-	if mode == nil || runner == nil {
-		return nil, errors.New("mcpserver: mode and runner are required")
+// ModeFunc returns the runtime for whoever made this tool call: build it from
+// the caller's roles and permissions, read from request.Extra (the HTTP header,
+// or the bearer token's TokenInfo). It runs on every call, so a role change
+// applies on the next one. Over stdio request.Extra is nil; use Static.
+type ModeFunc func(ctx context.Context, request *mcp.CallToolRequest) (codemode.CodeMode, error)
+
+// Static serves one fixed runtime to every call: a stdio server run by one user.
+func Static(mode codemode.CodeMode) ModeFunc {
+	return func(context.Context, *mcp.CallToolRequest) (codemode.CodeMode, error) { return mode, nil }
+}
+
+// New serves the runtime modeFor returns through runner. Each runtime's registry
+// is that caller's whole allowlist, and no tool argument can widen it.
+func New(modeFor ModeFunc, runner sandbox.Runner, options Options) (*mcp.Server, error) {
+	if modeFor == nil || runner == nil {
+		return nil, errors.New("mcpserver: modeFor and runner are required")
+	}
+	resolve := func(ctx context.Context, request *mcp.CallToolRequest) (codemode.CodeMode, error) {
+		mode, err := modeFor(ctx, request)
+		if err == nil && mode == nil {
+			err = errors.New("no runtime for this caller")
+		}
+		return mode, err
 	}
 	if options.Name == "" {
 		options.Name = "codemode"
@@ -73,7 +91,11 @@ func New(mode codemode.CodeMode, runner sandbox.Runner, options Options) (*mcp.S
 		Name: "search_capabilities",
 		Description: fmt.Sprintf("Call this first. Returns the %s capabilities relevant to a task, with their "+
 			"signatures and the rules for writing a program that calls them with run_program.", runner.Language()),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, any, error) {
+	}, func(ctx context.Context, request *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, any, error) {
+		mode, err := resolve(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
 		limit := input.Limit
 		if limit <= 0 {
 			limit = options.DefaultLimit
@@ -90,9 +112,13 @@ func New(mode codemode.CodeMode, runner sandbox.Runner, options Options) (*mcp.S
 		Description: fmt.Sprintf("Runs one %s program in a sandbox and returns its value. The program may only call "+
 			"capabilities returned by search_capabilities, through codemode.execute. On error, fix the program and retry.",
 			runner.Language()),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input RunInput) (*mcp.CallToolResult, RunOutput, error) {
+	}, func(ctx context.Context, request *mcp.CallToolRequest, input RunInput) (*mcp.CallToolResult, RunOutput, error) {
 		if len(input.Source) > options.MaxSourceBytes {
 			return nil, RunOutput{}, fmt.Errorf("program is %d bytes, over the %d byte limit", len(input.Source), options.MaxSourceBytes)
+		}
+		mode, err := resolve(ctx, request)
+		if err != nil {
+			return nil, RunOutput{}, err
 		}
 		recorder := &codemode.Recorder{}
 		value, err := runner.Run(codemode.WithRecorder(ctx, recorder), mode, input.Source)

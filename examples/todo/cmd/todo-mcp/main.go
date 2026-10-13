@@ -47,7 +47,7 @@ func run(ctx context.Context) error {
 	defer runner.Close()
 	fmt.Fprintf(os.Stderr, "todo-mcp: %s\n", runner.Name())
 
-	server, err := mcpserver.New(mode, runner, mcpserver.Options{Name: "todo"})
+	server, err := mcpserver.New(mcpserver.Static(mode), runner, mcpserver.Options{Name: "todo"})
 	if err != nil {
 		return err
 	}
