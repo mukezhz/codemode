@@ -35,26 +35,41 @@ makes is a message your application checks before anything runs.
 
 ## Step 1: install it
 
-Pick one.
+From your application's module (the directory with its `go.mod`):
 
 ```sh
-# From source, matching your go.mod version of codemode
-go install github.com/mukezhz/codemode/cmd/codemode-worker@v0.1.0
-
-# Inside this repository
-make worker            # → bin/codemode-worker
-
-# A release binary
-curl -L -o codemode-worker \
-  https://github.com/mukezhz/codemode/releases/download/v0.1.0/codemode-worker-linux-amd64
-chmod +x codemode-worker
+go get -tool github.com/mukezhz/codemode/cmd/codemode-worker   # once
+go install github.com/mukezhz/codemode/cmd/codemode-worker     # → $GOBIN/codemode-worker
 ```
+
+The first command records the worker in your `go.mod` as a tool, at the same
+codemode version as the library you already use, and fetches the interpreters
+it links (all three, even if your app imports one). The second builds it at
+exactly that version. Upgrade codemode with `go get` and the worker follows.
 
 Keep the worker on the **same codemode version** as your application. The two
 speak a versioned protocol; a mismatch fails every run with
-`protocol version N, worker speaks M` rather than misbehaving.
+`protocol version N, worker speaks M`, and `sandbox.New` reports it at startup.
 
-In a container image, build both in one stage so the versions cannot drift:
+Other ways to get it:
+
+```sh
+# Inside the codemode repository
+make worker            # → bin/codemode-worker
+
+# A release binary: pick the release matching the codemode version in your go.mod
+VERSION=$(go list -m -f '{{.Version}}' github.com/mukezhz/codemode)
+curl -L -o codemode-worker \
+  "https://github.com/mukezhz/codemode/releases/download/$VERSION/codemode-worker-linux-amd64"
+chmod +x codemode-worker
+```
+
+Release binaries exist for tagged versions only (linux and darwin, amd64 and
+arm64, with `SHA256SUMS`). If your `go.mod` points at an untagged commit, use
+the `go install` route.
+
+In a container image, build both in one stage so the versions cannot drift (this
+needs the `go get -tool` line above committed in your `go.mod`):
 
 ```dockerfile
 FROM golang:1.27 AS build
@@ -193,7 +208,7 @@ protocol, same configuration, different argv.
 Build the worker image (`scratch`: the binary and nothing else):
 
 ```sh
-docker build -f deploy/worker.Dockerfile -t ghcr.io/you/codemode-worker:v0.1.0 .
+docker build -f deploy/worker.Dockerfile -t ghcr.io/you/codemode-worker .
 ```
 
 Point the runner at it:
@@ -205,7 +220,7 @@ SANDBOX_WORKER_CONTAINER=true
 SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --user 65534:65534 \
   --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
-  --runtime runsc ghcr.io/you/codemode-worker:v0.1.0"
+  --runtime runsc ghcr.io/you/codemode-worker"
 ```
 
 | Flag | Why |

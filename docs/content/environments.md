@@ -186,7 +186,9 @@ SANDBOX_TIMEOUT=10s
 SANDBOX_MAX_CALLS=25
 ```
 
-Ship the worker in the same image as your app:
+Ship the worker in the same image as your app. Run
+`go get -tool github.com/mukezhz/codemode/cmd/codemode-worker` once and commit
+`go.mod`, so the build below uses your codemode version:
 
 ```dockerfile
 FROM golang:1.27 AS build
@@ -221,7 +223,7 @@ SANDBOX_WORKER_CONTAINER=true
 SANDBOX_WORKER="docker run -i --rm --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --user 65534:65534 \
   --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 32 \
-  --runtime runsc ghcr.io/you/codemode-worker:v0.1.0"
+  --runtime runsc ghcr.io/you/codemode-worker"
 ```
 
 - Build the image from `deploy/worker.Dockerfile`.

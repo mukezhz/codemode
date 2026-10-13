@@ -101,7 +101,7 @@ the command stays supported:
 
 ```sh
 buf build --as-file-descriptor-set -o build/protoset.pb
-go run github.com/mukezhz/codemode/cmd/codemode-registry@latest \
+go run github.com/mukezhz/codemode/cmd/codemode-registry \
   -descriptor build/protoset.pb -out internal/capabilities/registry.json
 ```
 

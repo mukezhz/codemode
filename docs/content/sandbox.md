@@ -147,7 +147,8 @@ host, so a program that escapes its interpreter still has nothing to call but
 the bridge.
 
 ```sh
-go install github.com/mukezhz/codemode/cmd/codemode-worker@latest
+go get -tool github.com/mukezhz/codemode/cmd/codemode-worker   # in your module, once
+go install github.com/mukezhz/codemode/cmd/codemode-worker
 SANDBOX_ENGINE=goja
 SANDBOX_ISOLATION=process
 SANDBOX_WORKER=codemode-worker      # argv; defaults to codemode-worker on PATH

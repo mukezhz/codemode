@@ -336,7 +336,8 @@ So far every program ran inside your process, which is what you want while
 developing. For production, run them in `codemode-worker`:
 
 ```sh
-go install github.com/mukezhz/codemode/cmd/codemode-worker@latest
+go get -tool github.com/mukezhz/codemode/cmd/codemode-worker   # pins it to your codemode version
+go install github.com/mukezhz/codemode/cmd/codemode-worker     # puts it on PATH ($GOBIN)
 SANDBOX_ISOLATION=process go run .
 ```
 
