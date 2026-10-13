@@ -6,6 +6,9 @@ version is 0, a minor bump may break the API.
 ## [Unreleased]
 
 ### Added
+- `registry.MarshalJSON`: encodes a proto response in the shape the registry
+  describes (proto field names, empty lists as `[]`, 64-bit integers as numbers).
+  Plain `protojson.Marshal` disagrees with the schema on all three.
 - `capability.Keyword`: keyword search over a registry with no database, so a
   first integration needs no search code of its own.
 - `SANDBOX_ISOLATION=process` (`sandbox.Options.Isolation`) and the

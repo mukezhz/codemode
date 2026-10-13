@@ -177,6 +177,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/dynamicpb"
+
+	"github.com/mukezhz/codemode/registry"
 )
 
 // grpcExecute dispatches any registry RPC over one connection. Files is the
@@ -210,10 +212,15 @@ func grpcExecute(conn *grpc.ClientConn, files *protoregistry.Files) codemode.Exe
 		if err := conn.Invoke(ctx, "/"+rpc, request, response); err != nil {
 			return nil, err
 		}
-		return protojson.Marshal(response)
+		return registry.MarshalJSON(response) // proto names, [] for empty lists, int64 as numbers
 	}
 }
 ```
+
+Encode responses with `registry.MarshalJSON`, not `protojson.Marshal`. The model
+is told field names like `due_date` and that `id` is a number; plain protojson
+sends `dueDate`, quotes 64-bit integers, and leaves out empty lists, so a correct
+program reads `undefined`.
 
 Build `files` once at startup with `protodesc.NewFiles` over the same
 `protoset.pb` the registry was generated from. Reusing that one artifact is what

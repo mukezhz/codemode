@@ -225,7 +225,7 @@ func dynamicExecute(conn *grpc.ClientConn, files *protoregistry.Files) codemode.
         if err := conn.Invoke(ctx, "/"+rpc, req, res); err != nil {
             return nil, err
         }
-        return protojson.Marshal(res)
+        return registry.MarshalJSON(res) // the shape the model was told about
     }
 }
 ```
