@@ -63,11 +63,30 @@ publishes no embeddings API. See [Search](/search#embeddings).
 
 | Variable | Values | Default |
 | --- | --- | --- |
-| `SANDBOX_ENGINE` | `goja`, `starlark`, `lua` | `goja` |
+| `SANDBOX_ENGINE` | `goja`, `starlark`, `lua`, `subprocess-goja`, `subprocess-starlark`, `subprocess-lua` | `goja` |
 | `SANDBOX_TIMEOUT` | Go duration, e.g. `10s` | `30s` |
 | `SANDBOX_MAX_CALLS` | integer | `50` |
+| `SANDBOX_WORKER` | argv for `codemode-worker`, space-separated | `codemode-worker` on `PATH` |
+| `SANDBOX_MAX_HEAP_BYTES` | integer; subprocess engines only | `268435456` |
 
 Options passed in code win over these. See [Sandbox](/sandbox).
+
+## Observing calls
+
+There is no tracing dependency. `agent.Options.OnCall` sees every capability
+call as it finishes; feed it to whatever the host already runs. It must not block.
+
+```go
+agent.Run(ctx, mode, model, request, agent.Options{
+    Runner: runner,
+    OnCall: func(call codemode.Call) {
+        slog.Info("capability", "user", user, "name", call.Name,
+            "ms", call.Duration.Milliseconds(), "error", call.Error)
+    },
+})
+```
+
+The same hook is where an audit log or an OpenTelemetry span per call goes.
 
 ## Commands
 

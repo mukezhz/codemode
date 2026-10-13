@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      go:
+        patterns: ["*"]
+        # Interpreter bumps change what the sandbox allows; each gets its own PR so the escape suite approves it alone.
+        exclude-patterns:
+          - github.com/dop251/goja
+          - go.starlark.net
+          - github.com/yuin/gopher-lua
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]

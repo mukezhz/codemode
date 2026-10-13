@@ -56,7 +56,7 @@ Also: replace the README warning with a one-line link to `SECURITY.md`.
 - Dependabot (or Renovate) for `gomod` and `github-actions`, weekly, grouped.
 - Engine bumps (goja, starlark, gopher-lua) get their own PRs, never grouped, so
   the escape suite in `sandbox/enginetest` is what approves them.
-- Pin actions by SHA in `ci.yml` (currently tags).
+- Actions stay on major version tags (`@v5`); Dependabot keeps them current.
 
 ### M3.4 Releases
 

@@ -99,8 +99,6 @@ Configuration is entirely environment-driven and entirely optional — see
 [`.env.example`](.env.example).
 
 > [!WARNING]
-> All three sandbox engines run in-process. They deny ambient capabilities and
-> bound time and call count, which is right for code your own host asked a model
-> to write. They are not a defence against a determined attacker. Before running
-> programs authored for untrusted end users, implement `Runner` over a separate
-> process or a container — see [the isolation ladder](docs/content/sandbox.md#the-isolation-ladder).
+> The default engines run in-process and are not a defence against a determined
+> attacker. For programs steered by untrusted users, use a `subprocess-*` engine,
+> and a container for multi-tenant input. See [SECURITY.md](SECURITY.md).

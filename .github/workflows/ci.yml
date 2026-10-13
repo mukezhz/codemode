@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 3 * * *"
 
 permissions:
   contents: read
@@ -45,6 +47,34 @@ jobs:
         env:
           CAPABILITY_TEST_POSTGRES_DSN: postgres://postgres:test@localhost:5432/codemode?sslmode=disable
         run: go test ./capability/pgstore -run TestPostgresSearch -count=1
+
+  # Latest Go, not go.mod's minimum: a stdlib fix ships as a point release.
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: true
+      - name: Known vulnerabilities in reachable code
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  # Short on every push; a crasher lands in testdata/fuzz and becomes a regression test.
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - { package: ./internal/wire, name: FuzzRead }
+          - { package: ./registry, name: FuzzParse }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ${{ matrix.target.package }} -run '^$' -fuzz '^${{ matrix.target.name }}$' -fuzztime ${{ github.event_name == 'schedule' && '10m' || '30s' }}
 
   # The whole point of the driver split is that a consumer links only what it
   # asks for. These builds fail if an import creeps back into a core package.
