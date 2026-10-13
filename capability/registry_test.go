@@ -165,7 +165,7 @@ func TestForMatchesAnyRoleOrPermission(t *testing.T) {
 		withRoles("tasks.list"),
 		withRoles("tasks.assign", "admin"),
 		{Name: "deals.move", Permissions: []string{"deals.write"}},
-		{Name: "deals.refund", Roles: []string{"admin"}, Permissions: []string{"billing.refund"}},
+		{Name: "deals.refund", Roles: []string{"admin"}, Permissions: []string{"billing.refunds.write"}},
 	}}
 	for _, test := range []struct {
 		caller capability.Caller
@@ -174,7 +174,7 @@ func TestForMatchesAnyRoleOrPermission(t *testing.T) {
 		{capability.Caller{}, "tasks.list"},
 		{capability.Caller{Roles: []string{"admin"}}, "tasks.list,tasks.assign,deals.refund"},
 		{capability.Caller{Permissions: []string{"deals.write"}}, "tasks.list,deals.move"},
-		{capability.Caller{Permissions: []string{"billing.refund"}}, "tasks.list,deals.refund"},
+		{capability.Caller{Permissions: []string{"billing.refunds.write"}}, "tasks.list,deals.refund"},
 		{capability.Caller{Roles: []string{"deals.write"}}, "tasks.list"}, // a role is not a permission
 		{capability.Caller{Roles: []string{" ", "Admin"}, Permissions: []string{"deals.Write"}}, "tasks.list"},
 	} {
@@ -185,7 +185,7 @@ func TestForMatchesAnyRoleOrPermission(t *testing.T) {
 	if got := strings.Join(full.Unrestricted().Names(), ","); got != "tasks.list" {
 		t.Errorf("Unrestricted() = %q: a permission-only capability is restricted", got)
 	}
-	if got := strings.Join(full.Permissions(), ","); got != "billing.manage,billing.refund,deals.manage,deals.write" {
+	if got := strings.Join(full.Permissions(), ","); got != "billing.refunds.manage,billing.refunds.write,deals.manage,deals.write" {
 		t.Errorf("Permissions() = %q", got)
 	}
 }

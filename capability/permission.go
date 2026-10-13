@@ -8,14 +8,14 @@ import (
 	"strings"
 )
 
-// PermissionPattern is resource.action: lowercase segments separated by dots,
-// such as deals.write, reports.view or billing.refund_partial.
-var PermissionPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
+// PermissionPattern is resource.action, where resource is one or more lowercase
+// segments separated by dots and action is read, write, delete or manage:
+// deals.write, reports.read, deals.discounts.write. Something an app wants to
+// control on its own, such as discounting, is a sub-resource, not a new action.
+var PermissionPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*\.(read|write|delete|manage)$`)
 
 const maxPermissionLength = 128
 
-// The actions with meaning beyond their name. Any other action, such as
-// deals.discount, grants only itself, or comes with manage.
 const (
 	ActionRead   = "read"
 	ActionWrite  = "write"
@@ -24,22 +24,24 @@ const (
 )
 
 // Grants reports whether holding one permission satisfies a required one:
-// itself; write also grants read; manage grants every action on its resource.
-// Delete grants only delete, so write never implies deleting.
+// itself; write also grants read on the same resource; manage grants every
+// action on its resource and on its sub-resources (deals.manage grants
+// deals.discounts.write). Delete grants only delete, so write never implies
+// deleting.
 func Grants(held, required string) bool {
 	if held == required {
 		return true
 	}
 	resource, action := splitPermission(required)
 	heldResource, heldAction := splitPermission(held)
-	if resource == "" || heldResource != resource {
+	if resource == "" || heldResource == "" {
 		return false
 	}
 	switch heldAction {
 	case ActionManage:
-		return true
+		return resource == heldResource || strings.HasPrefix(resource, heldResource+".")
 	case ActionWrite:
-		return action == ActionRead
+		return resource == heldResource && action == ActionRead
 	}
 	return false
 }
@@ -55,7 +57,7 @@ func splitPermission(permission string) (resource, action string) {
 
 func ValidatePermission(permission string) error {
 	if len(permission) > maxPermissionLength || !PermissionPattern.MatchString(permission) {
-		return fmt.Errorf("permission %q must look like resource.action: lowercase letters, digits and underscores, separated by dots", permission)
+		return fmt.Errorf("permission %q must look like resource.action, with action read, write, delete or manage: lowercase letters, digits and underscores, separated by dots", permission)
 	}
 	return nil
 }

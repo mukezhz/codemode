@@ -24,7 +24,7 @@ service OrderService {
   rpc Cancel(GetOrderRequest) returns (OrderResponse) {
     option (codemode.description) = "Cancels an order that has not shipped.";
     option (codemode.roles) = "support";
-    option (codemode.permissions) = "orders.cancel";
+    option (codemode.permissions) = "orders.write";
   }
 }
 

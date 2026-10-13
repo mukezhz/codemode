@@ -174,7 +174,7 @@ Split it into three layers instead:
 
 | Layer | Holds | Changes when | Lives in |
 | --- | --- | --- | --- |
-| **Permissions** | what each RPC requires: `deals.write`, `reports.view` | you add an RPC | the proto, reviewed in code |
+| **Permissions** | what each RPC requires: `deals.write`, `reports.read` | you add an RPC | the proto, reviewed in code |
 | **Roles** | which permissions each role grants | an admin edits a role | your database |
 | **Limits** | values a grant carries: max discount, max deal value, own records only | an admin edits a role | your database, enforced in `ExecuteFunc` |
 
@@ -197,13 +197,13 @@ service DealService {
   rpc Discount(DiscountRequest) returns (Deal) {
     option (codemode.description) = "Applies a discount to a deal.";
     option (codemode.roles) = "admin";                 // a fixed role
-    option (codemode.permissions) = "deals.discount";  // or a runtime one
+    option (codemode.permissions) = "deals.discounts.write"; // or a runtime one
   }
 }
 
 service ReportService {
   option (codemode.namespace) = "reports";
-  option (codemode.default_permissions) = "reports.view";
+  option (codemode.default_permissions) = "reports.read";
 
   rpc Pipeline(PipelineRequest) returns (DealList) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -215,7 +215,8 @@ service ReportService {
 Put `default_permissions` (or `default_roles`) on every service. A new RPC then
 requires the service's permission until someone decides otherwise, instead of
 arriving open to every role an admin ever created. `Discount` shows the two kinds
-mixed: the fixed `admin` role, or any runtime role granted `deals.discount`.
+mixed: the fixed `admin` role, or any runtime role granted `deals.discounts.write`.
+Discounting is a sub-resource of deals, so `deals.manage` covers it too.
 
 **2. Per request, fetch the user's permissions from your app and pass them in.**
 Codemode does not store roles; it filters by whatever list you hand it, so it
@@ -258,8 +259,8 @@ With these roles in the database:
 | Role (created at runtime) | Grants | Capabilities the model gets |
 | --- | --- | --- |
 | Junior AE | `deals.read` | `deals.list` |
-| Senior AE | `deals.read` `deals.write` `deals.discount` | `deals.list` `deals.move` `deals.discount` |
-| Sales Ops | `deals.read` `reports.view` | `deals.list` `reports.pipeline` |
+| Senior AE | `deals.read` `deals.write` `deals.discounts.write` | `deals.list` `deals.move` `deals.discount` |
+| Sales Ops | `deals.read` `reports.read` | `deals.list` `reports.pipeline` |
 | Revoked Intern | (none) | (none) |
 | Deal Editor | `deals.write` | `deals.list` `deals.move`: write implies read |
 | Deals Admin | `deals.manage` | `deals.list` `deals.move` `deals.discount`: manage is everything on deals |
@@ -277,7 +278,7 @@ value from the grant, checked where the data is:
 ```go
 func discount(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 	grants, _ := ctx.Value(grantsKey{}).(map[string]Grant)
-	grant, ok := grants["deals.discount"]
+	grant, ok := grants["deals.discounts.write"]
 	if !ok {
 		return nil, codemode.Permanent(errors.New("not permitted")) // registry and grants disagree: fail closed
 	}

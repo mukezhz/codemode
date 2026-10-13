@@ -34,7 +34,7 @@ rpc Move(MoveDealRequest) returns (Deal) {
 rpc Discount(DiscountRequest) returns (Deal) {
   option (codemode.description) = "Applies a discount to a deal.";
   option (codemode.roles) = "admin";                    // a fixed role
-  option (codemode.permissions) = "deals.discount";     // or a runtime grant
+  option (codemode.permissions) = "deals.discounts.write"; // or a runtime grant
 }
 ```
 
@@ -53,32 +53,37 @@ reverse: a role an admin happens to call `deals.write` grants nothing.
 
 ### Naming and validation
 
-Permissions follow one pattern, `resource.action`: lowercase letters, digits and
-underscores, separated by dots.
+Permissions follow one pattern, `resource.action`. The resource is one or more
+lowercase segments separated by dots; the action is one of four: `read`,
+`write`, `delete` or `manage`.
 
 | Valid | Invalid |
 | --- | --- |
-| `deals.write`, `reports.view`, `billing.refund_partial`, `crm.deals.write` | `write` (no resource), `Deals.Write` (uppercase), `deals-write`, `deals..write`, `deals.write ` |
+| `deals.write`, `reports.read`, `deals.discounts.write`, `crm.deals.delete` | `write` (no resource), `Deals.Write` (uppercase), `deals.discount` and `reports.view` (not one of the four actions), `deals-write`, `deals..write`, `deals.write ` |
+
+Something your app wants to control on its own, such as discounting or exporting,
+is a **sub-resource** with one of the four actions, not a new action:
+`deals.discounts.write`, `deals.exports.read`. That keeps every role screen a
+plain grid of resources × read / write / delete / manage.
 
 ### Read, write, delete, manage
 
-Four actions mean more than their name, so a role screen does not need a box for
-every RPC:
+The four actions imply each other in one direction only:
 
-| Granted | Satisfies | Example |
+| Granted | Satisfies | Meaning |
 | --- | --- | --- |
 | `deals.read` | itself | view only |
 | `deals.write` | itself and `deals.read` | edit, which implies viewing |
 | `deals.delete` | itself | deleting stays a separate, deliberate grant; `write` never implies it |
-| `deals.manage` | every `deals.*`, including custom actions like `deals.discount` | everything on that resource |
-| any other, e.g. `deals.discount` | itself | |
+| `deals.manage` | every action on `deals` **and its sub-resources**, such as `deals.discounts.write` | everything about deals |
 
 The proto still names exactly what each RPC needs: `List` asks for `deals.read`,
 `Move` for `deals.write`. The hierarchy applies only when matching what a user
-was granted, so annotations stay precise and admins can grant broadly. `manage`
-covers one resource: `deals.manage` grants nothing on `reports`, and `crm.manage`
-does not reach `crm.deals.write`. An RPC that should be open only to managers asks
-for `deals.manage` itself.
+was granted, so annotations stay precise and admins can grant broadly. `write`
+stays on its own resource (`deals.write` does not grant `deals.discounts.write`),
+and `manage` reaches down, never up or sideways: `deals.discounts.manage` does not
+grant `deals.write`, and `deals.manage` grants nothing on `reports`. An RPC that
+should be open only to managers asks for `deals.manage` itself.
 
 `capability.Grants(held, required)` is the rule, if you need it elsewhere in your
 app (to show or hide UI, say), so the UI and the assistant agree.

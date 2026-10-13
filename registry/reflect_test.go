@@ -162,7 +162,7 @@ func TestRolesAndPermissionsComeFromTheContract(t *testing.T) {
 		t.Errorf("orders.list roles=%v permissions=%v, want the service default permission", list.Roles, list.Permissions)
 	}
 	cancel := byName["orders.cancel"]
-	if strings.Join(cancel.Roles, ",") != "support" || strings.Join(cancel.Permissions, ",") != "orders.cancel" {
+	if strings.Join(cancel.Roles, ",") != "support" || strings.Join(cancel.Permissions, ",") != "orders.write" {
 		t.Errorf("orders.cancel roles=%v permissions=%v, want its own, replacing the default", cancel.Roles, cancel.Permissions)
 	}
 }
