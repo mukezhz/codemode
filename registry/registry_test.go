@@ -108,3 +108,46 @@ func TestNoSideEffectsMarksACapabilityReadOnly(t *testing.T) {
 		t.Fatalf("read only = %v, %v; want true, false", registry.Capabilities[0].ReadOnly, registry.Capabilities[1].ReadOnly)
 	}
 }
+
+func TestMalformedPermissionFailsAtLoad(t *testing.T) {
+	for _, permission := range []string{"deals.write", "Deals Write"} {
+		serviceOptions := &descriptorpb.ServiceOptions{}
+		setStringOption(serviceOptions, 50000, "deals")
+		methodOptions := &descriptorpb.MethodOptions{}
+		setStringOption(methodOptions, 50000, "Moves a deal.")
+		methodOptions.ProtoReflect().SetUnknown(append(methodOptions.ProtoReflect().GetUnknown(),
+			protowire.AppendString(protowire.AppendTag(nil, 50002, protowire.BytesType), permission)...))
+
+		files := &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{{
+			Name:    proto.String("codemode.proto"),
+			Package: proto.String("codemode"),
+			Extension: []*descriptorpb.FieldDescriptorProto{
+				{Name: proto.String("namespace"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+				{Name: proto.String("description"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+				{Name: proto.String("permissions"), Number: proto.Int32(50002), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+			},
+		}, {
+			Package:     proto.String("deal.v1"),
+			MessageType: []*descriptorpb.DescriptorProto{{Name: proto.String("Empty")}},
+			Service: []*descriptorpb.ServiceDescriptorProto{{
+				Name:    proto.String("DealService"),
+				Options: serviceOptions,
+				Method: []*descriptorpb.MethodDescriptorProto{{
+					Name: proto.String("Move"), InputType: proto.String(".deal.v1.Empty"), OutputType: proto.String(".deal.v1.Empty"), Options: methodOptions,
+				}},
+			}},
+		}}}
+
+		registry, err := generateRegistry(files)
+		if permission == "deals.write" {
+			if err != nil || len(registry.Capabilities[0].Permissions) != 1 {
+				t.Fatalf("valid permission: err = %v, capabilities = %+v", err, registry.Capabilities)
+			}
+			continue
+		}
+		// "Deals Write" splits into two names, and "Deals" alone is not resource.action.
+		if err == nil {
+			t.Fatalf("%q loaded; want an error naming the pattern", permission)
+		}
+	}
+}

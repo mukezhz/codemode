@@ -251,9 +251,10 @@ With these roles in the database:
 | Revoked Intern | (none) | (none) |
 | fixed role `admin`, no grants | — | `deals.discount` only: a fixed role reaches only RPCs that name it |
 
-That table is a passing test against the proto above. Write the same test for
-your own permissions: it is what catches a permission typo, which would
-otherwise fail closed silently.
+That table is a passing test against the proto above. Two checks stop a typo
+from silently failing closed: `full.ValidatePermissions(submitted)` when an admin
+saves a role, and the same test for your own roles. See
+[Naming and validation](/permissions#naming-and-validation).
 
 **3. Enforce limits in `ExecuteFunc`.** The registry answers *may this caller
 call `deals.discount` at all*. "Up to 15%" or "only deals under $50,000" is a

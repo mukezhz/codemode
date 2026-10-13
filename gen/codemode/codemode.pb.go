@@ -118,7 +118,9 @@ var (
 	// optional string roles = 50001;
 	E_Roles = &file_codemode_proto_extTypes[4]
 	// permissions are the permissions that allow a caller to use this method,
-	// separated by spaces, such as "deals.write". A caller holding any listed
+	// separated by spaces, such as "deals.write". Each must look like
+	// resource.action: lowercase letters, digits and underscores, separated by
+	// dots. A malformed name fails registry loading. A caller holding any listed
 	// role or any listed permission may call the method. It replaces the
 	// service's (default_permissions), as roles replace default_roles.
 	//

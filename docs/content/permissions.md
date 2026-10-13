@@ -51,6 +51,38 @@ A caller may use an RPC when they hold **any** role it lists **or any**
 permission it lists. A role is never matched against permissions, or the
 reverse: a role an admin happens to call `deals.write` grants nothing.
 
+### Naming and validation
+
+Permissions follow one pattern, `resource.action`: lowercase letters, digits and
+underscores, separated by dots.
+
+| Valid | Invalid |
+| --- | --- |
+| `deals.write`, `reports.view`, `billing.refund_partial`, `crm.deals.write` | `write` (no resource), `Deals.Write` (uppercase), `deals-write`, `deals..write`, `deals.write ` |
+
+They are checked in two places:
+
+- **In the proto, at load.** `registry.FromFiles` rejects a malformed permission,
+  naming the RPC, so a bad contract stops the app at startup instead of quietly
+  denying everyone.
+- **When an admin saves a role.** Check the submitted names against the protos
+  before storing them:
+
+  ```go
+  if err := full.ValidatePermissions(submitted); err != nil {
+  	return err // e.g. permission "deal.write" is not declared by any capability
+  }
+  ```
+
+  It rejects names that break the pattern and names no capability accepts, and
+  reports every problem at once. Build the role editor's checkboxes from
+  `full.Permissions()` and admins can only pick valid names.
+
+At request time `For` does not fail on unknown names: your app's permission set
+will include ones the assistant has no use for (`users.invite`), and those are
+simply ignored. Validate when roles are *saved*, not when they are *used*.
+`capability.ValidatePermission(name)` checks a single name against the pattern.
+
 Because the registry is built per request, an admin's change to a role applies
 on the user's next request; nothing is compiled in or cached by codemode. The
 protos stay the ceiling: a runtime role can be given any permission the protos

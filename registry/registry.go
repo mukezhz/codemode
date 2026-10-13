@@ -94,6 +94,11 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				} else if methodPermissions != nil {
 					permissions = methodPermissions
 				}
+				for _, permission := range permissions {
+					if err := capability.ValidatePermission(permission); err != nil {
+						return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
+					}
+				}
 
 				description = strings.TrimSpace(description)
 				if description == "" {

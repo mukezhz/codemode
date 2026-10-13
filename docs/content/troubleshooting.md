@@ -107,6 +107,8 @@ are actually in play.
 | An unknown role gets some capabilities | Correct: unknown roles get the unrestricted set and nothing more. Roles fail closed, never open. |
 | A role edited in the admin screen has no effect | The registry is built from the `capability.Caller` you pass to `For`. Check you fetch roles or permissions per request, and that any cache of that lookup expires or is cleared when a role is saved. |
 | A user with several roles gets only one role's capabilities | Pass them all: `For(capability.Caller{Roles: session.Roles})`, not `ForRole(session.Roles[0])`. |
+| `permission "x" must look like resource.action` | A proto `(codemode.permissions)` value, or a name passed to `ValidatePermissions`, breaks the pattern: lowercase, dot-separated, at least two parts. |
+| `permission "x" is not declared by any capability` | `ValidatePermissions` was given a name no proto declares: a typo, or an RPC that was renamed or removed. |
 | A dynamic role gets nothing | Its permissions do not match the names in `(codemode.permissions)` exactly (case and spelling), or you passed them as `Roles`. Pin each role's capability set in a test. |
 | A fixed role cannot reach an RPC annotated with permissions | Correct: roles match `(codemode.roles)` only. Add the role to the RPC, or grant the role's users the permission. |
 
