@@ -49,7 +49,10 @@ func (registry Registry) For(caller Caller) Registry {
 	return registry.Select(func(item Capability) bool { return item.Allows(caller) })
 }
 
-// Only ever narrows: a capability with no roles now requires role.
+// Require makes role an accepted role of every capability keep selects. An
+// unrestricted capability now requires role, which narrows it; one that already
+// had roles or permissions additionally admits role. To take a capability away
+// from callers, use Select or For instead.
 func (registry Registry) Require(role string, keep func(Capability) bool) Registry {
 	role = strings.TrimSpace(role)
 	if role == "" {

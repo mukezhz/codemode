@@ -83,3 +83,30 @@ func TestForAppliesTheHierarchy(t *testing.T) {
 		t.Errorf("manage should be grantable for every resource: %v", err)
 	}
 }
+
+// TestDynamicRoleTable is the table in docs/content/tenants.md, "Dynamic roles".
+func TestDynamicRoleTable(t *testing.T) {
+	full := capability.Registry{Capabilities: []capability.Capability{
+		{Name: "deals.list", Permissions: []string{"deals.read"}},
+		{Name: "deals.move", Permissions: []string{"deals.write"}},
+		{Name: "deals.discount", Roles: []string{"admin"}, Permissions: []string{"deals.discount"}},
+		{Name: "reports.pipeline", Permissions: []string{"reports.view"}},
+	}}
+	for _, row := range []struct {
+		role   string
+		caller capability.Caller
+		want   string
+	}{
+		{"Junior AE", capability.Caller{Permissions: []string{"deals.read"}}, "deals.list"},
+		{"Senior AE", capability.Caller{Permissions: []string{"deals.read", "deals.write", "deals.discount"}}, "deals.list,deals.move,deals.discount"},
+		{"Sales Ops", capability.Caller{Permissions: []string{"deals.read", "reports.view"}}, "deals.list,reports.pipeline"},
+		{"Revoked Intern", capability.Caller{}, ""},
+		{"fixed role admin", capability.Caller{Roles: []string{"admin"}}, "deals.discount"},
+		{"Deal Editor", capability.Caller{Permissions: []string{"deals.write"}}, "deals.list,deals.move"},
+		{"Deals Admin", capability.Caller{Permissions: []string{"deals.manage"}}, "deals.list,deals.move,deals.discount"},
+	} {
+		if got := strings.Join(full.For(row.caller).Names(), ","); got != row.want {
+			t.Errorf("%s: %q, want %q", row.role, got, row.want)
+		}
+	}
+}

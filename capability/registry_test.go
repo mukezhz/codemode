@@ -121,7 +121,7 @@ func TestUnrestrictedAndRoles(t *testing.T) {
 	}
 }
 
-func TestRequireNarrowsAndNeverWidens(t *testing.T) {
+func TestRequireRestrictsOpenCapabilitiesAndAddsTheRoleToOthers(t *testing.T) {
 	full := capability.Registry{Capabilities: []capability.Capability{
 		withRoles("tasks.list"),
 		withRoles("tasks.delete"),
