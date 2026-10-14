@@ -40,7 +40,7 @@ A stdio server is started by one person's MCP client and serves only them, so
 one runtime is enough:
 
 ```go
-mode, _ := codemode.New(registry.For(caller), search, execute) // caller: this user's roles and permissions
+mode, _ := codemode.New(full.For(caller), search, execute) // caller: this user's roles and permissions
 runner, _ := sandbox.New(sandbox.Options{Engine: "goja", Isolation: "process"})
 
 server, _ := mcpserver.New(mcpserver.Static(mode), runner, mcpserver.Options{Name: "tasks"})

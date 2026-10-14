@@ -18,6 +18,43 @@ The sandbox cannot reach your database, network, or secrets. It gets one
 function, and that function goes back to Go, which checks a generated registry
 before anything runs.
 
+## Use it in your app
+
+```sh
+go get github.com/mukezhz/codemode
+```
+
+Annotate a protobuf service with `(codemode.namespace)` and a
+`(codemode.description)` per method, then:
+
+```go
+full, err := registry.FromFiles(ordersv1.File_orders_v1_orders_proto) // 1. registry from generated Go
+
+// 2. your code: the only place that touches data
+execute := func(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error) {
+	switch rpc {
+	case "orders.v1.OrderService/List":
+		return listOrders(ctx, input)
+	}
+	return nil, fmt.Errorf("RPC %q is not implemented", rpc)
+}
+
+// 3. per request: only what this caller may call
+allowed := full.For(capability.Caller{Roles: user.Roles, Permissions: user.Permissions})
+mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+
+// 4. model writes a program, sandbox runs it
+model, err := llm.NewFromEnv()                         // ANTHROPIC_API_KEY or OPENAI_API_KEY
+runner, err := sandbox.NewFromEnv(sandbox.Options{})   // in-process JS by default
+result, err := agent.Run(ctx, mode, model, "how much have paid orders brought in?",
+	agent.Options{Runner: runner})
+fmt.Println(agent.Answer(result.Answer))
+```
+
+Blank-import the backends you want (`llm/claude`, `sandbox/goja`, …); nothing
+else is linked. [**Quickstart**](docs/content/quickstart.md) builds this as
+complete files in fifteen minutes.
+
 ## Quick start
 
 ```sh
@@ -55,19 +92,27 @@ limits, audit log). Both run programs in-process by default; add
 
 ## Documentation
 
-Full docs are a VitePress site under [`docs/`](docs/content):
+Full docs are a VitePress site under [`docs/`](docs/content).
 
+**Get started**
 - [**Quickstart**](docs/content/quickstart.md) — an empty directory to a model answering, in eight steps
-- [What code mode is](docs/content/overview.md) · [**Architecture**](docs/content/architecture.md) — packages, ports, request lifecycle, trust boundaries
+- [**Integration guide**](docs/content/using-it.md) — every integration choice, explained
 - [Adding it to an existing app](docs/content/existing-app.md) — a CRM walked through: contract, adapter, roles, tenants, confirmed writes, and a non-Go CRM via a sidecar
-- [Add it to your application](docs/content/using-it.md) — every integration choice, explained
+
+**Ship it**
 - [Development and production](docs/content/environments.md) · [Running the worker](docs/content/worker.md) — same binary, different isolation
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
 - [Permissions](docs/content/permissions.md) · [Roles and tenants](docs/content/tenants.md) — roles in the contract, rows in your code
-- [Caching programs](docs/content/caching.md) — answer repeats in milliseconds, and plug in your own store
-- [Many services, many users](docs/content/scaling-up.md) — composing proto files, and per-user scoping
-- [The flow, step by step](docs/content/flow.md) — one request end to end
-- [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md) · [MCP](docs/content/mcp.md)
+- [Writes and retries](docs/content/writes.md) · [Caching programs](docs/content/caching.md)
+
+**Grow it**
+- [Many services, many users](docs/content/scaling-up.md) · [Serving MCP clients](docs/content/mcp.md)
+
+**How it works**
+- [What code mode is](docs/content/overview.md) · [Architecture](docs/content/architecture.md) · [The flow, step by step](docs/content/flow.md)
+- [Capabilities](docs/content/capabilities.md) · [Search](docs/content/search.md) · [Models](docs/content/models.md) · [Sandbox](docs/content/sandbox.md)
+
+**Reference**
 - [Configuration](docs/content/configuration.md) · [Latency](docs/content/latency.md) · [Troubleshooting](docs/content/troubleshooting.md)
 
 ```sh

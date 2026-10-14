@@ -64,12 +64,13 @@ permissions, and owns what "complete" actually means.
 
 ## Four swappable parts
 
-Each is an interface with more than one implementation, chosen by an environment
-variable. Nothing else in the system knows which is in play.
+Each is an interface with more than one implementation. Choose one in code, or
+let the matching `*FromEnv` constructor read it from an environment variable.
+Nothing else in the system knows which is in play.
 
 | Piece | Interface | Options | Variable |
 | --- | --- | --- | --- |
-| Search | `capability.Store` | keywords (no store), sqlite-vector, pgvector | `CAPABILITY_DB` |
+| Search | `codemode.SearchFunc` | `capability.Keyword` (no database), or a `capability.Store`: sqlite-vector, pgvector | `CAPABILITY_DB` |
 | Model | `llm.Client` | Claude, OpenAI + compatible | `LLM_PROVIDER` |
 | Sandbox language | `sandbox.Runner` | JavaScript, Starlark, Lua | `SANDBOX_ENGINE` |
 | Where programs run | `sandbox.Runner` | in-process, `codemode-worker`, a container | `SANDBOX_ISOLATION` |
@@ -94,14 +95,17 @@ export ANTHROPIC_API_KEY=...
 go run ./examples/todo -request "finish anything about docs"
 
 # Or the complete one: web UI, SQLite, per-user scoping, charts from a prompt.
+# It talks to any OpenAI-compatible endpoint.
+export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.deepseek.com/v1 OPENAI_MODEL=deepseek-chat
 go run ./examples/taskreport -serve :8080
 ```
 
 ## Where to go next
 
 - [Quickstart](/quickstart) — an empty directory to a model answering, in eight steps.
+- [Integration guide](/using-it) — every integration choice, explained.
+- [Adding it to an existing app](/existing-app) — a real CRM, start to finish.
 - [Architecture](/architecture) — packages, ports, the request lifecycle, trust boundaries.
-- [Add it to your application](/using-it) — every integration choice, explained.
 - [Permissions](/permissions) — roles in the contract, rows in your code.
 - [The flow, step by step](/flow) — one request from plain English to a real RPC.
 - [Capabilities](/capabilities) — writing contracts and generating the registry.

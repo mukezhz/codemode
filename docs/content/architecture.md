@@ -110,7 +110,7 @@ above it, and **none of these packages imports a third-party SDK**: importing
 | `llm` | One interface over model providers. | `New`, `NewFromEnv` |
 | `program` | Caches generated programs so a repeated request skips the model. | `NewExactCache`, `New` |
 | `agent` | The loop: cache → search → prompt → model → sandbox → repair on error. | `Run`, `Answer` |
-| `mcpserver` | Serves a runtime to MCP clients as two tools. | `New` |
+| `mcpserver` | Serves a runtime to MCP clients as two tools. | `New`, `Static` |
 
 ## Ports and adapters
 

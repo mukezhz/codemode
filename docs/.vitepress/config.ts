@@ -36,37 +36,42 @@ export default withMermaid(
 
       sidebar: [
         {
-          text: "Understanding it",
+          text: "Get started",
           items: [
-            { text: "What code mode is", link: "/overview" },
-            { text: "Architecture", link: "/architecture" },
-            { text: "The flow, step by step", link: "/flow" },
+            { text: "Quickstart", link: "/quickstart" },
+            { text: "Integration guide", link: "/using-it" },
+            { text: "Adding it to an existing app", link: "/existing-app" },
           ],
         },
         {
-          text: "Using it",
+          text: "Ship it",
           items: [
-            { text: "Quickstart", link: "/quickstart" },
-            { text: "Adding it to an existing app", link: "/existing-app" },
-            { text: "Add it to your application", link: "/using-it" },
             { text: "Development and production", link: "/environments" },
+            { text: "Running the worker", link: "/worker" },
             { text: "What your binary links", link: "/dependencies" },
             { text: "Permissions", link: "/permissions" },
             { text: "Roles and tenants", link: "/tenants" },
             { text: "Writes and retries", link: "/writes" },
             { text: "Caching programs", link: "/caching" },
+          ],
+        },
+        {
+          text: "Grow it",
+          items: [
             { text: "Many services, many users", link: "/scaling-up" },
             { text: "Serving MCP clients", link: "/mcp" },
           ],
         },
         {
-          text: "The pieces",
+          text: "How it works",
           items: [
+            { text: "What code mode is", link: "/overview" },
+            { text: "Architecture", link: "/architecture" },
+            { text: "The flow, step by step", link: "/flow" },
             { text: "Capabilities", link: "/capabilities" },
             { text: "Search", link: "/search" },
             { text: "Models", link: "/models" },
             { text: "Sandbox", link: "/sandbox" },
-            { text: "Running the worker", link: "/worker" },
           ],
         },
         {

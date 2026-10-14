@@ -59,4 +59,9 @@ version is 0, a minor bump may break the API.
   longer tells the model about capabilities it cannot call.
 
 ### Changed
+- Docs lead with integrating codemode: a five-step summary on the landing page
+  and README, the sidebar ordered Get started → Ship it → How it works, and one
+  pre-production checklist. Fixed stale snippets, including a Dockerfile that
+  could not build with `sqlitestore` and an HTTP handler that shared one `mode`
+  across users.
 - Results from subprocess engines cross JSON, so numbers are `float64`.

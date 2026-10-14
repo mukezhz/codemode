@@ -157,6 +157,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -220,7 +221,10 @@ func main() {
 	defer runner.Close()
 
 	model, err := llm.NewFromEnv()
-	if err != nil {
+	if err != nil && !errors.Is(err, llm.ErrNoProvider) {
+		log.Fatal(err)
+	}
+	if model == nil {
 		// No API key: run a hand-written program so you can see the sandbox work.
 		value, err := runner.Run(ctx, mode, `
 			const { orders } = codemode.execute("orders.list", { status: "paid" });

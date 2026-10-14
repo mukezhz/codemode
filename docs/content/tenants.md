@@ -358,7 +358,9 @@ model is only told about capabilities it can call.
 
 A cached program contains code, not data. When it runs again, every call goes
 through the *current* caller's `ExecuteFunc`, so acme's cached program run for
-globex reads globex's rows. Programs can usually be shared across tenants.
+globex reads globex's rows. Sharing across tenants is therefore safe for data,
+but a tenant's own capabilities or `Instructions` can still leak into another's
+program, so the default is to put the tenant in the key, as below.
 
 What scopes the cache:
 

@@ -129,7 +129,7 @@ is the one that matters for [permissions](/permissions):
 agent.Options{
     Runner:      runner,
     Cache:       cache,
-    CacheCaller: string(identity.Role),   // or tenant, or both
+    CacheCaller: identity.Tenant + "/" + string(identity.Role),
 }
 ```
 
@@ -137,10 +137,11 @@ Leave it empty only when every caller of this agent sees the same capabilities
 and the same data. A program written against an admin's capabilities must never
 be served to a member — and with the role in the key, it cannot be.
 
-Multi-tenant deployments should include the tenant:
+Include the tenant, as above, and the user too when `Instructions` names them.
+A single-tenant app can drop the tenant:
 
 ```go
-CacheCaller: identity.Tenant + "/" + string(identity.Role),
+CacheCaller: string(identity.Role),
 ```
 
 ### The capability fingerprint

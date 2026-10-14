@@ -1,10 +1,11 @@
-# Add it to your application
+# Integration guide
 
 This page goes from an empty `main.go` to a working request, explaining each
 choice along the way. For the shortest path, follow the [Quickstart](/quickstart)
 first; for how the pieces fit, see [Architecture](/architecture); to add it beside
-an app you already run, see [Adding it to an existing app](/existing-app). Every Go snippet
-here compiles against the module as it stands.
+an app you already run, see [Adding it to an existing app](/existing-app). Snippets
+are fragments that share names with the ones before them; [the whole thing](#the-whole-thing)
+is a complete file.
 
 ## Install
 
@@ -12,9 +13,10 @@ here compiles against the module as it stands.
 go get github.com/mukezhz/codemode
 ```
 
-Your binary links only what you blank-import. Importing `codemode` alone pulls
-in **no third-party dependency at all**; each interpreter, model SDK, and
-database driver arrives only when you ask for it. See
+Your binary links only what you import. The `codemode` package alone pulls in
+**no third-party dependency at all**, and `registry` adds only protobuf, which
+your generated code needs anyway. Each interpreter, model SDK, and database
+driver arrives only when you ask for it. See
 [what your binary links](/dependencies).
 
 Nothing here pulls in gRPC — you own the transport, so you choose whether there
@@ -22,7 +24,7 @@ is one.
 
 ## What you supply
 
-Four things. Two are generated, one is a few lines, and one is the only piece
+Five things. Two are generated, two are a few lines, and one is the only piece
 nobody can write for you.
 
 | You supply | How | Effort |
@@ -30,6 +32,7 @@ nobody can write for you.
 | A registry | one call to `registry.FromFiles` | One line |
 | A search function | `capability.Keyword(registry)`, or `capability.Index.Search` | One line |
 | An execute function | Dispatch an RPC path to your code | **Yours** |
+| Who is asking | `registry.For(capability.Caller{...})`, per request | One line |
 | A model and a sandbox | `claude.New(claude.Options{...})` and `goja.New(sandbox.Options{})`, or `llm.NewFromEnv()` and `sandbox.NewFromEnv(sandbox.Options{})` | Two calls |
 
 `ExecuteFunc` is the one that matters. Everything else has a default; this is
@@ -84,6 +87,10 @@ import (
 capabilities, err := registry.FromFiles(todov1.File_todo_proto)
 ```
 
+The variable is named after the proto's path: `todo.proto` at the root of your
+buf module gives `File_todo_proto`, `todo/v1/todo.proto` gives
+`File_todo_v1_todo_proto`.
+
 That is the whole step. **No descriptor set, no JSON file, no `go:embed`, no
 extra build tool** — and the registry cannot drift from your contracts, because
 it is derived from them every time the process starts.
@@ -118,10 +125,10 @@ capabilities, err := capability.LoadFS(registryFS, "registry.json")
 list, so a hand-edited or truncated registry fails at startup rather than per
 request.
 
-::: tip Both paths produce identical registries
-A test in this repository asserts the two are byte-identical, so a project can
-start with `FromFiles` and add the generated file later — or run both, with CI
-diffing the file against what reflection produces.
+::: tip Both paths produce the same registry
+`examples/taskreport/registry_test.go` compares the two capability by capability,
+so a project can start with `FromFiles` and add the generated file later — or run
+both, with CI comparing the file against what reflection produces.
 :::
 
 ### Which one
@@ -230,12 +237,32 @@ keeps the two in step.
 
 ::: danger Your permissions still apply
 `ExecuteFunc` runs with your application's full authority. The registry decides
-which *capability* may run; it knows nothing about which *user* is asking. Carry
-identity on the `ctx` and check it here, exactly as you would for a request that
-arrived over HTTP. A program written by a model is untrusted input.
+which *capabilities* a caller may use (next step); it does not decide which
+*rows* they may touch. Carry identity on the `ctx` and scope every query here,
+exactly as you would for a request that arrived over HTTP. A program written by
+a model is untrusted input.
 :::
 
-## 4. Choose a search function
+## 4. Narrow to the caller
+
+An RPC may declare which roles or permissions can call it, with
+`(codemode.roles)` or `(codemode.permissions)` in the proto. Each request,
+narrow the registry to what the signed-in user holds:
+
+```go
+allowed := capabilities.For(capability.Caller{
+	Roles:       session.Roles,       // fixed roles: "admin", "support", ...
+	Permissions: session.Permissions, // or grants an admin made at runtime: "orders.write"
+})
+```
+
+`allowed` is what you pass to search and `codemode.New` from here on. A
+capability the caller may not use is left out of the prompt *and* refused if a
+program names it anyway. An RPC with no annotation stays open to everyone;
+`capabilities.Unrestricted()` lists those, so a test can pin them. See
+[Permissions](/permissions) and [Roles and tenants](/tenants).
+
+## 5. Choose a search function
 
 Search decides what the model is told exists. It never decides what may run —
 see [the two lists](/flow#_4-the-model-writes-a-program).
@@ -243,11 +270,12 @@ see [the two lists](/flow#_4-the-model-writes-a-program).
 **Start with keywords.** No database, no embedding calls, one line:
 
 ```go
-search := capability.Keyword(capabilities)
+search := capability.Keyword(allowed)
 ```
 
 It ranks capabilities by how many words of the request appear in their name and
-description. Pass the same narrowed registry you give `codemode.New`.
+description. Pass the same narrowed registry you give `codemode.New`; it is cheap
+to build per request.
 
 **Move to semantic search when the registry outgrows the prompt.** Below roughly
 twenty capabilities you can describe all of them every time and skip search
@@ -279,28 +307,38 @@ defer index.Close()
 ```
 
 `index.Search` already matches `codemode.SearchFunc`, so it goes straight into
-`codemode.New`. `Open` fails loudly if the stored index was built with a
+`codemode.New`. Build the index once over the full registry and share it:
+`codemode.New` drops any match outside `allowed`. `Open` fails loudly if the stored index was built with a
 different embedding model, which is the failure you want: silently comparing
 vectors from two models produces plausible nonsense.
 
 See [Search](/search) for the backends.
 
-## 5. Wire it together
+## 6. Wire it together
 
 ```go
-mode, err := codemode.New(capabilities, search, execute)
+mode, err := codemode.New(allowed, search, execute)
 ```
 
 `codemode.New` validates the registry once — no blank names, no duplicates — and
-returns the two-method runtime. `Execute` resolves a name to an RPC path through
+returns the two-method runtime. It is cheap, so build one per request from that
+caller's `allowed`. `Execute` resolves a name to an RPC path through
 that map, so an invented capability name fails a map lookup rather than a prompt
 instruction.
 
-## 6. Run a request
+## 7. Run a request
 
-Importing an engine and a provider directly is the most explicit form and needs
-no registration at all. Blank-import them instead if you want the choice made by
-configuration — see [what your binary links](/dependencies).
+There are two ways to build the model and the sandbox:
+
+| | Explicit | From the environment |
+| --- | --- | --- |
+| Model | `claude.New(claude.Options{...})` | `llm.NewFromEnv()` reads `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `LLM_PROVIDER`, … |
+| Sandbox | `goja.New(sandbox.Options{Timeout: ..., MaxCalls: ...})` | `sandbox.NewFromEnv(sandbox.Options{})` reads `SANDBOX_ENGINE`, `SANDBOX_ISOLATION`, `SANDBOX_TIMEOUT`, … |
+| Imports | the package itself | blank imports of what may be chosen |
+
+The explicit form ignores every environment variable; `SANDBOX_ISOLATION=process`
+only takes effect through `sandbox.NewFromEnv`. Pick one style per binary — see
+[what your binary links](/dependencies).
 
 ```go
 model, err := claude.New(claude.Options{Options: llm.Options{APIKey: config.Key}})
@@ -336,11 +374,14 @@ defer cache.Close()
 result, err := agent.Run(ctx, mode, model, request, agent.Options{
 	Runner:      runner,
 	Cache:       cache,
-	CacheCaller: string(identity.Role), // never share across roles or tenants
+	CacheCaller: session.Tenant + "|" + strings.Join(session.Roles, ","), // sorted roles
 })
 ```
 
 Same question, second time: about four milliseconds instead of several seconds.
+`CacheCaller` decides who may reuse whose program: put in it the tenant and the
+roles or permissions you narrowed with, and the user too if `Instructions` names
+them.
 The cached program still runs and still sees live data.
 
 `Cache` is an interface, so your own database or caching policy drops in without
@@ -379,12 +420,13 @@ result, err := agent.Run(ctx, mode, model, request, agent.Options{
 `Instructions` is appended to the engine's system prompt, not a replacement for
 it — see [configuring the model](/models#configuring-the-model).
 
-::: tip The library never reads the environment
-Every constructor takes explicit options, so your application's own
-configuration — flags, a config file, a mounted secret — is the only source of
-truth. If you *want* the environment read, ask for it by name:
-`llm.OptionsFromEnv()`, `sandbox.NewFromEnv(sandbox.Options{})`, `capability.OpenStoreFromEnv(ctx)`.
-Only a name containing `FromEnv` touches it, and a check in CI enforces that.
+::: tip Constructors never read the environment
+Every `New` takes explicit options, so your application's own configuration —
+flags, a config file, a mounted secret — is the only source of truth. If you
+*want* the environment read, ask for it by name: `llm.OptionsFromEnv()`,
+`sandbox.NewFromEnv(sandbox.Options{})`, `capability.OpenStoreFromEnv(ctx)`.
+Every read lives in a package's `env.go`, and `make test-env` fails if one
+appears anywhere else.
 :::
 
 ::: tip Build the runner once
@@ -427,16 +469,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// 2. Search: what the model gets told about.
-	search := capability.Keyword(capabilities)
+	// 2. Who is asking. In a server this comes from the session, per request.
+	allowed := capabilities.For(capability.Caller{Roles: []string{"member"}})
 
-	// 3. The runtime: name -> RPC, then your transport.
-	mode, err := codemode.New(capabilities, search, execute)
+	// 3. Search: what the model gets told about.
+	search := capability.Keyword(allowed)
+
+	// 4. The runtime: name -> RPC, then your transport.
+	mode, err := codemode.New(allowed, search, execute)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 4. Model and sandbox, configured by your application. Nothing here
+	// 5. Model and sandbox, configured by your application. Nothing here
 	// reads the environment.
 	model, err := claude.New(claude.Options{
 		Options: llm.Options{APIKey: os.Getenv("ANTHROPIC_API_KEY")}, // or your own config
@@ -450,7 +495,7 @@ func main() {
 	}
 	defer runner.Close()
 
-	// 5. One request, one model turn.
+	// 6. One request, one model turn.
 	result, err := agent.Run(ctx, mode, model, "finish anything about docs", agent.Options{Runner: runner})
 	if err != nil {
 		log.Fatal(err)
@@ -491,12 +536,12 @@ goes stale the moment someone changes engines.
 
 ## Behind an HTTP handler
 
-Build the expensive things once and share them; keep the per-request things per
+Build the expensive things once and share them; build the caller's view per
 request.
 
 | Build once, at startup | Build per request |
 | --- | --- |
-| `registry`, `mode`, `index`, `model`, `runner` | The `ctx`, its deadline, and its identity |
+| full `registry`, `index`, `model`, `runner`, `cache` | the `ctx` with its deadline and identity, `allowed`, `mode` |
 
 All of the startup values are safe for concurrent use. The one thing that is
 not automatically safe is your own `ExecuteFunc` — it is ordinary Go called from
@@ -504,11 +549,18 @@ many goroutines, so whatever state it touches needs the locking it would need
 anyway.
 
 ```go
-func handler(mode codemode.CodeMode, model llm.Client, runner sandbox.Runner) http.HandlerFunc {
+func handler(full capability.Registry, model llm.Client, runner sandbox.Runner) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
+		session := sessionFrom(request.Context()) // your middleware
 		ctx, cancel := context.WithTimeout(request.Context(), 60*time.Second)
 		defer cancel()
 
+		allowed := full.For(capability.Caller{Roles: session.Roles, Permissions: session.Permissions})
+		mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+		if err != nil {
+			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		result, err := agent.Run(ctx, mode, model, request.URL.Query().Get("q"), agent.Options{Runner: runner})
 		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -519,17 +571,27 @@ func handler(mode codemode.CodeMode, model llm.Client, runner sandbox.Runner) ht
 }
 ```
 
-Give the request a deadline well above the sandbox's own `SANDBOX_TIMEOUT`. The
+`examples/taskreport/server/server.go` is this handler in full, with streaming,
+rate limits and an audit log.
+
+Give the request a deadline well above the sandbox's own timeout
+(`sandbox.Options.Timeout`, or `SANDBOX_TIMEOUT` through `NewFromEnv`). The
 sandbox bounds one program; the handler bounds search, the model call, the
 program, and any repair attempts after it.
 
 ## Before production
 
-- **Check permissions inside `ExecuteFunc`.** The registry is not an authorization system.
-- **Set `SANDBOX_MAX_CALLS` and `SANDBOX_TIMEOUT` deliberately.** The defaults — 50 calls, 30 seconds — are demo numbers.
+This is the one checklist; the other pages link here.
+
+- **Narrow per request.** Build `allowed` with `full.For(capability.Caller{...})` and a fresh `mode` from it for every caller. Never share one `mode` across users.
+- **Annotate restricted RPCs in the proto.** Every RPC only some callers may use carries `(codemode.roles)` or `(codemode.permissions)`; a privileged service uses `(codemode.default_roles)` or `(codemode.default_permissions)` so a new RPC arrives restricted. Pin `Unrestricted()` in a test.
+- **Scope rows inside `ExecuteFunc`.** Take the user and tenant from `ctx`, never from the program's input.
+- **Scope the cache.** `CacheCaller` carries tenant and roles (and the user, if `Instructions` names them).
+- **Set the sandbox bounds deliberately** — `Timeout` and `MaxCalls`, or `SANDBOX_TIMEOUT` and `SANDBOX_MAX_CALLS`. The defaults — 50 calls, 30 seconds — are demo numbers.
 - **Log `Result.Source`.** When an answer is wrong, the program is the evidence.
 - **Regenerate the registry in CI.** A drifted `registry.json` is a silent failure.
-- **Run programs out of process** if they will ever be shaped by untrusted end users: `SANDBOX_ISOLATION=process`, and a container worker for tenants you do not trust. See [Development and production](/environments).
+- **Confirm writes** a user did not plainly ask for: `agent.Options{Plan: true}`, then `agent.Apply` — see [Writes and retries](/writes).
+- **Run programs out of process** if they will ever be shaped by untrusted end users: `SANDBOX_ISOLATION=process` through `sandbox.NewFromEnv`, and a container worker for tenants you do not trust. See [Development and production](/environments).
 - **Blank-import exactly what you run.** An unregistered backend fails at `New`, not at startup — see [what your binary links](/dependencies).
 
 Then [Development and production](/environments) for configuring the same binary for both,

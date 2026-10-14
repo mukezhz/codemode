@@ -30,6 +30,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mukezhz/codemode/agent"
@@ -40,7 +41,7 @@ import (
 	"github.com/mukezhz/codemode/registry"
 	"github.com/mukezhz/codemode/sandbox"
 
-	_ "github.com/mukezhz/codemode/capability/sqlitestore"
+	_ "github.com/mukezhz/codemode/capability/pgstore" // pure Go; sqlitestore needs cgo
 	_ "github.com/mukezhz/codemode/llm/claude"
 	_ "github.com/mukezhz/codemode/sandbox/goja"       // the language, in both environments
 	_ "github.com/mukezhz/codemode/sandbox/subprocess" // the worker, in production
@@ -51,7 +52,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	full, err := registry.FromFiles(tasksv1.File_tasks_proto)
+	full, err := registry.FromFiles(tasksv1.File_tasks_v1_tasks_proto)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func main() {
 	slog.Info("codemode", "sandbox", runner.Name(), "model", model.Name())
 
 	http.HandleFunc("POST /ask", func(writer http.ResponseWriter, request *http.Request) {
-		user, caller := identify(request) // your auth: roles and permissions, fetched per request
+		user, tenant, caller := identify(request) // your auth: a capability.Caller fetched per request
 		mode, err := codemode.New(full.For(caller), search, executeFor(user))
 		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -82,6 +83,7 @@ func main() {
 		result, err := agent.Run(ctx, mode, model, request.FormValue("q"), agent.Options{
 			Runner:      runner,
 			Cache:       cache,
+			CacheCaller: tenant + "|" + strings.Join(caller.Roles, ","),
 			OnCall: func(call codemode.Call) {
 				slog.Info("capability", "user", user, "roles", caller.Roles, "name", call.Name,
 					"ms", call.Duration.Milliseconds(), "error", call.Error)
@@ -109,8 +111,7 @@ func keywordOrIndex(ctx context.Context, full capability.Registry) codemode.Sear
 }
 ```
 
-`identify`, `executeFor` and `semanticSearch` are yours:
-[Add it to your application](/using-it) covers `ExecuteFunc` and both kinds of
+`identify`, `executeFor` and `semanticSearch` are yours. The [Integration guide](/using-it) covers `ExecuteFunc` and both kinds of
 search. The point here is that nothing in this file says "development" or
 "production".
 
@@ -248,14 +249,19 @@ Around the sandbox, the host still owns:
   registry entirely: `full.Select(func(c capability.Capability) bool { return c.ReadOnly })`.
 
 [`examples/taskreport`](https://github.com/mukezhz/codemode/tree/main/examples/taskreport)
-does all four; see [Many services, many users](/scaling-up#many-tenants).
+does the first three; see [Many services, many users](/scaling-up#many-tenants).
 
 ### Search and cache at scale
 
 ```sh
-CAPABILITY_DB=postgres
+CAPABILITY_DB=postgres          # required: a DSN alone means sqlite
 CAPABILITY_DB_DSN=postgres://...
 ```
+
+That matches the `pgstore` import above. To use sqlite-vector instead, import
+`capability/sqlitestore`, set `SQLITE_VECTOR_EXTENSION` to the library's path,
+and build with `CGO_ENABLED=1` on a base image with libc
+(`gcr.io/distroless/base`), since the driver loads a native extension.
 
 Rebuild the index when the registry changes (at deploy, or on startup when it is
 small), not per request. With several replicas, either accept a per-replica
@@ -264,11 +270,12 @@ in-memory program cache or use a shared `program.Store`; see
 
 ## Before you ship
 
+Start with the [checklist in the Integration guide](/using-it#before-production).
+Then, for the environment:
+
 - `runner.Name()` in the first log line says `child process` or `container` (or you decided in-process is right).
 - `codemode-worker` is the same version as the library in `go.mod`.
 - Timeout, call budget and heap cap are set, not defaulted.
-- Every RPC only some roles may call carries `(codemode.roles)`, and a test asserts `Registry.Unrestricted()` is what you expect.
-- `ExecuteFunc` scopes rows to the caller and takes no tenant or owner from input.
 - `OnCall` writes somewhere you will look.
 - The handler deadline is well above `SANDBOX_TIMEOUT`, so a slow program fails as a sandbox timeout, not a dropped connection.
 

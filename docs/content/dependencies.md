@@ -17,7 +17,9 @@ import (
 
 Those three lines are the whole configuration surface. The environment still
 picks between what is registered — `SANDBOX_ENGINE`, `LLM_PROVIDER`,
-`CAPABILITY_DB` — but it can only pick something you compiled in.
+`CAPABILITY_DB` — but it can only pick something you compiled in. With
+`pgstore` as the only backend, set `CAPABILITY_DB=postgres` too: a DSN on its
+own selects sqlite.
 
 ## Why it works this way
 
@@ -41,6 +43,8 @@ upside.
 | Blank import | Links | cgo |
 | --- | --- | --- |
 | *(nothing — just `codemode`)* | nothing third-party | no |
+| `registry` (not blank) | `google.golang.org/protobuf`, which your generated code links anyway | no |
+| `mcpserver`, `capability/mcpsource` (not blank) | `modelcontextprotocol/go-sdk` and its JSON schema deps | no |
 | `capability/pgstore` | `jackc/pgx` | no |
 | `capability/sqlitestore` | `mattn/go-sqlite3` | **yes** |
 | `llm/claude` | `anthropics/anthropic-sdk-go` | no |
@@ -48,6 +52,7 @@ upside.
 | `sandbox/goja` | `dop251/goja` | no |
 | `sandbox/starlark` | `go.starlark.net` | no |
 | `sandbox/lua` | `yuin/gopher-lua` | no |
+| `sandbox/subprocess` | nothing third-party; registers `SANDBOX_ISOLATION=process` | no |
 
 `sqlitestore` is the only entry that forces cgo. If you need static linking and
 semantic search, use `pgstore`.
@@ -98,11 +103,13 @@ interface package never imports back. That is what keeps `capability`,
 | `program.Cache` | `program.New` (semantic), `program.NewExactCache` |
 | `program.Store` | `program.NewMemoryStore`, `capability/sqlitestore`, `capability/pgstore` |
 | `llm.Client`, `llm.Streamer` | `llm/claude`, `llm/openai` |
-| `sandbox.Runner` | `sandbox/goja`, `sandbox/starlark`, `sandbox/lua` |
+| `sandbox.Runner` | `sandbox/goja`, `sandbox/starlark`, `sandbox/lua`, `sandbox/subprocess` |
+| `sandbox.Isolation` (registered) | `sandbox/subprocess` (`process`); in-process is built in |
 
 Each implementation asserts its interface at compile time with a line such as
 `var _ sandbox.Runner = (*luaRunner)(nil)`, so
-`git grep 'var _ sandbox.Runner'` lists every engine.
+`git grep 'var _ sandbox.Runner'` lists every runner: the three engines, plus
+`subprocess`, which runs one of them in a worker.
 
 ## When you forget an import
 

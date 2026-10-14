@@ -23,7 +23,7 @@ test-container: worker-image
 mcp-todo: worker
 	@SANDBOX_ISOLATION=process SANDBOX_WORKER=$(CURDIR)/bin/codemode-worker go run ./examples/todo/cmd/todo-mcp
 
-# A complete application: SQLite tasks, 18 capabilities, reporting. Runs without
+# A complete application: SQLite tasks, 23 capabilities, reporting. Runs without
 # credentials; pass BASE_URL and API_KEY to have a model write the program.
 # The web app. Builds the frontend if pnpm is available, then serves.
 demo-web: generate

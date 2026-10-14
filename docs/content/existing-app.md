@@ -434,7 +434,8 @@ func (assistant *Assistant) Ask(ctx context.Context, question string, plan bool)
 	return agent.Run(ctx, mode, assistant.model, question, agent.Options{
 		Runner:       assistant.runner,
 		Cache:        assistant.cache,
-		CacheCaller:  strings.Join(slices.Sorted(slices.Values(session.Roles)), ","),
+		// instructions name the user, so a cached program is theirs alone
+		CacheCaller:  session.Org + "|" + session.UserID + "|" + strings.Join(slices.Sorted(slices.Values(session.Roles)), ","),
 		Plan:         plan,
 		Instructions: instructions(session),
 	})
@@ -782,9 +783,12 @@ reading the user's token from the incoming request instead of a Go session.
 
 ## Checklist
 
+The general list is in the [Integration guide](/using-it#before-production). For
+this CRM, on top of it:
+
 - [ ] The contract lists only what you would let a junior colleague do for the user.
 - [ ] Reads are marked `idempotency_level = NO_SIDE_EFFECTS`.
-- [ ] Privileged RPCs carry `(codemode.roles)` or sit in a service with `default_roles`.
+- [ ] Privileged RPCs carry `(codemode.roles)` or `(codemode.permissions)`, or sit in a service with `default_roles` or `default_permissions`.
 - [ ] `execute` takes tenant and user from the session; no request message names either.
 - [ ] Responses go through `registry.MarshalJSON`.
 - [ ] Not-found and forbidden return `codemode.Permanent`, and look the same.

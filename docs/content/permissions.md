@@ -108,7 +108,7 @@ They are checked in two places:
   for each resource, so admins can only pick valid names.
 
 At request time `For` does not fail on unknown names: your app's permission set
-will include ones the assistant has no use for (`users.invite`), and those are
+will include ones the assistant has no use for (`users.manage`), and those are
 simply ignored. Validate when roles are *saved*, not when they are *used*.
 `capability.ValidatePermission(name)` checks a single name against the pattern.
 
