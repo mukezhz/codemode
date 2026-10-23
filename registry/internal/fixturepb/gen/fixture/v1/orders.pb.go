@@ -10,6 +10,8 @@ import (
 	_ "github.com/mukezhz/codemode/gen/codemode"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,14 +24,72 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Status int32
+
+const (
+	Status_STATUS_UNSPECIFIED Status = 0
+	Status_STATUS_OPEN        Status = 1
+	Status_STATUS_SHIPPED     Status = 2
+)
+
+// Enum value maps for Status.
+var (
+	Status_name = map[int32]string{
+		0: "STATUS_UNSPECIFIED",
+		1: "STATUS_OPEN",
+		2: "STATUS_SHIPPED",
+	}
+	Status_value = map[string]int32{
+		"STATUS_UNSPECIFIED": 0,
+		"STATUS_OPEN":        1,
+		"STATUS_SHIPPED":     2,
+	}
+)
+
+func (x Status) Enum() *Status {
+	p := new(Status)
+	*p = x
+	return p
+}
+
+func (x Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_orders_proto_enumTypes[0].Descriptor()
+}
+
+func (Status) Type() protoreflect.EnumType {
+	return &file_orders_proto_enumTypes[0]
+}
+
+func (x Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Status.Descriptor instead.
+func (Status) EnumDescriptor() ([]byte, []int) {
+	return file_orders_proto_rawDescGZIP(), []int{0}
+}
+
 type Order struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Reference     string                 `protobuf:"bytes,2,opt,name=reference,proto3" json:"reference,omitempty"`
-	Shipped       bool                   `protobuf:"varint,3,opt,name=shipped,proto3" json:"shipped,omitempty"`
-	Items         []string               `protobuf:"bytes,4,rep,name=items,proto3" json:"items,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Receipt       []byte                 `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Reference string                 `protobuf:"bytes,2,opt,name=reference,proto3" json:"reference,omitempty"`
+	Shipped   bool                   `protobuf:"varint,3,opt,name=shipped,proto3" json:"shipped,omitempty"`
+	Items     []string               `protobuf:"bytes,4,rep,name=items,proto3" json:"items,omitempty"`
+	Labels    map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Receipt   []byte                 `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Status    Status                 `protobuf:"varint,7,opt,name=status,proto3,enum=fixture.v1.Status" json:"status,omitempty"`
+	PlacedAt  *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	Note      *string                `protobuf:"bytes,9,opt,name=note,proto3,oneof" json:"note,omitempty"`
+	// Types that are valid to be assigned to Destination:
+	//
+	//	*Order_Address
+	//	*Order_PickupPoint
+	Destination   isOrder_Destination    `protobuf_oneof:"destination"`
+	ParentId      *wrapperspb.Int64Value `protobuf:"bytes,12,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -105,6 +165,75 @@ func (x *Order) GetReceipt() []byte {
 	}
 	return nil
 }
+
+func (x *Order) GetStatus() Status {
+	if x != nil {
+		return x.Status
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (x *Order) GetPlacedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PlacedAt
+	}
+	return nil
+}
+
+func (x *Order) GetNote() string {
+	if x != nil && x.Note != nil {
+		return *x.Note
+	}
+	return ""
+}
+
+func (x *Order) GetDestination() isOrder_Destination {
+	if x != nil {
+		return x.Destination
+	}
+	return nil
+}
+
+func (x *Order) GetAddress() string {
+	if x != nil {
+		if x, ok := x.Destination.(*Order_Address); ok {
+			return x.Address
+		}
+	}
+	return ""
+}
+
+func (x *Order) GetPickupPoint() string {
+	if x != nil {
+		if x, ok := x.Destination.(*Order_PickupPoint); ok {
+			return x.PickupPoint
+		}
+	}
+	return ""
+}
+
+func (x *Order) GetParentId() *wrapperspb.Int64Value {
+	if x != nil {
+		return x.ParentId
+	}
+	return nil
+}
+
+type isOrder_Destination interface {
+	isOrder_Destination()
+}
+
+type Order_Address struct {
+	Address string `protobuf:"bytes,10,opt,name=address,proto3,oneof"`
+}
+
+type Order_PickupPoint struct {
+	PickupPoint string `protobuf:"bytes,11,opt,name=pickup_point,json=pickupPoint,proto3,oneof"`
+}
+
+func (*Order_Address) isOrder_Destination() {}
+
+func (*Order_PickupPoint) isOrder_Destination() {}
 
 type ListOrdersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -279,24 +408,37 @@ var File_orders_proto protoreflect.FileDescriptor
 const file_orders_proto_rawDesc = "" +
 	"\n" +
 	"\forders.proto\x12\n" +
-	"fixture.v1\x1a\x0ecodemode.proto\"\xf1\x01\n" +
+	"fixture.v1\x1a\x0ecodemode.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\xaa\x04\n" +
 	"\x05Order\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1c\n" +
 	"\treference\x18\x02 \x01(\tR\treference\x12\x18\n" +
 	"\ashipped\x18\x03 \x01(\bR\ashipped\x12\x14\n" +
 	"\x05items\x18\x04 \x03(\tR\x05items\x125\n" +
 	"\x06labels\x18\x05 \x03(\v2\x1d.fixture.v1.Order.LabelsEntryR\x06labels\x12\x18\n" +
-	"\areceipt\x18\x06 \x01(\fR\areceipt\x1a9\n" +
+	"\areceipt\x18\x06 \x01(\fR\areceipt\x12*\n" +
+	"\x06status\x18\a \x01(\x0e2\x12.fixture.v1.StatusR\x06status\x12_\n" +
+	"\tplaced_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampB&\x82\xb5\x18\"When the customer placed the orderR\bplacedAt\x12\x17\n" +
+	"\x04note\x18\t \x01(\tH\x01R\x04note\x88\x01\x01\x12\x1a\n" +
+	"\aaddress\x18\n" +
+	" \x01(\tH\x00R\aaddress\x12#\n" +
+	"\fpickup_point\x18\v \x01(\tH\x00R\vpickupPoint\x128\n" +
+	"\tparent_id\x18\f \x01(\v2\x1b.google.protobuf.Int64ValueR\bparentId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x13\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
+	"\vdestinationB\a\n" +
+	"\x05_note\"\x13\n" +
 	"\x11ListOrdersRequest\"?\n" +
 	"\x12ListOrdersResponse\x12)\n" +
 	"\x06orders\x18\x01 \x03(\v2\x11.fixture.v1.OrderR\x06orders\"!\n" +
 	"\x0fGetOrderRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"8\n" +
 	"\rOrderResponse\x12'\n" +
-	"\x05order\x18\x01 \x01(\v2\x11.fixture.v1.OrderR\x05order2\xf8\x02\n" +
+	"\x05order\x18\x01 \x01(\v2\x11.fixture.v1.OrderR\x05order*E\n" +
+	"\x06Status\x12\x16\n" +
+	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
+	"\vSTATUS_OPEN\x10\x01\x12\x12\n" +
+	"\x0eSTATUS_SHIPPED\x10\x022\xf8\x02\n" +
 	"\fOrderService\x12f\n" +
 	"\x04List\x12\x1d.fixture.v1.ListOrdersRequest\x1a\x1e.fixture.v1.ListOrdersResponse\"\x1f\x82\xb5\x18\x1bLists orders, newest first.\x12[\n" +
 	"\x03Get\x12\x1b.fixture.v1.GetOrderRequest\x1a\x19.fixture.v1.OrderResponse\"\x1c\x82\xb5\x18\x18Returns one order by ID.\x12\x87\x01\n" +
@@ -314,30 +456,37 @@ func file_orders_proto_rawDescGZIP() []byte {
 	return file_orders_proto_rawDescData
 }
 
+var file_orders_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_orders_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_orders_proto_goTypes = []any{
-	(*Order)(nil),              // 0: fixture.v1.Order
-	(*ListOrdersRequest)(nil),  // 1: fixture.v1.ListOrdersRequest
-	(*ListOrdersResponse)(nil), // 2: fixture.v1.ListOrdersResponse
-	(*GetOrderRequest)(nil),    // 3: fixture.v1.GetOrderRequest
-	(*OrderResponse)(nil),      // 4: fixture.v1.OrderResponse
-	nil,                        // 5: fixture.v1.Order.LabelsEntry
+	(Status)(0),                   // 0: fixture.v1.Status
+	(*Order)(nil),                 // 1: fixture.v1.Order
+	(*ListOrdersRequest)(nil),     // 2: fixture.v1.ListOrdersRequest
+	(*ListOrdersResponse)(nil),    // 3: fixture.v1.ListOrdersResponse
+	(*GetOrderRequest)(nil),       // 4: fixture.v1.GetOrderRequest
+	(*OrderResponse)(nil),         // 5: fixture.v1.OrderResponse
+	nil,                           // 6: fixture.v1.Order.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*wrapperspb.Int64Value)(nil), // 8: google.protobuf.Int64Value
 }
 var file_orders_proto_depIdxs = []int32{
-	5, // 0: fixture.v1.Order.labels:type_name -> fixture.v1.Order.LabelsEntry
-	0, // 1: fixture.v1.ListOrdersResponse.orders:type_name -> fixture.v1.Order
-	0, // 2: fixture.v1.OrderResponse.order:type_name -> fixture.v1.Order
-	1, // 3: fixture.v1.OrderService.List:input_type -> fixture.v1.ListOrdersRequest
-	3, // 4: fixture.v1.OrderService.Get:input_type -> fixture.v1.GetOrderRequest
-	3, // 5: fixture.v1.OrderService.Cancel:input_type -> fixture.v1.GetOrderRequest
-	2, // 6: fixture.v1.OrderService.List:output_type -> fixture.v1.ListOrdersResponse
-	4, // 7: fixture.v1.OrderService.Get:output_type -> fixture.v1.OrderResponse
-	4, // 8: fixture.v1.OrderService.Cancel:output_type -> fixture.v1.OrderResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	6, // 0: fixture.v1.Order.labels:type_name -> fixture.v1.Order.LabelsEntry
+	0, // 1: fixture.v1.Order.status:type_name -> fixture.v1.Status
+	7, // 2: fixture.v1.Order.placed_at:type_name -> google.protobuf.Timestamp
+	8, // 3: fixture.v1.Order.parent_id:type_name -> google.protobuf.Int64Value
+	1, // 4: fixture.v1.ListOrdersResponse.orders:type_name -> fixture.v1.Order
+	1, // 5: fixture.v1.OrderResponse.order:type_name -> fixture.v1.Order
+	2, // 6: fixture.v1.OrderService.List:input_type -> fixture.v1.ListOrdersRequest
+	4, // 7: fixture.v1.OrderService.Get:input_type -> fixture.v1.GetOrderRequest
+	4, // 8: fixture.v1.OrderService.Cancel:input_type -> fixture.v1.GetOrderRequest
+	3, // 9: fixture.v1.OrderService.List:output_type -> fixture.v1.ListOrdersResponse
+	5, // 10: fixture.v1.OrderService.Get:output_type -> fixture.v1.OrderResponse
+	5, // 11: fixture.v1.OrderService.Cancel:output_type -> fixture.v1.OrderResponse
+	9, // [9:12] is the sub-list for method output_type
+	6, // [6:9] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_orders_proto_init() }
@@ -345,18 +494,23 @@ func file_orders_proto_init() {
 	if File_orders_proto != nil {
 		return
 	}
+	file_orders_proto_msgTypes[0].OneofWrappers = []any{
+		(*Order_Address)(nil),
+		(*Order_PickupPoint)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orders_proto_rawDesc), len(file_orders_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_orders_proto_goTypes,
 		DependencyIndexes: file_orders_proto_depIdxs,
+		EnumInfos:         file_orders_proto_enumTypes,
 		MessageInfos:      file_orders_proto_msgTypes,
 	}.Build()
 	File_orders_proto = out.File

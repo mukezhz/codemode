@@ -74,6 +74,43 @@ because every one of them crosses the bridge as a JSON number.
 | Message or enum | Its unqualified type name |
 | `repeated T` | `repeated T` |
 | `map<K, V>` | `map<K, V>` |
+| `google.protobuf.Timestamp`, `Duration`, `FieldMask` | `string`, with the format in the field's description |
+| Wrappers such as `Int64Value`, `StringValue` | the inner scalar, marked optional |
+| `Struct` / `Value` / `ListValue` / `Any` | `map<string, any>` / `any` / `repeated any` / `any` |
+
+Well-known types are shown in the form protojson actually sends. A `Timestamp`
+arrives as `"2026-01-02T15:04:05Z"`, not as `{ seconds, nanos }`, so that is
+what the model is told.
+
+### What a schema says about its fields
+
+Types alone leave the model guessing at units, formats and allowed values. Each
+schema carries more where the proto says it:
+
+| Proto | Schema | The model sees |
+| --- | --- | --- |
+| `[(codemode.field_description) = "..."]` | `descriptions` | a comment line, `Order.placed_at: When the customer placed the order` |
+| `enum Status { ... }` | a type with `values` | `Status is one of "STATUS_OPEN", "STATUS_SHIPPED"` |
+| `optional string note` | `optional` | `note: string \| undefined` (Starlark `string\|None`, Lua `string\|nil`) |
+| `oneof destination { ... }` | `oneofs` | `Order: set at most one of address, pickup_point` |
+
+```proto
+message Order {
+  google.protobuf.Timestamp placed_at = 1
+      [(codemode.field_description) = "When the customer placed the order"];
+  Status status = 2;
+  optional string note = 3;
+  oneof destination {
+    string address = 4;
+    string pickup_point = 5;
+  }
+}
+```
+
+Field descriptions are an option, not proto comments, because generated Go
+drops comments: `registry.FromFiles` would never see them. Write one where the
+name and type leave a real question — a unit, a format, what an empty value
+means. A field named `title` needs none.
 
 Schemas describe the direct fields of each request and response. Every message
 they refer to travels alongside, transitively, in `Capability.Types`:
@@ -291,3 +328,5 @@ What it does not trust:
   "anything", which would tell the model a call is valid when it is not.
 
 A tool without an output schema returns `{ text }`, its text content joined.
+Property descriptions, string `enum`s, and `required` carry over: a property
+missing from `required` is marked optional.

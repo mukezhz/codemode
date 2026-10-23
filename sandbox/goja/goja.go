@@ -43,8 +43,9 @@ var javascriptTypes = prompt.Types{
 		"bool":  "boolean",
 		"bytes": "string (base64)",
 	},
-	List: func(element string) string { return element + "[]" },
-	Dict: func(key, value string) string { return "Record<" + key + ", " + value + ">" },
+	List:     func(element string) string { return element + "[]" },
+	Dict:     func(key, value string) string { return "Record<" + key + ", " + value + ">" },
+	Optional: func(fieldType string) string { return fieldType + " | undefined" },
 }
 
 var javascript = prompt.Dialect{

@@ -70,6 +70,14 @@ var file_codemode_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "bytes,50002,opt,name=permissions",
 		Filename:      "codemode.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         50000,
+		Name:          "codemode.field_description",
+		Tag:           "bytes,50000,opt,name=field_description",
+		Filename:      "codemode.proto",
+	},
 }
 
 // Extension fields to descriptorpb.ServiceOptions.
@@ -79,22 +87,11 @@ var (
 	//
 	// optional string namespace = 50000;
 	E_Namespace = &file_codemode_proto_extTypes[0]
-	// default_roles are the caller roles allowed to use this service's methods,
-	// separated by spaces. Empty places no restriction. A method's own (roles)
-	// replaces this.
-	//
-	// Setting it on a service whose methods are all privileged is what makes
-	// forgetting hard: a new RPC inherits the restriction instead of arriving
-	// unguarded.
+	// Space-separated roles allowed on every method; a new RPC inherits the restriction.
 	//
 	// optional string default_roles = 50001;
 	E_DefaultRoles = &file_codemode_proto_extTypes[1]
-	// default_permissions are the permissions that allow a caller to use this
-	// service's methods, separated by spaces, such as "deals.read". Use them when
-	// your application's roles are data an administrator edits at runtime: the
-	// proto names what an RPC needs, and your application decides which roles
-	// grant it. A method that declares roles or permissions of its own replaces
-	// this and default_roles.
+	// Space-separated permissions, such as "deals.read", for roles defined at runtime.
 	//
 	// optional string default_permissions = 50002;
 	E_DefaultPermissions = &file_codemode_proto_extTypes[2]
@@ -102,35 +99,27 @@ var (
 
 // Extension fields to descriptorpb.MethodOptions.
 var (
-	// description is the only prose search matches on and the only prose a model
-	// reads. Required, and worth writing for a stranger.
+	// Required; the only prose search matches and the model reads.
 	//
 	// optional string description = 50000;
 	E_Description = &file_codemode_proto_extTypes[3]
-	// roles are the caller roles allowed to use this method, separated by
-	// spaces. Declaring roles or permissions on a method replaces both of the
-	// service's defaults rather than adding to them, so a method can narrow a permissive service or open one method of a
-	// restricted one — deliberately, and visibly, in the contract.
-	//
-	// Declaring the policy beside the RPC rather than in a list somewhere in the
-	// host is the point: adding an RPC and forgetting to restrict it should be
-	// hard, not merely unlikely.
+	// Space-separated roles. Declaring roles or permissions replaces both service defaults.
 	//
 	// optional string roles = 50001;
 	E_Roles = &file_codemode_proto_extTypes[4]
-	// permissions are the permissions that allow a caller to use this method,
-	// separated by spaces, such as "deals.write". Each is resource.action: the
-	// resource is lowercase segments separated by dots, the action is read,
-	// write, delete or manage. Anything else fails registry loading. When
-	// matching a caller's grants, resource.write also satisfies resource.read,
-	// and resource.manage satisfies every action on that resource and its
-	// sub-resources (deals.manage grants deals.discounts.write). A caller holding any listed
-	// role or any listed permission may call the method. Declaring either on a
-	// method replaces both service defaults, so a method restricted with roles
-	// alone does not inherit default_permissions.
+	// Space-separated resource.action grants (read, write, delete, manage), such as "deals.write".
+	// write implies read; deals.manage grants everything under deals.
 	//
 	// optional string permissions = 50002;
 	E_Permissions = &file_codemode_proto_extTypes[5]
+)
+
+// Extension fields to descriptorpb.FieldOptions.
+var (
+	// Unit, format, or valid values; generated Go drops proto comments, so this reaches the model.
+	//
+	// optional string field_description = 50000;
+	E_FieldDescription = &file_codemode_proto_extTypes[6]
 )
 
 var File_codemode_proto protoreflect.FileDescriptor
@@ -143,11 +132,13 @@ const file_codemode_proto_rawDesc = "" +
 	"\x13default_permissions\x12\x1f.google.protobuf.ServiceOptions\x18҆\x03 \x01(\tR\x12defaultPermissions:B\n" +
 	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescription:6\n" +
 	"\x05roles\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\tR\x05roles:B\n" +
-	"\vpermissions\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\vpermissionsB3Z1github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
+	"\vpermissions\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\vpermissions:L\n" +
+	"\x11field_description\x12\x1d.google.protobuf.FieldOptions\x18І\x03 \x01(\tR\x10fieldDescriptionB3Z1github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
 
 var file_codemode_proto_goTypes = []any{
 	(*descriptorpb.ServiceOptions)(nil), // 0: google.protobuf.ServiceOptions
 	(*descriptorpb.MethodOptions)(nil),  // 1: google.protobuf.MethodOptions
+	(*descriptorpb.FieldOptions)(nil),   // 2: google.protobuf.FieldOptions
 }
 var file_codemode_proto_depIdxs = []int32{
 	0, // 0: codemode.namespace:extendee -> google.protobuf.ServiceOptions
@@ -156,10 +147,11 @@ var file_codemode_proto_depIdxs = []int32{
 	1, // 3: codemode.description:extendee -> google.protobuf.MethodOptions
 	1, // 4: codemode.roles:extendee -> google.protobuf.MethodOptions
 	1, // 5: codemode.permissions:extendee -> google.protobuf.MethodOptions
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	0, // [0:6] is the sub-list for extension extendee
+	2, // 6: codemode.field_description:extendee -> google.protobuf.FieldOptions
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	0, // [0:7] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
 }
 
@@ -175,7 +167,7 @@ func file_codemode_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_codemode_proto_rawDesc), len(file_codemode_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   0,
-			NumExtensions: 6,
+			NumExtensions: 7,
 			NumServices:   0,
 		},
 		GoTypes:           file_codemode_proto_goTypes,

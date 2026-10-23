@@ -138,7 +138,7 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	if err != nil {
 		return finish(result, err)
 	}
-	if caching {
+	if caching && reusable(result) {
 		// A failed cache write must not fail an answered request.
 		_ = options.Cache.Put(ctx, key, result.Source)
 	}
@@ -203,7 +203,24 @@ func cacheKey(mode codemode.CodeMode, runner sandbox.Runner, request string, opt
 		Language:     runner.Language(),
 		Capabilities: fingerprint,
 		Caller:       options.CacheCaller,
+		Instructions: strings.TrimSpace(options.Instructions),
 	}, true
+}
+
+// A cache hit may be a merely similar request, so programs naming a write are never reused.
+// ponytail: a capability name built at runtime escapes the source scan; the recorded calls still catch it when it runs.
+func reusable(result Result) bool {
+	for _, call := range result.Calls {
+		if !call.ReadOnly {
+			return false
+		}
+	}
+	for _, match := range result.Matches {
+		if !match.Capability.ReadOnly && strings.Contains(result.Source, match.Capability.Name) {
+			return false
+		}
+	}
+	return true
 }
 
 // Any cache failure is a miss; a cached program that fails after writing is not regenerated.

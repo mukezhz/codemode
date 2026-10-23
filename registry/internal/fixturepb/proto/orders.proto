@@ -3,12 +3,12 @@ syntax = "proto3";
 package fixture.v1;
 
 import "codemode.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1;fixturev1";
 
-// OrderService exists only to give the registry tests a real generated package
-// to read descriptors from. It is deliberately minimal: one service, three
-// methods, and one field of each shape the neutral type renderer handles.
+// Test fixture: one field of each shape the type renderer handles.
 service OrderService {
   option (codemode.namespace) = "orders";
   option (codemode.default_permissions) = "orders.read";
@@ -35,6 +35,20 @@ message Order {
   repeated string items = 4;
   map<string, string> labels = 5;
   bytes receipt = 6;
+  Status status = 7;
+  google.protobuf.Timestamp placed_at = 8 [(codemode.field_description) = "When the customer placed the order"];
+  optional string note = 9;
+  oneof destination {
+    string address = 10;
+    string pickup_point = 11;
+  }
+  google.protobuf.Int64Value parent_id = 12;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_OPEN = 1;
+  STATUS_SHIPPED = 2;
 }
 
 message ListOrdersRequest {}

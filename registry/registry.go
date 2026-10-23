@@ -48,7 +48,8 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	servicePermissionsOption, _ := customOptionNumber(files, ".codemode.default_permissions", ".google.protobuf.ServiceOptions")
 	methodPermissionsOption, _ := customOptionNumber(files, ".codemode.permissions", ".google.protobuf.MethodOptions")
 
-	messages := indexMessages(files)
+	fieldDescriptionOption, _ := customOptionNumber(files, ".codemode.field_description", ".google.protobuf.FieldOptions")
+	shapes := newShapeIndex(files, fieldDescriptionOption)
 	registry := Registry{Capabilities: []Capability{}}
 	seen := map[string]bool{}
 
@@ -81,9 +82,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
 				}
-				// A method that declares roles or permissions replaces both service
-				// defaults. Replacing them separately would let an inherited default
-				// permission reopen a method the author restricted with roles alone.
+				// Replaces both defaults, so an inherited permission cannot reopen a roles-only method.
 				methodRoles, err := optionalRoles(method.GetOptions(), methodRolesOption)
 				if err != nil {
 					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
@@ -113,11 +112,11 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				}
 				seen[name] = true
 
-				input, err := schemaFor(method.GetInputType(), messages)
+				input, err := shapes.schema(method.GetInputType())
 				if err != nil {
 					return Registry{}, err
 				}
-				output, err := schemaFor(method.GetOutputType(), messages)
+				output, err := shapes.schema(method.GetOutputType())
 				if err != nil {
 					return Registry{}, err
 				}
@@ -129,7 +128,7 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				// Referenced messages, so the model need not guess field names.
 				types := map[string]TypeSchema{}
 				for _, root := range []string{method.GetInputType(), method.GetOutputType()} {
-					if err := collectTypes(root, messages, types); err != nil {
+					if err := shapes.collect(root, types); err != nil {
 						return Registry{}, fmt.Errorf("%s: %w", name, err)
 					}
 				}
@@ -245,111 +244,207 @@ func resolvedOption(options proto.Message, number protowire.Number) string {
 	return value
 }
 
-func indexMessages(files *descriptorpb.FileDescriptorSet) map[string]*descriptorpb.DescriptorProto {
-	messages := map[string]*descriptorpb.DescriptorProto{}
+type shapeIndex struct {
+	messages         map[string]*descriptorpb.DescriptorProto
+	enums            map[string]*descriptorpb.EnumDescriptorProto
+	fieldDescription protowire.Number
+}
+
+func newShapeIndex(files *descriptorpb.FileDescriptorSet, fieldDescription protowire.Number) shapeIndex {
+	shapes := shapeIndex{
+		messages:         map[string]*descriptorpb.DescriptorProto{},
+		enums:            map[string]*descriptorpb.EnumDescriptorProto{},
+		fieldDescription: fieldDescription,
+	}
 	for _, file := range files.File {
 		prefix := "." + file.GetPackage()
 		if file.GetPackage() == "" {
 			prefix = ""
 		}
+		for _, enum := range file.EnumType {
+			shapes.enums[prefix+"."+enum.GetName()] = enum
+		}
 		for _, message := range file.MessageType {
-			indexMessage(messages, prefix, message)
+			shapes.addMessage(prefix, message)
 		}
 	}
-	return messages
+	return shapes
 }
 
-func indexMessage(messages map[string]*descriptorpb.DescriptorProto, prefix string, message *descriptorpb.DescriptorProto) {
+func (shapes shapeIndex) addMessage(prefix string, message *descriptorpb.DescriptorProto) {
 	name := prefix + "." + message.GetName()
-	messages[name] = message
+	shapes.messages[name] = message
+	for _, enum := range message.EnumType {
+		shapes.enums[name+"."+enum.GetName()] = enum
+	}
 	for _, nested := range message.NestedType {
-		indexMessage(messages, name, nested)
+		shapes.addMessage(name, nested)
 	}
 }
 
-func schemaFor(typeName string, messages map[string]*descriptorpb.DescriptorProto) (TypeSchema, error) {
-	message, ok := messages[typeName]
+// Well-known types have their own JSON forms, so the model is shown those, not their fields.
+var wellKnown = map[string]struct {
+	neutral  string
+	format   string
+	optional bool
+}{
+	".google.protobuf.Timestamp":   {neutral: "string", format: "RFC 3339 timestamp, such as 2026-01-02T15:04:05Z"},
+	".google.protobuf.Duration":    {neutral: "string", format: "seconds with an s suffix, such as 1.5s"},
+	".google.protobuf.FieldMask":   {neutral: "string", format: "comma-separated field paths"},
+	".google.protobuf.Struct":      {neutral: "map<string, any>"},
+	".google.protobuf.Value":       {neutral: "any"},
+	".google.protobuf.ListValue":   {neutral: "repeated any"},
+	".google.protobuf.Any":         {neutral: "any"},
+	".google.protobuf.DoubleValue": {neutral: "number", optional: true},
+	".google.protobuf.FloatValue":  {neutral: "number", optional: true},
+	".google.protobuf.Int64Value":  {neutral: "number", optional: true},
+	".google.protobuf.UInt64Value": {neutral: "number", optional: true},
+	".google.protobuf.Int32Value":  {neutral: "number", optional: true},
+	".google.protobuf.UInt32Value": {neutral: "number", optional: true},
+	".google.protobuf.BoolValue":   {neutral: "bool", optional: true},
+	".google.protobuf.StringValue": {neutral: "string", optional: true},
+	".google.protobuf.BytesValue":  {neutral: "bytes", optional: true},
+}
+
+func (shapes shapeIndex) schema(typeName string) (TypeSchema, error) {
+	message, ok := shapes.messages[typeName]
 	if !ok {
 		return TypeSchema{}, fmt.Errorf("message %q not found", typeName)
 	}
-
-	fields := make(map[string]string, len(message.Field))
+	schema := TypeSchema{Type: shortTypeName(typeName), Fields: make(map[string]string, len(message.Field))}
+	descriptions := map[string]string{}
+	oneofs := map[string][]string{}
 	for _, field := range message.Field {
-		fieldType, err := neutralType(field, messages)
+		name := field.GetName()
+		fieldType, err := shapes.neutral(field)
 		if err != nil {
-			return TypeSchema{}, fmt.Errorf("%s.%s: %w", typeName, field.GetName(), err)
+			return TypeSchema{}, fmt.Errorf("%s.%s: %w", typeName, name, err)
 		}
-		fields[field.GetName()] = fieldType
+		schema.Fields[name] = fieldType
+
+		description, err := stringOption(field.GetOptions(), shapes.fieldDescription)
+		if err != nil {
+			return TypeSchema{}, fmt.Errorf("%s.%s: %w", typeName, name, err)
+		}
+		optional := field.GetProto3Optional()
+		if known, ok := wellKnown[field.GetTypeName()]; ok && field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+			description = strings.Join(nonEmpty(strings.TrimSpace(description), known.format), "; ")
+			optional = optional || known.optional
+		}
+		if description = strings.TrimSpace(description); description != "" {
+			descriptions[name] = description
+		}
+		switch {
+		case optional:
+			schema.Optional = append(schema.Optional, name)
+		case field.OneofIndex != nil:
+			group := message.OneofDecl[field.GetOneofIndex()].GetName()
+			oneofs[group] = append(oneofs[group], name)
+		}
 	}
-	return TypeSchema{Type: shortTypeName(typeName), Fields: fields}, nil
+	sort.Strings(schema.Optional)
+	if len(descriptions) > 0 {
+		schema.Descriptions = descriptions
+	}
+	if len(oneofs) > 0 {
+		schema.Oneofs = oneofs
+	}
+	return schema, nil
+}
+
+func nonEmpty(values ...string) []string {
+	kept := values[:0]
+	for _, value := range values {
+		if value != "" {
+			kept = append(kept, value)
+		}
+	}
+	return kept
 }
 
 // into doubles as the visited set, so recursive messages terminate.
-func collectTypes(typeName string, messages map[string]*descriptorpb.DescriptorProto, into map[string]TypeSchema) error {
-	message, ok := messages[typeName]
-	if !ok {
-		return fmt.Errorf("message %q not found", typeName)
+func (shapes shapeIndex) collect(typeName string, into map[string]TypeSchema) error {
+	if _, known := wellKnown[typeName]; known {
+		return nil
 	}
 	short := shortTypeName(typeName)
 	if _, visited := into[short]; visited {
 		return nil
 	}
-
-	schema, err := schemaFor(typeName, messages)
+	if enum, ok := shapes.enums[typeName]; ok {
+		values := make([]string, len(enum.Value))
+		for i, value := range enum.Value {
+			values[i] = value.GetName()
+		}
+		into[short] = TypeSchema{Type: short, Values: values}
+		return nil
+	}
+	message, ok := shapes.messages[typeName]
+	if !ok {
+		return fmt.Errorf("message %q not found", typeName)
+	}
+	schema, err := shapes.schema(typeName)
 	if err != nil {
 		return err
 	}
 	into[short] = schema
-
 	for _, field := range message.Field {
-		if field.GetType() != descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+		if !named(field) {
 			continue
 		}
 		referenced := field.GetTypeName()
 		// Map entries are carried by map<K, V>; follow the value instead.
-		if entry := messages[referenced]; entry != nil && entry.GetOptions().GetMapEntry() {
+		if entry := shapes.messages[referenced]; entry != nil && entry.GetOptions().GetMapEntry() {
 			value := entry.Field[1]
-			if value.GetType() != descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+			if !named(value) {
 				continue
 			}
 			referenced = value.GetTypeName()
 		}
-		if err := collectTypes(referenced, messages, into); err != nil {
+		if err := shapes.collect(referenced, into); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func named(field *descriptorpb.FieldDescriptorProto) bool {
+	return field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE ||
+		field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM
+}
+
 // All numeric scalars become "number".
-func neutralType(field *descriptorpb.FieldDescriptorProto, messages map[string]*descriptorpb.DescriptorProto) (string, error) {
-	if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
-		if message := messages[field.GetTypeName()]; message != nil && message.GetOptions().GetMapEntry() {
-			if len(message.Field) != 2 {
+func (shapes shapeIndex) neutral(field *descriptorpb.FieldDescriptorProto) (string, error) {
+	var result string
+	switch field.GetType() {
+	case descriptorpb.FieldDescriptorProto_TYPE_MESSAGE:
+		if known, ok := wellKnown[field.GetTypeName()]; ok {
+			result = known.neutral
+			break
+		}
+		if entry := shapes.messages[field.GetTypeName()]; entry != nil && entry.GetOptions().GetMapEntry() {
+			if len(entry.Field) != 2 {
 				return "", fmt.Errorf("invalid map entry")
 			}
-			key, err := neutralType(message.Field[0], messages)
+			key, err := shapes.neutral(entry.Field[0])
 			if err != nil {
 				return "", err
 			}
-			value, err := neutralType(message.Field[1], messages)
+			value, err := shapes.neutral(entry.Field[1])
 			if err != nil {
 				return "", err
 			}
 			return fmt.Sprintf("map<%s, %s>", key, value), nil
 		}
-	}
-
-	var result string
-	switch field.GetType() {
+		result = shortTypeName(field.GetTypeName())
+	case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
+		result = shortTypeName(field.GetTypeName())
 	case descriptorpb.FieldDescriptorProto_TYPE_BOOL:
 		result = "bool"
 	case descriptorpb.FieldDescriptorProto_TYPE_STRING:
 		result = "string"
 	case descriptorpb.FieldDescriptorProto_TYPE_BYTES:
 		result = "bytes"
-	case descriptorpb.FieldDescriptorProto_TYPE_MESSAGE, descriptorpb.FieldDescriptorProto_TYPE_ENUM:
-		result = shortTypeName(field.GetTypeName())
 	case descriptorpb.FieldDescriptorProto_TYPE_DOUBLE,
 		descriptorpb.FieldDescriptorProto_TYPE_FLOAT,
 		descriptorpb.FieldDescriptorProto_TYPE_INT64,
@@ -366,7 +461,6 @@ func neutralType(field *descriptorpb.FieldDescriptorProto, messages map[string]*
 	default:
 		return "", fmt.Errorf("unsupported protobuf type %s", field.GetType())
 	}
-
 	if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
 		result = "repeated " + result
 	}

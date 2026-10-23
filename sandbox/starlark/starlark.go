@@ -46,8 +46,9 @@ var starlarkTypes = prompt.Types{
 		"number": "int|float",
 		"bytes":  "string (base64)",
 	},
-	List: func(element string) string { return "[" + element + "]" },
-	Dict: func(key, value string) string { return "{" + key + ": " + value + "}" },
+	List:     func(element string) string { return "[" + element + "]" },
+	Dict:     func(key, value string) string { return "{" + key + ": " + value + "}" },
+	Optional: func(fieldType string) string { return fieldType + "|None" },
 }
 
 var starlarkDialect = prompt.Dialect{

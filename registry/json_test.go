@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	fixturev1 "github.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1"
 )
@@ -30,6 +31,17 @@ func TestMarshalJSONMatchesTheSchemaTheModelSees(t *testing.T) {
 	}
 	if order["shipped"] != false {
 		t.Errorf("shipped = %#v, want false present", order["shipped"])
+	}
+
+	wrapped, err := MarshalJSON(&fixturev1.Order{ParentId: wrapperspb.Int64(9)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parent struct {
+		ParentID any `json:"parent_id"`
+	}
+	if err := json.Unmarshal(wrapped, &parent); err != nil || parent.ParentID != float64(9) {
+		t.Errorf("parent_id = %#v, want the number 9 the schema promises", parent.ParentID)
 	}
 
 	empty, err := MarshalJSON(&fixturev1.ListOrdersResponse{})

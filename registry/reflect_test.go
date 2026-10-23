@@ -149,6 +149,41 @@ func TestFromFilesCarriesReferencedShapes(t *testing.T) {
 	t.Fatal("orders.list is missing")
 }
 
+func TestFromFilesCarriesWhatTheModelNeedsToFillAField(t *testing.T) {
+	built, err := registry.FromFiles(fixturev1.File_orders_proto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order, status registry.TypeSchema
+	for _, item := range built.Capabilities {
+		if item.Name == "orders.list" {
+			order, status = item.Types["Order"], item.Types["Status"]
+		}
+	}
+
+	if got := strings.Join(status.Values, ","); got != "STATUS_UNSPECIFIED,STATUS_OPEN,STATUS_SHIPPED" {
+		t.Errorf("Status values = %q", got)
+	}
+	if order.Fields["status"] != "Status" {
+		t.Errorf("Order.status = %q", order.Fields["status"])
+	}
+	if order.Fields["placed_at"] != "string" || order.Fields["parent_id"] != "number" {
+		t.Errorf("well-known types = %q, %q; want their JSON forms", order.Fields["placed_at"], order.Fields["parent_id"])
+	}
+	if _, leaked := order.Fields["seconds"]; leaked {
+		t.Error("Timestamp's own fields leaked into the shape")
+	}
+	if description := order.Descriptions["placed_at"]; !strings.HasPrefix(description, "When the customer placed the order; RFC 3339") {
+		t.Errorf("placed_at description = %q", description)
+	}
+	if got := strings.Join(order.Optional, ","); got != "note,parent_id" {
+		t.Errorf("optional = %q, want note,parent_id", got)
+	}
+	if got := strings.Join(order.Oneofs["destination"], ","); got != "address,pickup_point" || len(order.Oneofs) != 1 {
+		t.Errorf("oneofs = %v; the synthetic oneof of an optional field must not appear", order.Oneofs)
+	}
+}
+
 func TestRolesAndPermissionsComeFromTheContract(t *testing.T) {
 	built, err := registry.FromFiles(fixturev1.File_orders_proto)
 	if err != nil {

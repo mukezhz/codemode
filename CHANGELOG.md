@@ -6,6 +6,15 @@ version is 0, a minor bump may break the API.
 ## [Unreleased]
 
 ### Added
+- `capability.TypeSchema` carries `descriptions`, `optional`, `oneofs`, and, on
+  an enum, its `values`, and every dialect's prompt renders them. Protos fill
+  them from `(codemode.field_description)`, a new field option, proto3
+  `optional`, `oneof` and `enum`; `mcpsource` fills them from JSON Schema
+  `description`, `required` and string `enum`.
+- Well-known types are described in their JSON form: `Timestamp` and `Duration`
+  as strings with their format, wrappers as their optional scalar, `Struct` and
+  `Value` as `any`. `registry.MarshalJSON` sends `Int64Value` as a number to
+  match.
 - `(codemode.permissions)` and `(codemode.default_permissions)` beside roles, for
   applications whose roles are defined at runtime: the proto names the
   permission an RPC needs, the application decides which roles grant it.
@@ -54,6 +63,18 @@ version is 0, a minor bump may break the API.
 - Fuzz tests for the worker protocol and the descriptor parser; govulncheck in CI.
 
 ### Fixed
+- The agent no longer caches a program that writes, planned a write, or names a
+  write capability it was shown: a semantic hit for a similar request would have
+  rerun it with the old request's values.
+- The semantic program cache only reuses a program when the numbers and quoted
+  text in both requests match, so "complete task 13" never reuses the program
+  for "complete task 12".
+- `agent.Options.Instructions` is part of the cache key (`program.Key.Instructions`),
+  so a program written for one user's instructions is not served to another.
+  Existing cache entries miss once and are rewritten.
+- MCP `run_program` returns the calls a failed program made, and `wrote: true`
+  when a write ran before the failure, instead of a bare error telling the
+  client to retry.
 - `CodeMode.Search` drops matches outside its registry and returns the
   registry's copy of each, so a search index shared across roles or tenants no
   longer tells the model about capabilities it cannot call.

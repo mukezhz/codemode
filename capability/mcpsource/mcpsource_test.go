@@ -41,6 +41,16 @@ func session(t *testing.T) *mcp.ClientSession {
 		func(_ context.Context, _ *mcp.CallToolRequest, input struct{ Name string }) (*mcp.CallToolResult, any, error) {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "hi " + input.Name}}}, nil, nil
 		})
+	server.AddTool(&mcp.Tool{Name: "label", InputSchema: map[string]any{
+		"type":     "object",
+		"required": []any{"color"},
+		"properties": map[string]any{
+			"color": map[string]any{"type": "string", "enum": []any{"red", "green"}, "description": "label color"},
+			"note":  map[string]any{"type": "string"},
+		},
+	}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})
 	server.AddTool(&mcp.Tool{Name: "vague", InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{"x": map[string]any{"oneOf": []any{}}},
 	}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -94,6 +104,29 @@ func TestImportConvertsToolsAndRestrictsThem(t *testing.T) {
 	}
 	if len(source.Registry.ForRole("member").Capabilities) != 0 {
 		t.Error("a role that was not granted can see imported tools")
+	}
+}
+
+func TestImportKeepsDescriptionsEnumsAndRequiredFields(t *testing.T) {
+	source, err := Import(context.Background(), session(t), "github", "engineer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var label capability.Capability
+	for _, item := range source.Registry.Capabilities {
+		if item.Name == "github.label" {
+			label = item
+		}
+	}
+	color := label.Input.Fields["color"]
+	if got := strings.Join(label.Types[color].Values, ","); got != "red,green" {
+		t.Errorf("color type %q values = %q, want red,green", color, got)
+	}
+	if label.Input.Descriptions["color"] != "label color" {
+		t.Errorf("descriptions = %v", label.Input.Descriptions)
+	}
+	if strings.Join(label.Input.Optional, ",") != "note" {
+		t.Errorf("optional = %v, want only note", label.Input.Optional)
 	}
 }
 

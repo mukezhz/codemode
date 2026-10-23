@@ -25,7 +25,8 @@ func connect(t *testing.T, options Options) *mcp.ClientSession {
 		Name: "todos.list", RPC: "todo.v1.TodoService/List", Description: "Lists todos", ReadOnly: true,
 		Output: capability.TypeSchema{Fields: map[string]string{"todos": "repeated string"}},
 	}
-	registry := capability.Registry{Capabilities: []capability.Capability{list}}
+	complete := capability.Capability{Name: "todos.complete", RPC: "todo.v1.TodoService/Complete", Description: "Completes a todo"}
+	registry := capability.Registry{Capabilities: []capability.Capability{list, complete}}
 	mode, err := codemode.New(registry,
 		func(context.Context, string, int) ([]capability.Match, error) {
 			return []capability.Match{{Capability: list}}, nil
@@ -108,6 +109,23 @@ func TestRunReportsProgramErrorsToTheModel(t *testing.T) {
 				t.Fatalf("result = %+v", result)
 			}
 		})
+	}
+}
+
+func TestRunReportsAWriteThatRanBeforeTheFailure(t *testing.T) {
+	result, text := call(t, connect(t, Options{}), "run_program", RunInput{
+		Source: `codemode.execute("todos.complete", {}); throw new Error("typo");`,
+	})
+	if !result.IsError || !strings.Contains(text, "Do not rerun") {
+		t.Fatalf("text = %q", text)
+	}
+	var output RunOutput
+	encoded, _ := json.Marshal(result.StructuredContent)
+	if err := json.Unmarshal(encoded, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !output.Wrote || len(output.Calls) != 1 || output.Calls[0].Name != "todos.complete" {
+		t.Fatalf("output = %+v; the client must see the write that ran", output)
 	}
 }
 

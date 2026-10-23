@@ -104,6 +104,19 @@ A verb swap moves a request about as far as a dropped word does in most
 embedding spaces. If your threshold cannot separate them, lower it and accept
 the lower hit rate. `program/program_test.go` has this as a test to copy.
 
+### What is never cached
+
+A cached program can answer a request that only resembles the one it was written
+for, so the agent caches only programs that cannot write: no write ran or was
+planned, and the source names no write capability it was shown. A request that
+changes something always gets a freshly written program.
+
+The semantic cache also requires the numbers and double-quoted text in two
+requests to match exactly. *"complete task 12"* and *"complete task 13"* embed
+almost on top of each other, and the model copies the 12 into the program.
+Unquoted names — *"project alpha"* against *"project beta"* — are still the
+threshold's job, so test pairs like that against your embedder too.
+
 ## Scoping: who may reuse what
 
 A program is written for one dialect, against one set of capabilities, on behalf
@@ -116,11 +129,14 @@ type Key struct {
     Language     string // from Runner.Language — a JS program is not a Lua one
     Capabilities string // fingerprint of the capability set
     Caller       string // your role or tenant, from Options.CacheCaller
+    Instructions string // Options.Instructions, trimmed
 }
 ```
 
-`Key.Scope()` hashes the last three into one value, and every store confines its
-lookup to it. Nothing is shared across scopes.
+`Key.Scope()` hashes everything but the request into one value, and every store
+confines its lookup to it. Nothing is shared across scopes. Instructions are in
+the key because the model reads them: a program written while told "you are
+answering for alice" is not reused for bob.
 
 The agent fills in `Language` and `Capabilities`. **`Caller` is yours**, and it
 is the one that matters for [permissions](/permissions):
@@ -137,8 +153,8 @@ Leave it empty only when every caller of this agent sees the same capabilities
 and the same data. A program written against an admin's capabilities must never
 be served to a member — and with the role in the key, it cannot be.
 
-Include the tenant, as above, and the user too when `Instructions` names them.
-A single-tenant app can drop the tenant:
+Include the tenant, as above. Instructions that name the user already separate
+users. A single-tenant app can drop the tenant:
 
 ```go
 CacheCaller: string(identity.Role),

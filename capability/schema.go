@@ -19,8 +19,7 @@ type Capability struct {
 
 	Types map[string]TypeSchema `json:"types,omitempty"`
 
-	// A caller holding any of Roles or any of Permissions may call it; both
-	// empty means unrestricted.
+	// Any match allows; both empty means unrestricted.
 	Roles       []string `json:"roles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 
@@ -56,9 +55,7 @@ func (capability Capability) Allows(caller Caller) bool {
 	return false
 }
 
-// Caller is what your application says the signed-in user holds, fetched per
-// request: fixed roles from the session, and permissions from wherever runtime
-// roles are defined. Either may be empty.
+// Fetched per request; either may be empty.
 type Caller struct {
 	Roles       []string
 	Permissions []string
@@ -78,6 +75,11 @@ func (capability *Capability) EmbeddingText() string {
 }
 
 type TypeSchema struct {
-	Type   string            `json:"type"`
-	Fields map[string]string `json:"fields"`
+	Type         string              `json:"type"`
+	Fields       map[string]string   `json:"fields"`
+	Descriptions map[string]string   `json:"descriptions,omitempty"`
+	Optional     []string            `json:"optional,omitempty"`
+	Oneofs       map[string][]string `json:"oneofs,omitempty"`
+	// Set only on an enum: the names it accepts and returns.
+	Values []string `json:"values,omitempty"`
 }

@@ -46,21 +46,18 @@ type Call struct {
 type RunOutput struct {
 	Value any    `json:"value"`
 	Calls []Call `json:"calls"`
+	// Set when a failed program had already called a write, which may have committed.
+	Wrote bool `json:"wrote,omitempty"`
 }
 
-// ModeFunc returns the runtime for whoever made this tool call: build it from
-// the caller's roles and permissions, read from request.Extra (the HTTP header,
-// or the bearer token's TokenInfo). It runs on every call, so a role change
-// applies on the next one. Over stdio request.Extra is nil; use Static.
+// Runs on every call; build the runtime from request.Extra. Over stdio Extra is nil; use Static.
 type ModeFunc func(ctx context.Context, request *mcp.CallToolRequest) (codemode.CodeMode, error)
 
-// Static serves one fixed runtime to every call: a stdio server run by one user.
 func Static(mode codemode.CodeMode) ModeFunc {
 	return func(context.Context, *mcp.CallToolRequest) (codemode.CodeMode, error) { return mode, nil }
 }
 
-// New serves the runtime modeFor returns through runner. Each runtime's registry
-// is that caller's whole allowlist, and no tool argument can widen it.
+// No tool argument can widen a runtime's registry.
 func New(modeFor ModeFunc, runner sandbox.Runner, options Options) (*mcp.Server, error) {
 	if modeFor == nil || runner == nil {
 		return nil, errors.New("mcpserver: modeFor and runner are required")
@@ -110,7 +107,8 @@ func New(modeFor ModeFunc, runner sandbox.Runner, options Options) (*mcp.Server,
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "run_program",
 		Description: fmt.Sprintf("Runs one %s program in a sandbox and returns its value. The program may only call "+
-			"capabilities returned by search_capabilities, through codemode.execute. On error, fix the program and retry.",
+			"capabilities returned by search_capabilities, through codemode.execute. On error, fix the program and retry, "+
+			"unless the error says a write already ran: then check its effect before running anything again.",
 			runner.Language()),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input RunInput) (*mcp.CallToolResult, RunOutput, error) {
 		if len(input.Source) > options.MaxSourceBytes {
@@ -122,14 +120,22 @@ func New(modeFor ModeFunc, runner sandbox.Runner, options Options) (*mcp.Server,
 		}
 		recorder := &codemode.Recorder{}
 		value, err := runner.Run(codemode.WithRecorder(ctx, recorder), mode, input.Source)
-		if err != nil {
-			return nil, RunOutput{}, err
-		}
 		output := RunOutput{Value: value, Calls: []Call{}}
 		for _, call := range recorder.Calls() {
 			output.Calls = append(output.Calls, Call{Name: call.Name, Error: call.Error, DurationMS: call.Duration.Milliseconds()})
 		}
-		return nil, output, nil
+		if err == nil {
+			return nil, output, nil
+		}
+		// A client blind to a committed write would repeat it.
+		message := err.Error()
+		if permanent := recorder.Permanent(); permanent != nil {
+			message += "\n\nRewriting the program cannot fix this: " + permanent.Error()
+		}
+		if output.Wrote = recorder.Wrote(); output.Wrote {
+			message += "\n\nA write already ran before the failure and may have committed. Do not rerun this program; check its effect first."
+		}
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}, output, nil
 	})
 
 	return server, nil

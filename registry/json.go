@@ -9,12 +9,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// MarshalJSON encodes a response in the shape the registry describes to the
-// model: proto field names, every field present (an empty list is []), and
-// 64-bit integers as numbers. Plain protojson.Marshal uses camelCase names,
-// drops empty lists and quotes int64, so a program reading a field it was told
-// about would get undefined. Decode requests with protojson.Unmarshal, which
-// accepts this shape.
+// Encodes in the shape the model was shown: proto names, empty lists as [], int64 as numbers.
 // ponytail: a 64-bit integer above 2^53 loses precision in JavaScript; declare such IDs as string in the proto.
 func MarshalJSON(message proto.Message) (json.RawMessage, error) {
 	encoded, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(message)
@@ -66,6 +61,11 @@ func unquote64(value any, descriptor protoreflect.MessageDescriptor) any {
 func unquoteValue(value any, field protoreflect.FieldDescriptor) any {
 	switch field.Kind() {
 	case protoreflect.MessageKind, protoreflect.GroupKind:
+		if name := field.Message().FullName(); name == "google.protobuf.Int64Value" || name == "google.protobuf.UInt64Value" {
+			if text, ok := value.(string); ok {
+				return json.Number(text)
+			}
+		}
 		return unquote64(value, field.Message())
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind,
 		protoreflect.Uint64Kind, protoreflect.Fixed64Kind:

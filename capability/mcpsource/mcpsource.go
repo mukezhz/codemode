@@ -1,7 +1,4 @@
-// Package mcpsource imports an MCP server's tools as capabilities, so one program
-// can call them next to proto-defined RPCs. MCP tools carry no role annotations
-// and their hints are claims by a server you do not control, so every imported
-// tool requires a role and is treated as a write.
+// Package mcpsource imports MCP tools as capabilities; each requires a role and is treated as a write.
 package mcpsource
 
 import (
@@ -9,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -87,13 +86,15 @@ func convert(prefix string, tool *mcp.Tool) (capability.Capability, error) {
 }
 
 type schema struct {
-	Type       any                `json:"type"`
-	Properties map[string]*schema `json:"properties"`
-	Items      *schema            `json:"items"`
+	Type        any                `json:"type"`
+	Description string             `json:"description"`
+	Properties  map[string]*schema `json:"properties"`
+	Required    []string           `json:"required"`
+	Items       *schema            `json:"items"`
+	Enum        []any              `json:"enum"`
 }
 
-// object converts a JSON Schema object. Anything it cannot name precisely is an
-// error, never "any": a loosened schema tells the model a call is valid when it is not.
+// Errors rather than loosening to "any", which would mislead the model.
 func object(raw any, name string, types map[string]capability.TypeSchema) (capability.TypeSchema, error) {
 	encoded, err := json.Marshal(raw)
 	if err != nil {
@@ -111,12 +112,23 @@ func object(raw any, name string, types map[string]capability.TypeSchema) (capab
 
 func fields(parsed *schema, name string, types map[string]capability.TypeSchema) (capability.TypeSchema, error) {
 	result := capability.TypeSchema{Type: name, Fields: map[string]string{}}
+	descriptions := map[string]string{}
 	for field, property := range parsed.Properties {
 		kind, err := typeOf(property, name+pascal(field), types)
 		if err != nil {
 			return capability.TypeSchema{}, fmt.Errorf("%s: %w", field, err)
 		}
 		result.Fields[field] = kind
+		if description := strings.TrimSpace(property.Description); description != "" {
+			descriptions[field] = description
+		}
+		if !slices.Contains(parsed.Required, field) {
+			result.Optional = append(result.Optional, field)
+		}
+	}
+	sort.Strings(result.Optional)
+	if len(descriptions) > 0 {
+		result.Descriptions = descriptions
 	}
 	return result, nil
 }
@@ -131,7 +143,19 @@ func typeOf(property *schema, name string, types map[string]capability.TypeSchem
 	}
 	switch kind {
 	case "string":
-		return "string", nil
+		if len(property.Enum) == 0 {
+			return "string", nil
+		}
+		values := make([]string, len(property.Enum))
+		for i, value := range property.Enum {
+			text, ok := value.(string)
+			if !ok {
+				return "", fmt.Errorf("enum value %v is not a string", value)
+			}
+			values[i] = text
+		}
+		types[name] = capability.TypeSchema{Type: name, Values: values}
+		return name, nil
 	case "integer", "number":
 		return "number", nil
 	case "boolean":

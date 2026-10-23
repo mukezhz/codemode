@@ -27,6 +27,7 @@ func (mode *mode) Search(_ context.Context, _ string, limit int) ([]capability.M
 		Name:        "todos.list",
 		RPC:         "todo.v1.TodoService/List",
 		Description: "Lists all todo items",
+		ReadOnly:    true,
 		Output:      capability.TypeSchema{Type: "ListResponse", Fields: map[string]string{"todos": "Todo[]"}},
 	}
 	if limit < 1 {
@@ -438,6 +439,23 @@ func TestRunTreatsAnEmptyFingerprintAsNoCache(t *testing.T) {
 		}
 		if result.Cached {
 			t.Fatalf("run %d cached against an empty fingerprint", attempt)
+		}
+	}
+}
+
+func TestRunDoesNotReuseAProgramAcrossInstructions(t *testing.T) {
+	runtime := fingerprinted{mode: &mode{}, fingerprint: "registry-1"}
+	author := &model{responses: []string{workingProgram, workingProgram}}
+	cache := newCache(t)
+
+	for _, instructions := range []string{"You are answering for alice.", "You are answering for bob."} {
+		result, err := Run(context.Background(), runtime, author, "list my todos",
+			Options{Runner: newRunner(t), Cache: cache, Instructions: instructions})
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+		if result.Cached {
+			t.Fatalf("a program written under other instructions was reused for %q", instructions)
 		}
 	}
 }

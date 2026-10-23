@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/mukezhz/codemode/capability"
@@ -16,14 +17,26 @@ type Key struct {
 	Language     string
 	Capabilities string
 	// Empty means one shared space.
-	Caller string
+	Caller       string
+	Instructions string
 }
 
 // A Store must confine every lookup to one scope.
 func (key Key) Scope() string {
-	sum := sha256.Sum256([]byte(strings.Join(
-		[]string{key.Language, key.Capabilities, key.Caller}, "\x00")))
+	return hash(key.Language, key.Capabilities, key.Caller, key.Instructions)
+}
+
+func hash(parts ...string) string {
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+// "complete task 12" embeds next to "complete task 13", so literals must match exactly.
+// ponytail: unquoted names ("project alpha" vs "project beta") are left to the threshold.
+var literalPattern = regexp.MustCompile(`\d+|"[^"]*"`)
+
+func (cache *semanticCache) scope(key Key, request string) string {
+	return hash(append([]string{key.Scope()}, literalPattern.FindAllString(request, -1)...)...)
 }
 
 type Entry struct {
@@ -106,7 +119,7 @@ func (cache *semanticCache) Lookup(ctx context.Context, key Key) (Entry, bool, e
 	if err != nil {
 		return Entry{}, false, fmt.Errorf("embed request: %w", err)
 	}
-	hits, err := cache.store.Nearest(ctx, key.Scope(), vector, 1)
+	hits, err := cache.store.Nearest(ctx, cache.scope(key, request), vector, 1)
 	if err != nil {
 		return Entry{}, false, err
 	}
@@ -129,7 +142,7 @@ func (cache *semanticCache) Put(ctx context.Context, key Key, source string) err
 		return fmt.Errorf("embed request: %w", err)
 	}
 	return cache.store.Put(ctx, Record{
-		Scope:   key.Scope(),
+		Scope:   cache.scope(key, request),
 		Request: request,
 		Source:  source,
 		Vector:  vector,

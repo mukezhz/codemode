@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -52,9 +53,13 @@ func (dialect Dialect) Render(matches []capability.Match) string {
 func (dialect Dialect) Declarations(matches []capability.Match) string {
 	var builder strings.Builder
 	for _, match := range matches {
-		builder.WriteString(dialect.Comment(match.Capability.Description))
-		builder.WriteString("\n")
-		builder.WriteString(dialect.Signature(match.Capability))
+		item := match.Capability
+		lines := append([]string{item.Description}, notes("input", item.Input)...)
+		for _, line := range append(lines, notes("output", item.Output)...) {
+			builder.WriteString(dialect.Comment(line))
+			builder.WriteString("\n")
+		}
+		builder.WriteString(dialect.Signature(item))
 		builder.WriteString("\n\n")
 	}
 	return builder.String()
@@ -80,11 +85,49 @@ func (dialect Dialect) Types(matches []capability.Match) string {
 
 	var builder strings.Builder
 	for _, name := range names {
-		builder.WriteString(dialect.Shape(name, shapes[name]))
+		schema := shapes[name]
+		if len(schema.Values) > 0 {
+			builder.WriteString(dialect.Comment(name + " is one of " + quoted(schema.Values)))
+			builder.WriteString("\n")
+			continue
+		}
+		for _, line := range notes(name, schema) {
+			builder.WriteString(dialect.Comment(line))
+			builder.WriteString("\n")
+		}
+		builder.WriteString(dialect.Shape(name, schema))
 		builder.WriteString("\n")
 	}
 	builder.WriteString("\n")
 	return builder.String()
+}
+
+func notes(owner string, schema capability.TypeSchema) []string {
+	var lines []string
+	for _, field := range sortedKeys(schema.Descriptions) {
+		lines = append(lines, owner+"."+field+": "+schema.Descriptions[field])
+	}
+	for _, group := range sortedKeys(schema.Oneofs) {
+		lines = append(lines, owner+": set at most one of "+strings.Join(schema.Oneofs[group], ", "))
+	}
+	return lines
+}
+
+func quoted(values []string) string {
+	rendered := make([]string, len(values))
+	for i, value := range values {
+		rendered[i] = fmt.Sprintf("%q", value)
+	}
+	return strings.Join(rendered, ", ")
+}
+
+func sortedKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 type Types struct {
@@ -92,6 +135,8 @@ type Types struct {
 	Scalar map[string]string
 	List   func(element string) string
 	Dict   func(key, value string) string
+	// Marks a field the caller may leave out and a response may omit.
+	Optional func(fieldType string) string
 }
 
 // Render converts one neutral type; protobuf forbids nesting, so shapes never nest.
@@ -120,7 +165,11 @@ func Fields(schema capability.TypeSchema, style Types, format func(name, fieldTy
 	}
 	rendered := make([]string, 0, len(schema.Fields))
 	for name, fieldType := range schema.Fields {
-		rendered = append(rendered, format(name, style.Render(fieldType)))
+		fieldType = style.Render(fieldType)
+		if slices.Contains(schema.Optional, name) {
+			fieldType = style.Optional(fieldType)
+		}
+		rendered = append(rendered, format(name, fieldType))
 	}
 	sort.Strings(rendered)
 	return open + strings.Join(rendered, ", ") + close

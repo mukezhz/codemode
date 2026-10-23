@@ -396,6 +396,60 @@ func TestEnginesDeclareReferencedShapes(t *testing.T) {
 	}
 }
 
+func TestEnginesRenderWhatTheSchemaSaysAboutFields(t *testing.T) {
+	matches := []capability.Match{{Capability: capability.Capability{
+		Name:        "orders.ship",
+		Description: "Ships an order",
+		Input: capability.TypeSchema{
+			Fields:       map[string]string{"id": "number", "note": "string", "status": "Status"},
+			Descriptions: map[string]string{"id": "the order to ship"},
+			Optional:     []string{"note"},
+		},
+		Output: capability.TypeSchema{Fields: map[string]string{"order": "Order"}},
+		Types: map[string]capability.TypeSchema{
+			"Status": {Type: "Status", Values: []string{"STATUS_OPEN", "STATUS_SHIPPED"}},
+			"Order": {
+				Type:         "Order",
+				Fields:       map[string]string{"address": "string", "pickup_point": "string", "placed_at": "string"},
+				Descriptions: map[string]string{"placed_at": "RFC 3339 timestamp"},
+				Oneofs:       map[string][]string{"destination": {"address", "pickup_point"}},
+			},
+		},
+	}}}
+
+	shared := []string{
+		"input.id: the order to ship",
+		`Status is one of "STATUS_OPEN", "STATUS_SHIPPED"`,
+		"Order.placed_at: RFC 3339 timestamp",
+		"Order: set at most one of address, pickup_point",
+	}
+	want := map[string][]string{
+		"goja":     {"note: string | undefined"},
+		"starlark": {`"note": string|None`},
+		"lua":      {"note = string|nil"},
+	}
+
+	for _, engine := range engines() {
+		t.Run(engine.name, func(t *testing.T) {
+			runner, err := engine.new(sandbox.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runner.Close()
+
+			prompt := runner.Prompt(matches)
+			for _, fragment := range append(shared, want[engine.dialect()]...) {
+				if !strings.Contains(prompt, fragment) {
+					t.Errorf("prompt is missing %q:\n%s", fragment, prompt)
+				}
+			}
+			if strings.Contains(prompt, "id: number | undefined") || strings.Contains(prompt, "Status = ") {
+				t.Errorf("a required field was marked optional or an enum rendered as a shape:\n%s", prompt)
+			}
+		})
+	}
+}
+
 func TestEnginesOmitTheShapesSectionWhenEmpty(t *testing.T) {
 	matches := []capability.Match{{Capability: capability.Capability{
 		Name:        "tasks.count",

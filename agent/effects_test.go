@@ -9,6 +9,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
+	"github.com/mukezhz/codemode/program"
 )
 
 func effects(t *testing.T) (codemode.CodeMode, *[]string) {
@@ -21,7 +22,11 @@ func effects(t *testing.T) (codemode.CodeMode, *[]string) {
 	var executed []string
 	mode, err := codemode.New(registry,
 		func(context.Context, string, int) ([]capability.Match, error) {
-			return []capability.Match{{Capability: registry.Capabilities[0]}}, nil
+			matches := make([]capability.Match, len(registry.Capabilities))
+			for index, item := range registry.Capabilities {
+				matches[index] = capability.Match{Capability: item}
+			}
+			return matches, nil
 		},
 		func(_ context.Context, rpc string, _ json.RawMessage) (json.RawMessage, error) {
 			executed = append(executed, rpc)
@@ -136,5 +141,41 @@ func TestOnCallSeesEachCall(t *testing.T) {
 	}})
 	if err != nil || len(seen) != 2 {
 		t.Fatalf("seen = %v, err = %v", seen, err)
+	}
+}
+
+func TestRunNeverCachesAProgramThatCanWrite(t *testing.T) {
+	for name, source := range map[string]string{
+		"wrote":   `codemode.execute("todos.complete", {id: 1}); return "done";`,
+		"planned": `codemode.execute("todos.complete", {id: 1}); return "planned";`,
+		"skipped": `const { todos } = codemode.execute("todos.list", {}); if (todos.length === 0) { codemode.execute("todos.complete", {id: 1}); } return "ok";`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			mode, _ := effects(t)
+			author := &model{responses: []string{source, source}}
+			options := Options{Runner: newRunner(t), Cache: program.NewExactCache(), Plan: name == "planned"}
+			for run := 1; run <= 2; run++ {
+				result, err := Run(context.Background(), mode, author, "finish todo 1", options)
+				if err != nil {
+					t.Fatalf("run %d: %v", run, err)
+				}
+				if result.Cached {
+					t.Fatalf("run %d reused a program that can write", run)
+				}
+			}
+		})
+	}
+}
+
+func TestRunCachesAProgramThatOnlyReads(t *testing.T) {
+	mode, _ := effects(t)
+	author := &model{responses: []string{`return codemode.execute("todos.list", {}).todos.length;`}}
+	options := Options{Runner: newRunner(t), Cache: program.NewExactCache()}
+	if _, err := Run(context.Background(), mode, author, "count todos", options); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Run(context.Background(), mode, author, "count todos", options)
+	if err != nil || !result.Cached {
+		t.Fatalf("result = %+v, err = %v; a read-only program should be reused", result, err)
 	}
 }

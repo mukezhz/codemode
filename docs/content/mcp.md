@@ -102,4 +102,6 @@ changes one user's role between calls, and rejects an unknown caller
   calls, time and each response. For MCP, a smaller `MaxResponseBytes` keeps
   results from flooding the client's context.
 - Program errors come back as tool errors (`isError`), so the client's model can
-  read them and retry.
+  read them and retry. The error still carries `calls`, and `wrote: true` when a
+  write ran before the failure; the error text then tells the model not to rerun
+  the program, because that write may have committed.

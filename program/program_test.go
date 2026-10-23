@@ -231,3 +231,41 @@ func TestExactCacheMatchesOnlyTheSameRequest(t *testing.T) {
 		t.Fatalf("second Forget returned error: %v", err)
 	}
 }
+
+func TestNumbersAndQuotedTextMustMatchExactly(t *testing.T) {
+	ctx := context.Background()
+	words := wordEmbedder(vocabulary...)
+	blind := capability.Embedder{Model: "test/blind-to-literals", Embed: func(ctx context.Context, text string) ([]float32, error) {
+		return words.Embed(ctx, strings.Map(func(r rune) rune {
+			if r == '"' || (r >= '0' && r <= '9') {
+				return -1
+			}
+			return r
+		}, text))
+	}}
+	cache, err := New(NewMemoryStore(), blind, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cache.Close()
+
+	if err := cache.Put(ctx, key(`complete todos 12 "notes"`), "complete 12"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := cache.Lookup(ctx, key(`complete todos 12 "notes"`)); !found {
+		t.Fatal("the same request missed")
+	}
+	for _, request := range []string{`complete todos 13 "notes"`, `complete todos 12 "all"`, `complete todos 12`} {
+		if entry, found, _ := cache.Lookup(ctx, key(request)); found {
+			t.Errorf("Lookup(%q) reused %q; a different number or quoted value must miss", request, entry.Source)
+		}
+	}
+}
+
+func TestInstructionsSeparateScopes(t *testing.T) {
+	alice, bob := key("list my todos"), key("list my todos")
+	alice.Instructions, bob.Instructions = "answer for alice", "answer for bob"
+	if alice.Scope() == bob.Scope() {
+		t.Fatal("programs written under different instructions share a scope")
+	}
+}
