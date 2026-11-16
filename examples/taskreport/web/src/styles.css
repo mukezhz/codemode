@@ -198,3 +198,9 @@ tbody tr:last-child td { border-bottom: none; }
   max-height: 16rem;
   overflow-y: auto;
 }
+
+.pending { border: 1px solid var(--warn, #c98a00); border-radius: var(--radius); padding: 12px 14px; margin: 12px 0; }
+.pending-title { font-weight: 600; margin: 0 0 8px; }
+.pending ul { margin: 0 0 12px; padding-left: 18px; }
+.pending-actions { display: flex; gap: 8px; }
+button.secondary { background: transparent; color: inherit; border-color: currentColor; }

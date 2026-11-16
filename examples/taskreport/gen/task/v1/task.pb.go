@@ -1623,15 +1623,15 @@ const file_task_proto_rawDesc = "" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x1c\n" +
 	"\tcompleted\x18\x02 \x01(\x05R\tcompleted\";\n" +
 	"\x12ThroughputResponse\x12%\n" +
-	"\x04days\x18\x01 \x03(\v2\x11.task.v1.DayCountR\x04days2\xf7\r\n" +
+	"\x04days\x18\x01 \x03(\v2\x11.task.v1.DayCountR\x04days2\xaf\x0e\n" +
 	"\vTaskService\x12\xb4\x01\n" +
 	"\x06Create\x12\x1a.task.v1.CreateTaskRequest\x1a\x15.task.v1.TaskResponse\"w\x82\xb5\x18sCreates a task. Title is required. Priority is low, medium, or high and defaults to medium. Due date is YYYY-MM-DD.\x12a\n" +
 	"\x03Get\x12\x17.task.v1.GetTaskRequest\x1a\x15.task.v1.TaskResponse\"*\x82\xb5\x18#Returns one task by its numeric ID.\x90\x02\x01\x12\xc7\x01\n" +
 	"\x04List\x12\x19.task.v1.ListTasksRequest\x1a\x19.task.v1.TaskListResponse\"\x88\x01\x82\xb5\x18\x80\x01Lists tasks, newest first. Every filter is optional and they combine: status is open or completed, and tag matches a single tag.\x90\x02\x01\x12\xc3\x01\n" +
 	"\x06Update\x12\x1a.task.v1.UpdateTaskRequest\x1a\x15.task.v1.TaskResponse\"\x85\x01\x82\xb5\x18\x80\x01Changes a task's title, project, priority, or due date. Only the fields you set are written; the rest keep their current values.\x12\xa7\x01\n" +
 	"\bComplete\x12\x16.task.v1.TaskIDRequest\x1a\x15.task.v1.TaskResponse\"l\x82\xb5\x18hMarks a task completed, recording the completion date. Completing an already completed task is an error.\x12~\n" +
-	"\x06Reopen\x12\x16.task.v1.TaskIDRequest\x1a\x15.task.v1.TaskResponse\"E\x82\xb5\x18AMarks a completed task open again and clears its completion date.\x12d\n" +
-	"\x06Delete\x12\x16.task.v1.TaskIDRequest\x1a\x1b.task.v1.DeleteTaskResponse\"%\x82\xb5\x18!Deletes a task permanently by ID.\x12|\n" +
+	"\x06Reopen\x12\x16.task.v1.TaskIDRequest\x1a\x15.task.v1.TaskResponse\"E\x82\xb5\x18AMarks a completed task open again and clears its completion date.\x12\x9b\x01\n" +
+	"\x06Delete\x12\x16.task.v1.TaskIDRequest\x1a\x1b.task.v1.DeleteTaskResponse\"\\\x82\xb5\x18TDeletes a task permanently by ID. The user approves each deletion before it happens.\x98\xb5\x18\x01\x12|\n" +
 	"\x06AddTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"F\x82\xb5\x18BAdds a tag to a task. Adding a tag it already has changes nothing.\x12W\n" +
 	"\tRemoveTag\x12\x13.task.v1.TagRequest\x1a\x15.task.v1.TaskResponse\"\x1e\x82\xb5\x18\x1aRemoves a tag from a task.\x12\x8d\x01\n" +
 	"\x06Search\x12\x1b.task.v1.SearchTasksRequest\x1a\x19.task.v1.TaskListResponse\"K\x82\xb5\x18DFinds tasks whose title contains the given text, case-insensitively.\x90\x02\x01\x12\xb7\x01\n" +

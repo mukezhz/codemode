@@ -45,7 +45,9 @@ service TaskService {
   }
 
   rpc Delete(TaskIDRequest) returns (DeleteTaskResponse) {
-    option (codemode.description) = "Deletes a task permanently by ID.";
+    option (codemode.description) = "Deletes a task permanently by ID. The user approves each deletion before it happens.";
+    // The program records the deletion; it runs only once the user approves the plan.
+    option (codemode.needs_approval) = true;
   }
 
   rpc AddTag(TagRequest) returns (TaskResponse) {

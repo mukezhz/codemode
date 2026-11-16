@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -52,6 +53,7 @@ func main() {
 		"comma-separated capability names to make admin-only at runtime, for testing denial without editing the protos")
 	flag.StringVar(&config.logLevel, "log", "info", "debug, info, warn, or error; debug shows the prompt, the program, and every capability call")
 	flag.StringVar(&config.audit, "audit", "", "append one JSON line per capability call to this file when serving")
+	flag.StringVar(&config.source, "source", "go", "where capabilities come from: go (typed functions in app/) or proto (proto/*.proto)")
 	flag.Parse()
 
 	if err := run(context.Background(), config); err != nil {
@@ -78,6 +80,7 @@ type config struct {
 	logLevel     string
 	audit        string
 	restrict     string
+	source       string
 }
 
 func run(ctx context.Context, config config) error {
@@ -105,20 +108,21 @@ func run(ctx context.Context, config config) error {
 	identity := auth.Identity{User: config.user, Role: role}
 	ctx = auth.NewContext(ctx, identity)
 
-	full, err := capabilities()
+	source, err := capabilities(config, tasks)
 	if err != nil {
 		return err
 	}
-	full, err = restrict(full, config.restrict)
+	full, err := restrict(source.Registry, config.restrict)
 	if err != nil {
 		return err
 	}
+	source.Registry = full
 
 	// A member's runtime lacks admin capabilities entirely, not just hidden from the model.
 	allowed := forRole(full, identity)
 
 	// Search shapes what the model sees; only the registry is a security boundary.
-	mode, err := codemode.New(allowed, search.New(allowed), app.New(tasks, adminsOf(config)...).Execute)
+	mode, err := codemode.New(allowed, search.New(allowed), source.Execute)
 	if err != nil {
 		return err
 	}
@@ -143,7 +147,7 @@ func run(ctx context.Context, config config) error {
 
 	if config.apiKey == "" && config.baseURL == "" {
 		if config.serve != "" {
-			return serve(ctx, config, tasks, full, nil)
+			return serve(ctx, config, tasks, source, nil)
 		}
 		return offline(ctx, mode, runner, config)
 	}
@@ -160,7 +164,7 @@ func run(ctx context.Context, config config) error {
 	fmt.Printf("model\n  %s at %s\n\n", model.Name(), endpointLabel(config.baseURL))
 
 	if config.serve != "" {
-		return serve(ctx, config, tasks, full, model)
+		return serve(ctx, config, tasks, source, model)
 	}
 
 	result, err := agent.Run(ctx, mode, model, config.request, agent.Options{
@@ -170,6 +174,15 @@ func run(ctx context.Context, config config) error {
 		Instructions: strings.TrimSpace(identity.Instructions() + "\n" + config.instructions),
 	})
 	report(result, config.verbose, runner)
+	var pending *agent.Pending
+	if errors.As(err, &pending) {
+		fmt.Println("held for approval, nothing below has run")
+		for _, call := range pending.Calls {
+			fmt.Printf("  %s %s\n", call.Name, call.Input)
+		}
+		fmt.Println("\napprove changes like these in the web app: -serve :8080")
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -184,16 +197,29 @@ func envFile() string {
 	return "examples/taskreport/.env"
 }
 
-func capabilities() (capability.Registry, error) {
-	tasks, err := coderegistry.FromFiles(taskv1.File_task_proto)
+// Both sources describe the same 23 capabilities with the same access; a test holds them together.
+func capabilities(config config, tasks *store.Store) (codemode.Source, error) {
+	application := app.New(tasks, adminsOf(config)...)
+	switch config.source {
+	case "go":
+		return application.Source()
+	case "proto":
+		registry, err := protoRegistry()
+		return codemode.Source{Registry: registry, Execute: application.Execute}, err
+	}
+	return codemode.Source{}, fmt.Errorf("-source must be go or proto, not %q", config.source)
+}
+
+func protoRegistry() (capability.Registry, error) {
+	taskFiles, err := coderegistry.FromFiles(taskv1.File_task_proto)
 	if err != nil {
 		return capability.Registry{}, err
 	}
-	users, err := coderegistry.FromFiles(userv1.File_user_proto)
+	userFiles, err := coderegistry.FromFiles(userv1.File_user_proto)
 	if err != nil {
 		return capability.Registry{}, err
 	}
-	return capability.Merge(tasks, users)
+	return capability.Merge(taskFiles, userFiles)
 }
 
 func restrict(full capability.Registry, names string) (capability.Registry, error) {

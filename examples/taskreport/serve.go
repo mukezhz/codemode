@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
 
@@ -42,7 +42,7 @@ func serve(
 	ctx context.Context,
 	config config,
 	tasks *store.Store,
-	full capability.Registry,
+	source codemode.Source,
 	model llm.Client,
 ) error {
 	assets, err := web.Assets()
@@ -69,7 +69,8 @@ func serve(
 
 	handler, err := server.New(server.Options{
 		Store:    tasks,
-		Full:     full,
+		Full:     source.Registry,
+		Execute:  source.Execute,
 		Admins:   []string{"grace"},
 		Model:    model,
 		Runner:   chatRunner,

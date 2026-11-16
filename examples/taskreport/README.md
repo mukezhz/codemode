@@ -1,13 +1,14 @@
 # taskreport
 
 A task tracker with a web UI, driven in code mode. Tasks live in SQLite,
-twenty-three capabilities are generated from two protobuf files, and a model
-answers questions by writing **one JavaScript program** that composes them —
-returning a document the browser renders as charts and tables.
+twenty-three capabilities are typed Go functions in [`app/app.go`](app/app.go),
+and a model answers questions by writing **one JavaScript program** that
+composes them — returning a document the browser renders as charts and tables.
+A program that deletes a task waits for you to approve it in the chat.
 
-Everything the application needs is in this directory. The only thing it takes
-from the repository root is `proto/codemode.proto`, which declares the
-annotations that mark a service as a capability surface.
+The same twenty-three are also described in two protobuf files;
+`-source proto` serves them from there instead, and a test asserts both sources
+declare the same names, descriptions, roles, reads and approvals.
 
 ---
 
@@ -205,8 +206,12 @@ Then use <http://localhost:5173>.
 
 ## Changing the contracts
 
-After editing `proto/task.proto` or `proto/user.proto`, from the repository
-root:
+With the default Go source, add a method to `app.App` and a `gosource.Func` line
+to `Source()`. Its request and response structs are the schema the model sees,
+and every call is validated against them before the method runs.
+
+For `-source proto`, after editing `proto/task.proto` or `proto/user.proto`, from
+the repository root:
 
 ```sh
 make generate
@@ -390,9 +395,9 @@ Here the model is asked **once**. Only the finished document comes back.
 
 ## Capabilities
 
-Generated from [`proto/task.proto`](proto/task.proto) and
-[`proto/user.proto`](proto/user.proto) — this application's own contracts,
-living beside it — and merged at startup. The split is
+Defined in [`app/app.go`](app/app.go), and mirrored in
+[`proto/task.proto`](proto/task.proto) and [`proto/user.proto`](proto/user.proto)
+for `-source proto`. The split is
 deliberate: `tasks` and `projects` are primitives, and `reports` holds only the
 aggregates a database genuinely does better than a program would.
 
@@ -403,11 +408,19 @@ aggregates a database genuinely does better than a program would.
 | `reports` | `statusCounts` `byProject` `byPriority` `overdue` `completedBetween` `throughput` · admin: `byOwner` |
 | `users` | `me` · admin: `list` |
 
-The admin ones are marked `option (codemode.roles) = "admin";` in the protos, so
-the policy lives beside the RPC rather than in a list in `main.go` that could
-drift. They are **withheld from a member's registry entirely** — absent from the
+The admin ones are declared `gosource.Roles("admin")` beside each function, and
+`option (codemode.roles) = "admin";` in the protos, so the policy lives beside the
+capability rather than in a list in `main.go` that could drift. They are **withheld from a member's registry entirely** — absent from the
 map `Execute` resolves against, not merely hidden from the model, and therefore
 absent from the prompt too.
+
+`tasks.delete` needs approval (`gosource.NeedsApproval()`, and
+`option (codemode.needs_approval) = true;` in the proto). When a program in the
+chat reaches it, that delete and every write after it are held: the chat shows
+them with **Approve** and **Reject**, and only the plan's ID goes back to the
+server (`POST /api/plans/{id}/approve` or `/reject`), which applies it once, for
+the user who was shown it. Deleting from the board is a button you pressed, so
+it runs at once.
 
 Anything needing judgement — what counts as behind, how to phrase a summary,
 what to do first — stays in the program the model writes. There is no
@@ -418,6 +431,7 @@ what to do first — stays in the program the model writes. There is no
 | Flag | Default | |
 | --- | --- | --- |
 | `-request` | a status report | what to ask |
+| `-source` | `go` | where capabilities come from: `go` (typed functions in `app/`) or `proto` |
 | `-base-url` | `$OPENAI_BASE_URL` | OpenAI-compatible endpoint |
 | `-api-key` | `$OPENAI_API_KEY` | key for that endpoint |
 | `-model` | `deepseek-chat` | model name |
@@ -453,18 +467,18 @@ capability signatures search selected — explains more than this README does.
 ## How the pieces fit
 
 ```
-proto/      this application's contracts: task.proto, user.proto
+proto/      the same contracts in protobuf, for -source proto
 gen/        their generated Go, committed so `go get` needs no buf
 main.go     flags and wiring. Reads $OPENAI_* itself; SANDBOX_* through sandbox.NewFromEnv.
 env.go      loads .env into the environment, before the flags are parsed.
 serve.go    the -serve flag: HTTP, graceful shutdown.
 store/      the application's own SQLite database. Knows nothing about models.
-app/        ExecuteFunc: RPC path -> store call. The trust boundary.
+app/        typed functions -> store calls, and Source(). The trust boundary.
 auth/       who is asking. Identity on the context, never in a request.
 search/     ranks capabilities; decides what the model is told about.
 trace/      logs every step. Wraps the interfaces from outside.
 view/       the document schema the programs return and the browser renders.
-server/     REST for the board, /api/chat for the prompt.
+server/     REST for the board, /api/chat for the prompt, /api/plans for approval.
 web/        Vite + React + TanStack Router. Built output is embedded.
 .env        your key. Copy .env.example.
 ```
@@ -481,8 +495,9 @@ builds `llm.Options` explicitly from flags and `$OPENAI_*`, and calls
 `sandbox.NewFromEnv` so `SANDBOX_*` chooses the sandbox. Swap either for your
 config file and nothing in the library changes.
 
-**The registry is derived, not generated.** `registry.FromFiles(taskv1.File_task_proto)`
-reads the descriptors already compiled into the binary. No `registry.json`, no
+**Nothing to generate.** The default source reads the Go structs; with
+`-source proto`, `registry.FromFiles(taskv1.File_task_proto)` reads the
+descriptors already compiled into the binary. No `registry.json`, no
 `go:embed`, no build step, and it cannot drift from the contracts.
 
 **Search and the allowlist are separate lists.** Search decides what the model
@@ -490,7 +505,8 @@ reads the descriptors already compiled into the binary. No `registry.json`, no
 it: a program calling `tasks.dropDatabase` fails a map lookup before any
 application code executes.
 
-**Strict decoding.** `app` rejects unknown request fields, so a model that
+**Strict input.** Every call is validated against its shape before `app` runs —
+unknown fields, wrong types, a priority that is not low, medium or high — so a model that
 invents `assignee` is told on the first call — while the error can still be fed
 back for repair — rather than having the value dropped and the answer come out
 quietly wrong.
