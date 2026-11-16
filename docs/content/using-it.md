@@ -590,7 +590,7 @@ This is the one checklist; the other pages link here.
 - **Set the sandbox bounds deliberately** — `Timeout` and `MaxCalls`, or `SANDBOX_TIMEOUT` and `SANDBOX_MAX_CALLS`. The defaults — 50 calls, 30 seconds — are demo numbers.
 - **Log `Result.Source`.** When an answer is wrong, the program is the evidence.
 - **Regenerate the registry in CI.** A drifted `registry.json` is a silent failure.
-- **Confirm writes** a user did not plainly ask for: `agent.Options{Plan: true}`, then `agent.Apply` — see [Writes and retries](/writes).
+- **Confirm writes** a user did not plainly ask for: mark them `NeedsApproval`, or hold every write with `HoldWrites`, and apply through `agent.Plans` — see [Approving writes](/approval).
 - **Run programs out of process** if they will ever be shaped by untrusted end users: `SANDBOX_ISOLATION=process` through `sandbox.NewFromEnv`, and a container worker for tenants you do not trust. See [Development and production](/environments).
 - **Blank-import exactly what you run.** An unregistered backend fails at `New`, not at startup — see [what your binary links](/dependencies).
 

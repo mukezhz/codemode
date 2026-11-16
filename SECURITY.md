@@ -31,7 +31,7 @@ the host, outside the program's reach.
   your app holds for the signed-in user.
 - **Credentials stay in the host.** The bridge carries `(name, input) → output`
   and nothing else.
-- **Rate limits and audit** per user, via `agent.Options.OnCall`.
+- **Rate limits and audit** per user, via `agent.Options.OnEvent`.
 
 ## Reporting a vulnerability
 

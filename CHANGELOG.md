@@ -137,7 +137,14 @@ version is 0, a minor bump may break the API.
 - `mcpsource` maps JSON Schema `integer` to `integer` rather than `number`,
   records `required` fields, and falls back to a tool's title or name when it has
   no description. `mcpsource.Source` is now an alias of `codemode.Source`.
-- `agent.Apply` runs writes that need approval: applying is the approval.
+- One way to hold writes, one hook, one way to approve:
+  - `Options.Plan` is now `Options.HoldWrites`, and held writes come back as
+    `*agent.Pending` like any write needing approval. `Result.Planned` is gone.
+  - `Options.OnCall` is gone; `OnEvent` carries every call, with its input.
+  - `agent.Apply` is gone; plans are approved through `agent.Plans`.
+  - `codemode.WithApproval(ctx)` runs writes a person already approved, such as
+    a button they pressed, instead of setting `Recorder.Approved`.
+  - `codemode.Call.Planned` is `Held`, and `Recorder.Pending()` is `Held()`.
 - `mcpserver`'s `run_program` returns an error naming the writes held for
   approval instead of reporting success.
 - Docs lead with integrating codemode: a five-step summary on the landing page

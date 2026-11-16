@@ -388,7 +388,7 @@ if instructionsMentionUser {
 | Sandbox | per run | one shared runner; process isolation or a container worker for untrusted tenants ([Running the worker](/worker)) |
 | Rate limit | per tenant **and** per user | so one user cannot spend a tenant's quota, and one tenant cannot starve others |
 | Concurrency | per tenant | a cap on programs running at once |
-| Audit | per call | `OnCall` with tenant, user, roles, capability, input hash |
+| Audit | per call | `OnEvent` with tenant, user, roles, capability, input hash |
 
 ## The whole request
 
@@ -428,8 +428,8 @@ func (server *Server) ask(writer http.ResponseWriter, request *http.Request) {
 		Runner:       server.runner, // shared; SANDBOX_ISOLATION decides in-process or worker
 		Cache:        server.cache, // keyed by the capability set already; CacheCaller adds anything else in the prompt
 		Instructions: "You answer for one user of one organisation. Say so when a request needs data outside it.",
-		OnCall: func(call codemode.Call) {
-			server.audit(identity, call)
+		OnEvent: func(event agent.Event) {
+			server.audit(identity, event) // call.done and call.held carry the capability and input
 		},
 	})
 	if err != nil {

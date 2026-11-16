@@ -43,37 +43,27 @@ user what changed.
 
 ## Approving writes first
 
-To hold only the writes that matter, such as a refund, mark them
-`NeedsApproval` and apply the plan by ID: see [Approving writes](/approval).
-To dry-run every write, use `Options.Plan`.
+Mark the writes that need a person with `NeedsApproval`: the program runs its
+reads, holds those writes, and `agent.Run` returns `*agent.Pending`. See
+[Approving writes](/approval).
 
-With `Options.Plan`, reads run but writes are recorded instead of executed and
-returned in `Result.Planned`. Show them, then apply exactly those:
+To hold *every* write for one run — a dry run — set `HoldWrites`. It is the same
+flow: the held writes become a plan, and `plans.Approve` applies them.
 
 ```go
-result, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner, Plan: true})
-// ... user approves result.Planned ...
-calls, err := agent.Apply(ctx, mode, result.Planned)
+_, err := agent.Run(ctx, mode, model, request, agent.Options{
+	Runner: runner, HoldWrites: true, Plans: plans, PlanOwner: user.ID,
+})
+var pending *agent.Pending
+if errors.As(err, &pending) {
+	// show pending.Calls; on approval: plans.Approve(ctx, mode, user.ID, pending.ID)
+}
 ```
 
-```mermaid
-sequenceDiagram
-  participant App
-  participant Agent
-  participant Sandbox
-  App->>Agent: Run(Plan: true)
-  Agent->>Sandbox: program
-  Sandbox-->>Agent: reads executed, writes recorded
-  Agent-->>App: Result.Planned
-  App->>App: user approves
-  App->>Agent: Apply(planned)
-  Agent-->>App: calls made
-```
-
-A planned write returns `{}` to the program, so a program that uses a write's
+A held write returns `{}` to the program, so a program that uses a write's
 output — the ID of a task it just created, say — cannot be planned accurately.
-`Apply` passes each call through the registry and your transport again, so it
-is no more trusted than a direct call.
+Approving passes each call through validation, the registry and your transport
+again, so it is no more trusted than a direct call.
 
 ## Response size
 
@@ -84,13 +74,15 @@ not what it allocates. For a hard memory limit, set `SANDBOX_ISOLATION=process`:
 
 ## Watching a run
 
-`Options.OnCall` receives each call as it completes — the hook for tracing,
-metrics, or a live progress view. Code mode imports no tracing SDK; start your
-OpenTelemetry span there, or wrap your `ExecuteFunc` and `llm.Client`.
+`Options.OnEvent` receives each step of the run as it happens, including every
+capability call with its name, input, duration and error — the hook for audit,
+tracing, metrics, or a live progress view. See [Observability](/observability).
 
 ```go
-agent.Options{Runner: runner, OnCall: func(call codemode.Call) {
-	log.Printf("%s %s err=%q", call.Name, call.Duration, call.Error)
+agent.Options{Runner: runner, OnEvent: func(event agent.Event) {
+	if event.Kind == agent.EventCallDone {
+		log.Printf("%s %s err=%q", event.Name, event.Duration, event.Err)
+	}
 }}
 ```
 

@@ -403,6 +403,7 @@ type Assistant struct {
 	model  llm.Client
 	runner sandbox.Runner
 	cache  program.Cache
+	plans  *agent.Plans
 }
 
 func New(service *crm.Service) (*Assistant, error) {
@@ -418,14 +419,16 @@ func New(service *crm.Service) (*Assistant, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Assistant{crm: service, full: full, model: model, runner: runner, cache: program.NewExactCache()}, nil
+	// Use agent/sqlplans on the CRM's database so a confirmation can come after a restart.
+	plans := agent.NewPlans(agent.NewMemoryPlanStore(), agent.PlanOptions{})
+	return &Assistant{crm: service, full: full, model: model, runner: runner, cache: program.NewExactCache(), plans: plans}, nil
 }
 
 func (assistant *Assistant) Close() error { return assistant.runner.Close() }
 
-// Ask answers one question for the signed-in user. With plan set, reads run but
-// writes are returned in Result.Planned for the user to confirm.
-func (assistant *Assistant) Ask(ctx context.Context, question string, plan bool) (agent.Result, error) {
+// Ask answers one question for the signed-in user. Reads run; every write is
+// held in a plan the user confirms, and err is then an *agent.Pending.
+func (assistant *Assistant) Ask(ctx context.Context, question string) (agent.Result, error) {
 	session, _ := auth.From(ctx)
 	mode, err := assistant.modeFor(session)
 	if err != nil {
@@ -436,19 +439,21 @@ func (assistant *Assistant) Ask(ctx context.Context, question string, plan bool)
 		Cache:        assistant.cache,
 		// instructions name the user, so a cached program is theirs alone
 		CacheCaller:  session.Org + "|" + session.UserID + "|" + strings.Join(slices.Sorted(slices.Values(session.Roles)), ","),
-		Plan:         plan,
+		HoldWrites:   true,
+		Plans:        assistant.plans,
+		PlanOwner:    session.Org + "|" + session.UserID,
 		Instructions: instructions(session),
 	})
 }
 
-// Apply runs writes the user confirmed, through the same registry and scope.
-func (assistant *Assistant) Apply(ctx context.Context, planned []codemode.Call) ([]codemode.Call, error) {
+// Confirm runs a held plan once, through this user's registry and scope as they are now.
+func (assistant *Assistant) Confirm(ctx context.Context, planID string) (agent.Plan, error) {
 	session, _ := auth.From(ctx)
 	mode, err := assistant.modeFor(session)
 	if err != nil {
-		return nil, err
+		return agent.Plan{}, err
 	}
-	return agent.Apply(ctx, mode, planned)
+	return assistant.plans.Approve(ctx, mode, session.Org+"|"+session.UserID, planID)
 }
 
 // modeFor narrows the registry to what this user's roles allow; the roles come
@@ -533,66 +538,70 @@ func ask(helper *assistant.Assistant) http.HandlerFunc {
 			http.Error(writer, err.Error(), http.StatusBadRequest)
 			return
 		}
-		// Plan: reads run now, writes wait for the user to confirm them.
-		result, err := helper.Ask(request.Context(), body.Question, true)
-		if err != nil {
-			http.Error(writer, err.Error(), http.StatusBadGateway)
-			return
+		// Reads run now; writes wait in a plan for the user to confirm.
+		result, err := helper.Ask(request.Context(), body.Question)
+		var pending *agent.Pending
+		switch {
+		case errors.As(err, &pending):
+			json.NewEncoder(writer).Encode(map[string]any{"program": result.Source, "plan": pending.Plan})
+		case err != nil:
+			http.Error(writer, err.Error(), http.StatusBadGateway) // names the run and the stage
+		default:
+			json.NewEncoder(writer).Encode(map[string]any{"answer": agent.Answer(result.Answer), "program": result.Source})
 		}
-		json.NewEncoder(writer).Encode(map[string]any{
-			"answer":  agent.Answer(result.Answer),
-			"program": result.Source,
-			"planned": result.Planned, // empty unless the question asked for changes
-		})
 	}
 }
 
 func apply(helper *assistant.Assistant) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		var body struct {
-			Planned []codemode.Call `json:"planned"`
+			PlanID string `json:"plan_id"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 1<<16)).Decode(&body); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 1<<12)).Decode(&body); err != nil {
 			http.Error(writer, err.Error(), http.StatusBadRequest)
 			return
 		}
-		// Each call goes through this user's registry and scope again, so an
-		// edited plan cannot do more than the user could.
-		calls, err := helper.Apply(request.Context(), body.Planned)
+		// Only the ID comes back: the plan's calls stay on the server, so the
+		// client cannot change what the user confirmed.
+		plan, err := helper.Confirm(request.Context(), body.PlanID)
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusUnprocessableEntity)
+			http.Error(writer, err.Error(), http.StatusUnprocessableEntity) // names the plan and the call
 			return
 		}
-		json.NewEncoder(writer).Encode(map[string]any{"applied": calls})
+		json.NewEncoder(writer).Encode(map[string]any{"plan": plan})
 	}
 }
 ```
 
 ### Step 6: writes, confirmed by the user
 
-The ask route always runs with `Plan: true`. Reads execute; writes are recorded
-and returned instead of run:
+The ask route always runs with `HoldWrites: true`. Reads execute; writes are
+held in a plan and returned instead of run:
 
 ```json
 {
-  "answer": "...",
-  "planned": [
-    {"name": "deals.move",        "input": {"deal_id": 2, "stage": "won"}},
-    {"name": "deals.logActivity", "input": {"deal_id": 2, "kind": "note", "note": "Contract signed."}}
-  ]
+  "program": "...",
+  "plan": {
+    "id": "3f2a9c1e...",
+    "status": "pending",
+    "expires_at": "2026-11-17T12:00:00Z",
+    "calls": [
+      {"name": "deals.move",        "input": {"deal_id": 2, "stage": "won"}},
+      {"name": "deals.logActivity", "input": {"deal_id": 2, "kind": "note", "note": "Contract signed."}}
+    ]
+  }
 }
 ```
 
-Show `planned` as a confirmation ("Move *Parc expansion* to **won**, log a
-note?"). When the user confirms, send it to `/api/assistant/apply`.
+Show `plan.calls` as a confirmation ("Move *Parc expansion* to **won**, log a
+note?"). When the user confirms, send `{"plan_id": ...}` to `/api/assistant/apply`.
 
-- **When `planned` is not empty, show the plan, not the answer.** A planned write
-  returns `{}` to the program, so the preview answer can say "moved deal
-  undefined". The plan is the truth; the answer is a guess about it.
-- **An edited plan cannot do more than the user can.** `Apply` sends every call
-  through this user's registry and `execute` again. We replayed ada's plan as a
-  user from another org: `execute deals.move: not found (permanent)`, and nothing
-  changed.
+- **When there is a plan, show the plan, not the answer.** A held write returns
+  `{}` to the program, so any preview answer is a guess; the plan is the truth.
+- **The client sends only the ID.** The calls stay on the server, a plan applies
+  once, and only for the user it belongs to: another org's user gets
+  `no such plan`. `Approve` sends every call through this user's registry and
+  `execute` again, so a role lost since then is a role lost now.
 
 ### Step 7: roll it out
 
@@ -604,7 +613,7 @@ note?"). When the user confirms, send it to `/api/assistant/apply`.
 | Production, many customer orgs | plus a container worker | see [Running the worker](/worker#step-5-a-container-per-run) |
 
 Then add what any feature that acts for users needs: a per-user rate limit and
-an audit log through `agent.Options.OnCall` ([Roles and tenants](/tenants#sandbox-fairness-and-audit)),
+an audit log through `agent.Options.OnEvent` ([Roles and tenants](/tenants#sandbox-fairness-and-audit)),
 and start with reads only if writes need more review.
 
 ### What it did

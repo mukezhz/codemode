@@ -14,7 +14,7 @@ change.
 | Program cache | in memory | in memory per replica, or shared through a store |
 | Limits | defaults (30 s, 50 calls) | set to your workload |
 | Who writes prompts | you | your users, so treat every program as hostile |
-| Audit | `-log debug` | one line per capability call through `OnCall` |
+| Audit | `-log debug` | one line per step through `OnEvent` |
 
 ## One `main.go` for both
 
@@ -84,10 +84,7 @@ func main() {
 			Runner:      runner,
 			Cache:       cache,
 			CacheCaller: tenant + "|" + strings.Join(caller.Roles, ","),
-			OnCall: func(call codemode.Call) {
-				slog.Info("capability", "user", user, "roles", caller.Roles, "name", call.Name,
-					"ms", call.Duration.Milliseconds(), "error", call.Error)
-			},
+			OnEvent:     agent.LogEvents(slog.Default().With("user", user, "roles", caller.Roles)),
 		})
 		if err != nil {
 			http.Error(writer, err.Error(), http.StatusBadGateway)
@@ -243,8 +240,8 @@ Around the sandbox, the host still owns:
   them from the program's input.
 - **Fairness.** A per-user rate limit and a cap on programs running at once,
   before `agent.Run`.
-- **Audit.** One line per call from `OnCall`: user, role, capability, a hash of
-  the input.
+- **Audit.** One line per call from `OnEvent` (`call.done` and `call.held`):
+  user, role, capability, a hash of the input.
 - **Read-only where possible.** A reporting product can drop writes from the
   registry entirely: `full.Select(func(c capability.Capability) bool { return c.ReadOnly })`.
 
@@ -276,7 +273,7 @@ Then, for the environment:
 - `runner.Name()` in the first log line says `child process` or `container` (or you decided in-process is right).
 - `codemode-worker` is the same version as the library in `go.mod`.
 - Timeout, call budget and heap cap are set, not defaulted.
-- `OnCall` writes somewhere you will look.
+- `OnEvent` writes somewhere you will look.
 - The handler deadline is well above `SANDBOX_TIMEOUT`, so a slow program fails as a sandbox timeout, not a dropped connection.
 
 Every variable is listed in [Configuration](/configuration); the threat model per

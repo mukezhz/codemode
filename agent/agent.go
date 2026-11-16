@@ -28,11 +28,8 @@ type Options struct {
 	CacheCaller string
 	// Includes repair attempts; nil disables streaming. It must not block.
 	OnChunk func(string)
-	// Plan records writes instead of executing them; review Result.Planned, then pass it to Apply.
-	// ponytail: a planned write returns {} to the program, so logic that reads a write's output plans wrongly.
-	Plan bool
-	// nil disables it. It must not block.
-	OnCall func(codemode.Call)
+	// HoldWrites holds every write in a plan, as if each needed approval: a dry run.
+	HoldWrites bool
 	// Stops repair attempts once spent; zero disables. Only providers that report usage count.
 	MaxTokens int64
 	// Plans keeps writes held for approval until someone decides; nil returns them in Pending only.
@@ -87,9 +84,9 @@ type Result struct {
 	Attempts int
 	Cached   bool
 	Timing   Timing
-	Calls    []codemode.Call
-	Planned  []codemode.Call
-	Usage    llm.Usage
+	// Calls is every capability call across all attempts, held ones included.
+	Calls []codemode.Call
+	Usage llm.Usage
 }
 
 var ErrTokenBudget = errors.New("token budget exhausted")
@@ -211,8 +208,7 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 		result.Calls = append(result.Calls, recorder.Calls()...)
 		if err == nil {
 			result.Answer = answer
-			result.Planned = planned(recorder)
-			return result, pending(ctx, recorder, result.Planned, request, options)
+			return result, pending(ctx, recorder, request, options)
 		}
 		if stop := unretryable(recorder, err); stop != nil {
 			return result, stop
@@ -279,20 +275,16 @@ func fromCache(ctx context.Context, mode codemode.CodeMode, key program.Key, opt
 		_ = options.Cache.Forget(ctx, entry.ID)
 		return result, false, unretryable(recorder, err)
 	}
-	result.Planned = planned(recorder)
 	return result, true, nil
 }
 
 func run(ctx context.Context, mode codemode.CodeMode, source string, options Options, timing *Timing) (any, *codemode.Recorder, error) {
-	recorder := &codemode.Recorder{Plan: options.Plan, OnCall: func(call codemode.Call) {
+	recorder := &codemode.Recorder{HoldWrites: options.HoldWrites, OnCall: func(call codemode.Call) {
 		kind := EventCallDone
-		if call.Planned {
+		if call.Held {
 			kind = EventCallHeld
 		}
-		options.emit(Event{Kind: kind, Name: call.Name, Duration: call.Duration, Err: call.Error})
-		if options.OnCall != nil {
-			options.OnCall(call)
-		}
+		options.emit(Event{Kind: kind, Name: call.Name, Input: call.Input, Duration: call.Duration, Err: call.Error})
 	}}
 	running := time.Now()
 	answer, err := options.Runner.Run(codemode.WithRecorder(ctx, recorder), mode, source)
@@ -303,9 +295,15 @@ func run(ctx context.Context, mode codemode.CodeMode, source string, options Opt
 	return answer, recorder, err
 }
 
-func pending(ctx context.Context, recorder *codemode.Recorder, held []codemode.Call, request string, options Options) error {
-	if !recorder.Pending() {
+func pending(ctx context.Context, recorder *codemode.Recorder, request string, options Options) error {
+	if !recorder.Held() {
 		return nil
+	}
+	var held []codemode.Call
+	for _, call := range recorder.Calls() {
+		if call.Held {
+			held = append(held, call)
+		}
 	}
 	if options.Plans == nil {
 		return &Pending{Plan: Plan{RunID: options.runID, Request: request, Calls: held, Status: PlanPending}}
@@ -325,16 +323,6 @@ func unretryable(recorder *codemode.Recorder, err error) error {
 		return fmt.Errorf("%w: program failed after a write: %w", ErrNotRetried, err)
 	}
 	return nil
-}
-
-func planned(recorder *codemode.Recorder) []codemode.Call {
-	var writes []codemode.Call
-	for _, call := range recorder.Calls() {
-		if call.Planned {
-			writes = append(writes, call)
-		}
-	}
-	return writes
 }
 
 func complete(ctx context.Context, model llm.Client, system, prompt string, chunk func(string)) (string, error) {

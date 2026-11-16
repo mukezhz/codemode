@@ -83,31 +83,30 @@ func TestRunStopsOnAPermanentError(t *testing.T) {
 	}
 }
 
-func TestPlanRecordsWritesAndApplyRunsThem(t *testing.T) {
+func TestHoldWritesIsADryRunThatApprovalApplies(t *testing.T) {
 	mode, executed := effects(t)
 	author := &model{responses: []string{
 		`const { todos } = codemode.execute("todos.list", {});
 		 codemode.execute("todos.complete", {id: todos[0].id});
-		 return "planned";`,
+		 return "held";`,
 	}}
+	plans := NewPlans(NewMemoryPlanStore(), PlanOptions{})
 
-	result, err := Run(context.Background(), mode, author, "finish all", Options{Runner: newRunner(t), Plan: true})
-	if err != nil {
-		t.Fatal(err)
+	_, err := Run(context.Background(), mode, author, "finish all", Options{Runner: newRunner(t), HoldWrites: true, Plans: plans, PlanOwner: "ada"})
+	var pending *Pending
+	if !errors.As(err, &pending) {
+		t.Fatalf("err = %v, want *Pending", err)
 	}
 	if len(*executed) != 1 || (*executed)[0] != "todo/List" {
 		t.Fatalf("executed = %v, want only the read", *executed)
 	}
-	if len(result.Planned) != 1 || string(result.Planned[0].Input) != `{"id":1}` {
-		t.Fatalf("planned = %+v", result.Planned)
+	if len(pending.Calls) != 1 || string(pending.Calls[0].Input) != `{"id":1}` {
+		t.Fatalf("held = %+v", pending.Calls)
 	}
 
-	calls, err := Apply(context.Background(), mode, result.Planned)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 1 || len(*executed) != 2 || (*executed)[1] != "todo/Complete" {
-		t.Fatalf("calls = %+v, executed = %v", calls, *executed)
+	plan, err := plans.Approve(context.Background(), mode, "ada", pending.ID)
+	if err != nil || len(plan.Applied) != 1 || len(*executed) != 2 || (*executed)[1] != "todo/Complete" {
+		t.Fatalf("plan = %+v, executed = %v, err = %v", plan, *executed, err)
 	}
 }
 
@@ -131,15 +130,17 @@ func TestRunStopsRepairingWhenTheTokenBudgetIsSpent(t *testing.T) {
 	}
 }
 
-func TestOnCallSeesEachCall(t *testing.T) {
+func TestOnEventSeesEachCallWithItsInput(t *testing.T) {
 	mode, _ := effects(t)
 	author := &model{responses: []string{`codemode.execute("todos.list", {}); return codemode.execute("todos.list", {}).todos.length;`}}
 	var seen []string
 
-	_, err := Run(context.Background(), mode, author, "list", Options{Runner: newRunner(t), OnCall: func(call codemode.Call) {
-		seen = append(seen, call.Name)
+	_, err := Run(context.Background(), mode, author, "list", Options{Runner: newRunner(t), OnEvent: func(event Event) {
+		if event.Kind == EventCallDone {
+			seen = append(seen, event.Name+string(event.Input))
+		}
 	}})
-	if err != nil || len(seen) != 2 {
+	if err != nil || len(seen) != 2 || seen[0] != "todos.list{}" {
 		t.Fatalf("seen = %v, err = %v", seen, err)
 	}
 }
@@ -147,16 +148,17 @@ func TestOnCallSeesEachCall(t *testing.T) {
 func TestRunNeverCachesAProgramThatCanWrite(t *testing.T) {
 	for name, source := range map[string]string{
 		"wrote":   `codemode.execute("todos.complete", {id: 1}); return "done";`,
-		"planned": `codemode.execute("todos.complete", {id: 1}); return "planned";`,
+		"held":    `codemode.execute("todos.complete", {id: 1}); return "held";`,
 		"skipped": `const { todos } = codemode.execute("todos.list", {}); if (todos.length === 0) { codemode.execute("todos.complete", {id: 1}); } return "ok";`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			mode, _ := effects(t)
 			author := &model{responses: []string{source, source}}
-			options := Options{Runner: newRunner(t), Cache: program.NewExactCache(), Plan: name == "planned"}
+			options := Options{Runner: newRunner(t), Cache: program.NewExactCache(), HoldWrites: name == "held"}
 			for run := 1; run <= 2; run++ {
 				result, err := Run(context.Background(), mode, author, "finish todo 1", options)
-				if err != nil {
+				var pending *Pending
+				if err != nil && !errors.As(err, &pending) {
 					t.Fatalf("run %d: %v", run, err)
 				}
 				if result.Cached {
