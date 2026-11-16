@@ -1,3 +1,4 @@
-# esbuild ships a prebuilt binary and needs its install script to run.
+# esbuild and workerd (wrangler's runtime) ship prebuilt binaries and need their install scripts to run.
 allowBuilds:
   esbuild: true
+  workerd: true

@@ -19,7 +19,7 @@ Install pinned tools with `mise install`, then use:
 - `make test-consumer` — verify importing `codemode` alone links nothing third-party and the core packages build with `CGO_ENABLED=0`.
 - `SQLITE_VECTOR_EXTENSION=/absolute/path/vector.dylib make test-vector` — exercise real semantic search using sqlite-vector 1.0.0. Use `vector.so` on Linux.
 - `make test-postgres` — exercise the pgvector backend against a throwaway container. Requires Docker.
-- `make docs` / `make docs-build` — serve or build the VitePress documentation site in `docs/`. Node and pnpm are pinned in `mise.toml`; the Go module itself needs neither.
+- `make docs` / `make docs-build` — serve or build the VitePress documentation site in `docs/`. `make docs-deploy` publishes it as Cloudflare Workers static assets (`docs/wrangler.jsonc`); set `CLOUDFLARE_ACCOUNT_ID` when your login reaches more than one account. Node and pnpm are pinned in `mise.toml`; the Go module itself needs neither.
 
 Each command should work from the repository root and fail with a nonzero exit code on errors.
 

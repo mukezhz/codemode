@@ -108,7 +108,8 @@ limits, audit log). Both run programs in-process by default; add
 
 ## Documentation
 
-Full docs are a VitePress site under [`docs/`](docs/content).
+Full docs: **<https://codemode-docs.itnoobz.workers.dev>**, built from the
+VitePress site under [`docs/`](docs/content).
 
 **Get started**
 - [**Quickstart**](docs/content/quickstart.md) — an empty directory to a typed answer and an approved write, in six steps
@@ -136,6 +137,7 @@ Full docs are a VitePress site under [`docs/`](docs/content).
 ```sh
 make docs        # serve locally with hot reload
 make docs-build  # build the static site
+make docs-deploy # build and deploy to Cloudflare Workers (pnpm --dir docs exec wrangler login once)
 ```
 
 ## Layout
