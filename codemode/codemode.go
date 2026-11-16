@@ -100,12 +100,19 @@ func (runtime *runtime) Execute(ctx context.Context, name string, input json.Raw
 	if !ok {
 		return nil, fmt.Errorf("capability %q is not registered", name)
 	}
+	// Not recorded: nothing ran, so a rejected write must not stop the repair loop.
+	if err := capability.Validate(item, input); err != nil {
+		return nil, fmt.Errorf("invalid input for %s: %w", name, err)
+	}
 	recorder := recorderFrom(ctx)
 	if recorder == nil {
+		if item.NeedsApproval && !item.ReadOnly {
+			return nil, Permanent(fmt.Errorf("%s needs approval: run it through agent.Run and apply the plan", name))
+		}
 		return runtime.call(ctx, item, input)
 	}
-	call := Call{Name: name, Input: input, ReadOnly: item.ReadOnly}
-	if recorder.Plan && !item.ReadOnly {
+	call := Call{Name: name, Input: input, ReadOnly: item.ReadOnly, NeedsApproval: item.NeedsApproval}
+	if recorder.hold(item) {
 		call.Planned = true
 		call.Output = json.RawMessage("{}")
 		recorder.add(call)

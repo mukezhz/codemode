@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/codemode/sourcetest"
 	"github.com/mukezhz/codemode/sandbox"
 	"github.com/mukezhz/codemode/sandbox/goja"
 
@@ -405,5 +406,83 @@ func TestEmptyResultsAreArrays(t *testing.T) {
 		return tasks.length + projects.length;`)
 	if value != int64(0) {
 		t.Fatalf("value = %#v, want 0", value)
+	}
+}
+
+func goSource(t *testing.T, tasks *store.Store) codemode.Source {
+	t.Helper()
+	source, err := app.New(tasks, "grace").Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return source
+}
+
+func TestGoSourcePassesTheContract(t *testing.T) {
+	sourcetest.Run(t, goSource(t, nil))
+}
+
+// The Go functions and the protos are two descriptions of one surface; neither may drift.
+func TestGoAndProtoSourcesDeclareTheSameSurface(t *testing.T) {
+	fromProto := map[string]capability.Capability{}
+	for _, item := range full(t).Capabilities {
+		fromProto[item.Name] = item
+	}
+	fromGo := goSource(t, nil).Registry.Capabilities
+	if len(fromGo) != len(fromProto) {
+		t.Fatalf("go declares %d capabilities, proto %d", len(fromGo), len(fromProto))
+	}
+	for _, item := range fromGo {
+		proto, ok := fromProto[item.Name]
+		if !ok {
+			t.Errorf("%s is not in the protos", item.Name)
+			continue
+		}
+		if item.Description != proto.Description || item.ReadOnly != proto.ReadOnly || item.NeedsApproval != proto.NeedsApproval ||
+			strings.Join(item.Roles, ",") != strings.Join(proto.Roles, ",") {
+			t.Errorf("%s differs:\n go    %q read=%v approval=%v roles=%v\n proto %q read=%v approval=%v roles=%v", item.Name,
+				item.Description, item.ReadOnly, item.NeedsApproval, item.Roles,
+				proto.Description, proto.ReadOnly, proto.NeedsApproval, proto.Roles)
+		}
+		for field := range proto.Input.Fields {
+			if _, ok := item.Input.Fields[field]; !ok {
+				t.Errorf("%s: input field %s is missing from the Go struct", item.Name, field)
+			}
+		}
+	}
+}
+
+func TestGoSourceRunsTheWholeWorkflow(t *testing.T) {
+	tasks, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks.SetClock(func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) })
+	t.Cleanup(func() { tasks.Close() })
+	mode, err := codemode.FromSource(goSource(t, tasks), capability.Caller{Roles: []string{string(auth.RoleMember)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := auth.NewContext(context.Background(), auth.Identity{User: "ada", Role: auth.RoleMember})
+
+	value := run(t, ctx, mode, `
+		codemode.execute("tasks.create", { title: "Write docs", project: "docs", priority: "high", due_date: "2026-08-10" });
+		const second = codemode.execute("tasks.create", { title: "Ship it", priority: "low" }).task;
+		codemode.execute("tasks.complete", { id: second.id });
+		const counts = codemode.execute("reports.statusCounts", {});
+		return counts.open + " open, " + counts.completed + " done, " + codemode.execute("reports.overdue", {}).tasks.length + " overdue";
+	`)
+	if value != "1 open, 1 done, 1 overdue" {
+		t.Fatalf("answer = %#v", value)
+	}
+
+	runner, err := goja.New(sandbox.Options{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runner.Close()
+	if _, err := runner.Run(ctx, mode, `return codemode.execute("tasks.create", { title: "x", priority: "urgent" });`); err == nil ||
+		!strings.Contains(err.Error(), "want one of low, medium, high") {
+		t.Fatalf("an invalid priority reached the store: %v", err)
 	}
 }

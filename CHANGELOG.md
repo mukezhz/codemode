@@ -6,6 +6,43 @@ version is 0, a minor bump may break the API.
 ## [Unreleased]
 
 ### Added
+- `capability/gosource`: capabilities from typed Go functions.
+  `gosource.Func(name, description, access, func(ctx, In) (Out, error), options...)`
+  takes its schema from the request and response structs, decodes and encodes
+  for you, and needs no `switch` over RPC names. Access (`Public`, `Roles`,
+  `Permissions`) is a required argument; `ReadOnly` and `NeedsApproval` are options.
+- `codemode.Source`, `codemode.Combine` (several sources as one, routed by RPC;
+  duplicates are an error) and `codemode.FromSource(source, caller)`, which
+  narrows to the caller and defaults to keyword search.
+- Every capability call is validated against its input shape before
+  `ExecuteFunc` runs: unknown fields, kinds, enums, required fields and oneofs,
+  with errors that name the path so the model can repair the program.
+  `capability.Validate`, `capability.ValidateValue`.
+- `capability.SchemaOf`: the neutral shape of a Go struct, following
+  `encoding/json`, with `desc` tags and `capability.Enum` string types.
+- `TypeSchema.Required` and an `integer` kind, filled by `gosource` and
+  `mcpsource`.
+- `agent.RunAs[T]`: the model is told `T`'s shape, the program's return value
+  is checked and decoded into `T`, and a mismatch is repaired like a failure.
+- Approval: `Capability.NeedsApproval`, the `(codemode.needs_approval)` method
+  option and `gosource.NeedsApproval()`. A run holds that write and every later
+  one and returns `*agent.Pending`; `agent.PlanStore`, `agent.NewMemoryPlans` and
+  `agent.ApplyPlan(ctx, mode, store, owner, id)` apply a plan once, by ID, for its
+  owner. A write needing approval fails rather than runs outside `agent.Run`.
+- `capability/jsonschema`: the JSON Schema converter `mcpsource` used, exported.
+- `codemode/sourcetest.Run`: the contract every capability source passes.
+- `examples/todo` serves its capabilities from Go functions by default;
+  `-source proto` keeps the proto path. `todos.delete` needs approval, and
+  `todo-mcp` shows `run_program` refusing it.
+- `examples/taskreport` serves its 23 capabilities from typed Go functions by
+  default (`-source proto` keeps the protos, and a test holds both to the same
+  surface). `tasks.delete` needs approval: the chat shows held writes with
+  Approve and Reject, backed by `POST /api/plans/{id}/approve` and `/reject`.
+- `examples/shop`, the quickstart as a runnable example, and
+  `examples/combined`, one program over Go, protobuf and MCP sources.
+- Docs: a Go-structs quickstart, and pages for capability sources, types and
+  validation, and approving writes. The protobuf quickstart moved to
+  `docs/content/protobuf.md`.
 - `capability.TypeSchema` carries `descriptions`, `optional`, `oneofs`, and, on
   an enum, its `values`, and every dialect's prompt renders them. Protos fill
   them from `(codemode.field_description)`, a new field option, proto3
@@ -80,6 +117,15 @@ version is 0, a minor bump may break the API.
   longer tells the model about capabilities it cannot call.
 
 ### Changed
+- A capability call whose input does not match the declared shape now fails
+  before `ExecuteFunc`. Hand-built capabilities with no input `Fields` are not
+  checked.
+- `mcpsource` maps JSON Schema `integer` to `integer` rather than `number`,
+  records `required` fields, and falls back to a tool's title or name when it has
+  no description. `mcpsource.Source` is now an alias of `codemode.Source`.
+- `agent.Apply` runs writes that need approval: applying is the approval.
+- `mcpserver`'s `run_program` returns an error naming the writes held for
+  approval instead of reporting success.
 - Docs lead with integrating codemode: a five-step summary on the landing page
   and README, the sidebar ordered Get started → Ship it → How it works, and one
   pre-production checklist. Fixed stale snippets, including a Dockerfile that

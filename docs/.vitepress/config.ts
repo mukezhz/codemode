@@ -6,7 +6,7 @@ export default withMermaid(
   defineConfig({
     title: "Code Mode",
     description:
-      "Turn protobuf RPCs into capabilities a model can compose in a sandbox.",
+      "Turn typed Go functions, protobuf RPCs or MCP tools into capabilities a model composes in a sandbox.",
     lang: "en-US",
 
     // Pages live in content/ so this directory holds only the site: the
@@ -39,6 +39,8 @@ export default withMermaid(
           text: "Get started",
           items: [
             { text: "Quickstart", link: "/quickstart" },
+            { text: "Capability sources", link: "/sources" },
+            { text: "Capabilities from protobuf", link: "/protobuf" },
             { text: "Integration guide", link: "/using-it" },
             { text: "Adding it to an existing app", link: "/existing-app" },
           ],
@@ -51,6 +53,8 @@ export default withMermaid(
             { text: "What your binary links", link: "/dependencies" },
             { text: "Permissions", link: "/permissions" },
             { text: "Roles and tenants", link: "/tenants" },
+            { text: "Types and validation", link: "/types" },
+            { text: "Approving writes", link: "/approval" },
             { text: "Writes and retries", link: "/writes" },
             { text: "Caching programs", link: "/caching" },
           ],

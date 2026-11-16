@@ -21,6 +21,11 @@ service TodoService {
   rpc Complete(CompleteTodoRequest) returns (CompleteTodoResponse) {
     option (codemode.description) = "Marks a todo item as completed by ID.";
   }
+
+  rpc Delete(DeleteTodoRequest) returns (DeleteTodoResponse) {
+    option (codemode.description) = "Deletes a todo item by ID. The user approves each deletion before it happens.";
+    option (codemode.needs_approval) = true;
+  }
 }
 
 message CreateTodoRequest {
@@ -49,4 +54,12 @@ message Todo {
   int64 id = 1;
   string title = 2;
   bool completed = 3;
+}
+
+message DeleteTodoRequest {
+  int64 id = 1;
+}
+
+message DeleteTodoResponse {
+  bool deleted = 1;
 }

@@ -12,9 +12,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/examples/todo/app"
-	todov1 "github.com/mukezhz/codemode/examples/todo/gen/todo/v1"
 	"github.com/mukezhz/codemode/mcpserver"
-	coderegistry "github.com/mukezhz/codemode/registry"
 	"github.com/mukezhz/codemode/sandbox"
 
 	_ "github.com/mukezhz/codemode/sandbox/goja"
@@ -31,14 +29,6 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	registry, err := coderegistry.FromFiles(todov1.File_todo_proto)
-	if err != nil {
-		return err
-	}
-	mode, err := codemode.New(registry, capability.Keyword(registry), app.New().Execute)
-	if err != nil {
-		return err
-	}
 	// An MCP client is a program author you do not control: prefer SANDBOX_ISOLATION=process.
 	runner, err := sandbox.NewFromEnv(sandbox.Options{})
 	if err != nil {
@@ -47,9 +37,23 @@ func run(ctx context.Context) error {
 	defer runner.Close()
 	fmt.Fprintf(os.Stderr, "todo-mcp: %s\n", runner.Name())
 
-	server, err := mcpserver.New(mcpserver.Static(mode), runner, mcpserver.Options{Name: "todo"})
+	server, err := newServer(runner)
 	if err != nil {
 		return err
 	}
 	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
+// todos.delete needs approval, which an MCP client cannot give: run_program
+// refuses a program that reaches it and names the writes that did not run.
+func newServer(runner sandbox.Runner) (*mcp.Server, error) {
+	source, err := app.New().Source()
+	if err != nil {
+		return nil, err
+	}
+	mode, err := codemode.FromSource(source, capability.Caller{})
+	if err != nil {
+		return nil, err
+	}
+	return mcpserver.New(mcpserver.Static(mode), runner, mcpserver.Options{Name: "todo"})
 }

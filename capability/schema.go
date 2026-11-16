@@ -25,6 +25,8 @@ type Capability struct {
 
 	// Anything but (idempotency_level) = NO_SIDE_EFFECTS is treated as a write.
 	ReadOnly bool `json:"read_only,omitempty"`
+	// A write that is held for a person to approve instead of running.
+	NeedsApproval bool `json:"needs_approval,omitempty"`
 }
 
 func (capability Capability) Unrestricted() bool {
@@ -75,11 +77,13 @@ func (capability *Capability) EmbeddingText() string {
 }
 
 type TypeSchema struct {
-	Type         string              `json:"type"`
-	Fields       map[string]string   `json:"fields"`
-	Descriptions map[string]string   `json:"descriptions,omitempty"`
-	Optional     []string            `json:"optional,omitempty"`
-	Oneofs       map[string][]string `json:"oneofs,omitempty"`
+	Type         string            `json:"type"`
+	Fields       map[string]string `json:"fields"`
+	Descriptions map[string]string `json:"descriptions,omitempty"`
+	Optional     []string          `json:"optional,omitempty"`
+	// Validate rejects input that leaves these out or sets them to null.
+	Required []string            `json:"required,omitempty"`
+	Oneofs   map[string][]string `json:"oneofs,omitempty"`
 	// Set only on an enum: the names it accepts and returns.
 	Values []string `json:"values,omitempty"`
 }

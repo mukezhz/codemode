@@ -293,10 +293,10 @@ flowchart LR
   path --> gotypes["generated Go<br/>protobuf types"]
 ```
 
-The Todo application already decodes strictly into concrete Go structs and
-rejects unknown fields. Once Go types are generated from the contracts, a generic
-helper can give trusted Go callers typed calls while still delegating to the raw
-interface.
+Every call is validated against the capability's input shape before
+`ExecuteFunc` runs, whatever the source, and `capability/gosource` decodes it
+into your own structs, so a handler never sees a malformed request. See
+[Types and validation](/types).
 
 ## Capabilities from an MCP server
 

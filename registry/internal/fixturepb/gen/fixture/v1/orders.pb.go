@@ -438,11 +438,11 @@ const file_orders_proto_rawDesc = "" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_OPEN\x10\x01\x12\x12\n" +
-	"\x0eSTATUS_SHIPPED\x10\x022\xf8\x02\n" +
+	"\x0eSTATUS_SHIPPED\x10\x022\xfc\x02\n" +
 	"\fOrderService\x12f\n" +
 	"\x04List\x12\x1d.fixture.v1.ListOrdersRequest\x1a\x1e.fixture.v1.ListOrdersResponse\"\x1f\x82\xb5\x18\x1bLists orders, newest first.\x12[\n" +
-	"\x03Get\x12\x1b.fixture.v1.GetOrderRequest\x1a\x19.fixture.v1.OrderResponse\"\x1c\x82\xb5\x18\x18Returns one order by ID.\x12\x87\x01\n" +
-	"\x06Cancel\x12\x1b.fixture.v1.GetOrderRequest\x1a\x19.fixture.v1.OrderResponse\"E\x82\xb5\x18&Cancels an order that has not shipped.\x8a\xb5\x18\asupport\x92\xb5\x18\forders.write\x1a\x19\x82\xb5\x18\x06orders\x92\xb5\x18\vorders.readBRZPgithub.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1;fixturev1b\x06proto3"
+	"\x03Get\x12\x1b.fixture.v1.GetOrderRequest\x1a\x19.fixture.v1.OrderResponse\"\x1c\x82\xb5\x18\x18Returns one order by ID.\x12\x8b\x01\n" +
+	"\x06Cancel\x12\x1b.fixture.v1.GetOrderRequest\x1a\x19.fixture.v1.OrderResponse\"I\x82\xb5\x18&Cancels an order that has not shipped.\x8a\xb5\x18\asupport\x92\xb5\x18\forders.write\x98\xb5\x18\x01\x1a\x19\x82\xb5\x18\x06orders\x92\xb5\x18\vorders.readBRZPgithub.com/mukezhz/codemode/registry/internal/fixturepb/gen/fixture/v1;fixturev1b\x06proto3"
 
 var (
 	file_orders_proto_rawDescOnce sync.Once

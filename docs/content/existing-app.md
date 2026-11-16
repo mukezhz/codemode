@@ -212,7 +212,7 @@ message PipelineReport {
 }
 ```
 
-Generate it the way the [Quickstart](/quickstart#_4-generate-go) does, with
+Generate it the way the [Quickstart](/protobuf#_4-generate-go) does, with
 `codemode.proto` excluded from generation and from lint:
 
 ```yaml

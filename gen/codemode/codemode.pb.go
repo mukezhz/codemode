@@ -71,6 +71,14 @@ var file_codemode_proto_extTypes = []protoimpl.ExtensionInfo{
 		Filename:      "codemode.proto",
 	},
 	{
+		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50003,
+		Name:          "codemode.needs_approval",
+		Tag:           "varint,50003,opt,name=needs_approval",
+		Filename:      "codemode.proto",
+	},
+	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50000,
@@ -112,6 +120,11 @@ var (
 	//
 	// optional string permissions = 50002;
 	E_Permissions = &file_codemode_proto_extTypes[5]
+	// Holds this write, and every write after it in the same program, until a person
+	// approves the plan. An error on a method with idempotency_level = NO_SIDE_EFFECTS.
+	//
+	// optional bool needs_approval = 50003;
+	E_NeedsApproval = &file_codemode_proto_extTypes[6]
 )
 
 // Extension fields to descriptorpb.FieldOptions.
@@ -119,7 +132,7 @@ var (
 	// Unit, format, or valid values; generated Go drops proto comments, so this reaches the model.
 	//
 	// optional string field_description = 50000;
-	E_FieldDescription = &file_codemode_proto_extTypes[6]
+	E_FieldDescription = &file_codemode_proto_extTypes[7]
 )
 
 var File_codemode_proto protoreflect.FileDescriptor
@@ -132,7 +145,8 @@ const file_codemode_proto_rawDesc = "" +
 	"\x13default_permissions\x12\x1f.google.protobuf.ServiceOptions\x18҆\x03 \x01(\tR\x12defaultPermissions:B\n" +
 	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18І\x03 \x01(\tR\vdescription:6\n" +
 	"\x05roles\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\tR\x05roles:B\n" +
-	"\vpermissions\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\vpermissions:L\n" +
+	"\vpermissions\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\vpermissions:G\n" +
+	"\x0eneeds_approval\x12\x1e.google.protobuf.MethodOptions\x18ӆ\x03 \x01(\bR\rneedsApproval:L\n" +
 	"\x11field_description\x12\x1d.google.protobuf.FieldOptions\x18І\x03 \x01(\tR\x10fieldDescriptionB3Z1github.com/mukezhz/codemode/gen/codemode;codemodeb\x06proto3"
 
 var file_codemode_proto_goTypes = []any{
@@ -147,11 +161,12 @@ var file_codemode_proto_depIdxs = []int32{
 	1, // 3: codemode.description:extendee -> google.protobuf.MethodOptions
 	1, // 4: codemode.roles:extendee -> google.protobuf.MethodOptions
 	1, // 5: codemode.permissions:extendee -> google.protobuf.MethodOptions
-	2, // 6: codemode.field_description:extendee -> google.protobuf.FieldOptions
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	0, // [0:7] is the sub-list for extension extendee
+	1, // 6: codemode.needs_approval:extendee -> google.protobuf.MethodOptions
+	2, // 7: codemode.field_description:extendee -> google.protobuf.FieldOptions
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	0, // [0:8] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
 }
 
@@ -167,7 +182,7 @@ func file_codemode_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_codemode_proto_rawDesc), len(file_codemode_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   0,
-			NumExtensions: 7,
+			NumExtensions: 8,
 			NumServices:   0,
 		},
 		GoTypes:           file_codemode_proto_goTypes,

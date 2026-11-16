@@ -26,7 +26,8 @@ func connect(t *testing.T, options Options) *mcp.ClientSession {
 		Output: capability.TypeSchema{Fields: map[string]string{"todos": "repeated string"}},
 	}
 	complete := capability.Capability{Name: "todos.complete", RPC: "todo.v1.TodoService/Complete", Description: "Completes a todo"}
-	registry := capability.Registry{Capabilities: []capability.Capability{list, complete}}
+	purge := capability.Capability{Name: "todos.delete", RPC: "todo.v1.TodoService/Delete", Description: "Deletes a todo", NeedsApproval: true}
+	registry := capability.Registry{Capabilities: []capability.Capability{list, complete, purge}}
 	mode, err := codemode.New(registry,
 		func(context.Context, string, int) ([]capability.Match, error) {
 			return []capability.Match{{Capability: list}}, nil
@@ -126,6 +127,15 @@ func TestRunReportsAWriteThatRanBeforeTheFailure(t *testing.T) {
 	}
 	if !output.Wrote || len(output.Calls) != 1 || output.Calls[0].Name != "todos.complete" {
 		t.Fatalf("output = %+v; the client must see the write that ran", output)
+	}
+}
+
+func TestRunRefusesAWriteThatNeedsApproval(t *testing.T) {
+	result, text := call(t, connect(t, Options{}), "run_program", RunInput{
+		Source: `codemode.execute("todos.delete", {}); codemode.execute("todos.complete", {}); return "done";`,
+	})
+	if !result.IsError || !strings.Contains(text, "did not run: todos.delete, todos.complete") {
+		t.Fatalf("text = %q; a held write must not look like success", text)
 	}
 }
 

@@ -35,6 +35,13 @@ type Options struct {
 	OnCall func(codemode.Call)
 	// Stops repair attempts once spent; zero disables. Only providers that report usage count.
 	MaxTokens int64
+	// Plans keeps writes held for approval so they can be applied by ID; nil returns them in Pending only.
+	Plans PlanStore
+	// PlanOwner scopes a saved plan to one caller, such as a user ID; ApplyPlan must pass the same.
+	PlanOwner string
+
+	// Set by RunAs: checks the returned value, so a mismatch is repaired like a failure.
+	check func(any) error
 }
 
 const (
@@ -171,7 +178,7 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 		if err == nil {
 			result.Answer = answer
 			result.Planned = planned(recorder)
-			return result, nil
+			return result, pending(ctx, recorder, result.Planned, options)
 		}
 		if stop := unretryable(recorder, err); stop != nil {
 			return result, stop
@@ -246,7 +253,25 @@ func run(ctx context.Context, mode codemode.CodeMode, source string, options Opt
 	running := time.Now()
 	answer, err := options.Runner.Run(codemode.WithRecorder(ctx, recorder), mode, source)
 	timing.Run += time.Since(running)
+	if err == nil && options.check != nil {
+		err = options.check(answer)
+	}
 	return answer, recorder, err
+}
+
+func pending(ctx context.Context, recorder *codemode.Recorder, held []codemode.Call, options Options) error {
+	if !recorder.Pending() {
+		return nil
+	}
+	plan := &Pending{Calls: held}
+	if options.Plans != nil {
+		id, err := options.Plans.Save(ctx, options.PlanOwner, held)
+		if err != nil {
+			return fmt.Errorf("save plan: %w", err)
+		}
+		plan.ID = id
+	}
+	return plan
 }
 
 func unretryable(recorder *codemode.Recorder, err error) error {
@@ -269,9 +294,10 @@ func planned(recorder *codemode.Recorder) []codemode.Call {
 	return writes
 }
 
-// Stops at the first failure; each write still passes the registry and the transport.
+// Apply runs approved calls, including writes that need approval. It stops at the
+// first failure; each call still passes validation, the registry and the transport.
 func Apply(ctx context.Context, mode codemode.CodeMode, planned []codemode.Call) ([]codemode.Call, error) {
-	recorder := &codemode.Recorder{}
+	recorder := &codemode.Recorder{Approved: true}
 	ctx = codemode.WithRecorder(ctx, recorder)
 	for _, call := range planned {
 		if _, err := mode.Execute(ctx, call.Name, call.Input); err != nil {

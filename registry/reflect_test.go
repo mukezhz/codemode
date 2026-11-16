@@ -200,4 +200,7 @@ func TestRolesAndPermissionsComeFromTheContract(t *testing.T) {
 	if strings.Join(cancel.Roles, ",") != "support" || strings.Join(cancel.Permissions, ",") != "orders.write" {
 		t.Errorf("orders.cancel roles=%v permissions=%v, want its own, replacing the default", cancel.Roles, cancel.Permissions)
 	}
+	if !cancel.NeedsApproval || byName["orders.list"].NeedsApproval {
+		t.Errorf("needs approval: cancel = %v, list = %v; want only cancel", cancel.NeedsApproval, byName["orders.list"].NeedsApproval)
+	}
 }

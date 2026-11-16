@@ -51,8 +51,16 @@ export type StatusCounts = {
   due_today: number;
 };
 
+// Writes the program reached that need the user's approval. None of them has
+// run; the server keeps the plan and applies exactly these on approve.
+export type PendingPlan = {
+  id: string;
+  calls: { name: string; input: Record<string, unknown> }[];
+};
+
 export type ChatResult = {
   document: ViewDocument;
+  pending?: PendingPlan;
   program: string;
   attempts: number;
   used: { capability: { name: string; description: string }; distance: number }[];
@@ -116,6 +124,10 @@ export const api = {
   complete: (id: number) => call<{ task: Task }>(`/tasks/${id}/complete`, { method: "POST" }),
   reopen: (id: number) => call<{ task: Task }>(`/tasks/${id}/reopen`, { method: "POST" }),
   remove: (id: number) => call<{ deleted: boolean }>(`/tasks/${id}`, { method: "DELETE" }),
+
+  approve: (id: string) =>
+    call<{ calls: { name: string; error?: string }[] }>(`/plans/${id}/approve`, { method: "POST" }),
+  reject: (id: string) => call<{ rejected: boolean }>(`/plans/${id}/reject`, { method: "POST" }),
 
   chat: (request: string) =>
     call<ChatResult>("/chat", { method: "POST", body: JSON.stringify({ request }) }),

@@ -5,8 +5,9 @@ hero:
   name: Code Mode
   text: The model writes a program, not a call
   tagline: >
-    Turn protobuf RPCs into capabilities a model can compose inside a sandbox.
-    Fifty tasks become one model turn, and a registry decides what may actually run.
+    Turn your typed Go functions, protobuf RPCs or MCP tools into capabilities a
+    model composes inside a sandbox. Fifty tasks become one model turn, and a
+    registry decides what may actually run.
   actions:
     - theme: brand
       text: Quickstart
@@ -34,11 +35,16 @@ features:
       An RPC declares which roles or permissions may call it. Each request, pass
       what the caller holds, fixed roles or ones an admin created at runtime, and
       the capability is withheld from what runs and from the prompt at once.
-  - title: Generated from your contracts
+  - title: Typed at both ends
     details: >
-      Annotate a protobuf service with a namespace and a description per method.
-      The registry, the schemas, and the model-facing declarations all fall out of
-      make generate.
+      The schema comes from your Go structs, protos or JSON Schema. Every call is
+      validated before your handler runs, and agent.RunAs returns the answer as
+      your struct. A mismatch goes back to the model to fix.
+  - title: A person approves the risky writes
+    details: >
+      Mark a write NeedsApproval and the program records it instead of running it.
+      Show the plan, apply it by ID once, and the client never touches what was
+      approved.
   - title: In-process to container, one setting
     details: >
       JavaScript, Starlark, or Lua, run in your process while you develop and in a
@@ -64,69 +70,45 @@ features:
 
 ## Use it in your app
 
-Five steps take an application from protobuf contracts to a model answering
-questions against them. Only step 3 is code nobody can write for you.
+Three steps take the Go functions you already have to a model answering
+questions with them.
 
 ```mermaid
 flowchart LR
-  a["1 annotate<br/><small>.proto</small>"] --> b["2 registry<br/><small>FromFiles</small>"]
-  b --> c["3 execute<br/><small>your code</small>"]
-  c --> d["4 per caller<br/><small>For(Caller)</small>"]
-  d --> e["5 run<br/><small>agent.Run</small>"]
+  a["1 define<br/><small>gosource.Func</small>"] --> b["2 per caller<br/><small>FromSource</small>"]
+  b --> c["3 run<br/><small>agent.RunAs</small>"]
 ```
 
-**1. Annotate the contract.** A namespace on the service, a description on each
-method. That is all a model will ever read about it.
-
-```proto
-service OrderService {
-  option (codemode.namespace) = "orders";
-  rpc List(ListRequest) returns (ListResponse) {
-    option (codemode.description) = "Lists orders, optionally filtered by status.";
-  }
-}
-```
-
-**2. Derive the registry** from the generated Go. No file to keep in sync.
+**1. Define capabilities from typed functions.** The structs are the schema;
+access is required, and writes can wait for a person.
 
 ```go
-full, err := registry.FromFiles(ordersv1.File_orders_v1_orders_proto)
+source, err := gosource.New(
+	gosource.Func("orders.list", "Lists orders, optionally only those in one status.",
+		gosource.Public(), shop.List, gosource.ReadOnly()),
+	gosource.Func("orders.refund", "Refunds a paid order by ID.",
+		gosource.Roles("support"), shop.Refund, gosource.NeedsApproval()),
+)
 ```
 
-**3. Write `ExecuteFunc`.** It receives an RPC path and JSON input, and calls
-your service layer the way your HTTP handlers already do.
-
-```go
-func execute(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error) {
-	switch rpc {
-	case "orders.v1.OrderService/List":
-		return listOrders(ctx, input) // identity comes from ctx, never from input
-	}
-	return nil, fmt.Errorf("RPC %q is not implemented", rpc)
-}
-```
-
-**4. Narrow to the caller, per request.** What they may not call is withheld
+**2. Narrow to the caller, per request.** What they may not call is withheld
 from the prompt and refused at run time.
 
 ```go
-allowed := full.For(capability.Caller{Roles: user.Roles, Permissions: user.Permissions})
-mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+mode, err := codemode.FromSource(source, capability.Caller{Roles: user.Roles})
 ```
 
-**5. Run a request.**
+**3. Run a request, and get a struct back.**
 
 ```go
-result, err := agent.Run(ctx, mode, model, "how much have paid orders brought in?",
-	agent.Options{Runner: runner})
-fmt.Println(agent.Answer(result.Answer))
+revenue, result, err := agent.RunAs[Revenue](ctx, mode, model,
+	"how much have paid orders brought in?", agent.Options{Runner: runner})
 ```
 
 `model` comes from `llm.NewFromEnv()` and `runner` from
 `sandbox.NewFromEnv(sandbox.Options{})`. The [Quickstart](/quickstart) builds all
-of this as complete files in fifteen minutes; the [Integration guide](/using-it)
-explains every choice; [Adding it to an existing app](/existing-app) walks a real
-CRM through it.
+of this as complete files in ten minutes. Already have protos or MCP servers?
+See [Capability sources](/sources).
 
 ## In one screen
 

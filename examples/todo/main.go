@@ -34,6 +34,7 @@ func main() {
 	model := flag.String("model", "", "model name, overriding ANTHROPIC_MODEL / OPENAI_MODEL")
 	temperature := flag.Float64("temperature", -1, "sampling temperature; negative leaves the provider default")
 	instructions := flag.String("instructions", "", "extra guidance appended to the system prompt")
+	from := flag.String("source", "go", "where capabilities come from: go (typed Go functions) or proto (todo.proto)")
 	flag.Parse()
 
 	options, err := llm.OptionsFromEnv()
@@ -50,24 +51,24 @@ func main() {
 		options.Temperature = llm.Float(*temperature)
 	}
 
-	if err := run(context.Background(), *request, options, *instructions); err != nil {
+	if err := run(context.Background(), *from, *request, options, *instructions); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, request string, options llm.Options, instructions string) error {
-	registry, err := coderegistry.FromFiles(todov1.File_todo_proto)
+func run(ctx context.Context, from, request string, options llm.Options, instructions string) error {
+	source, err := newSource(from)
 	if err != nil {
 		return err
 	}
-	search, closeSearch, err := newSearch(ctx, registry)
+	search, closeSearch, err := newSearch(ctx, source.Registry)
 	if err != nil {
 		return err
 	}
 	defer closeSearch()
 
-	mode, err := codemode.New(registry, search, app.New().Execute)
+	mode, err := codemode.New(source.Registry, search, source.Execute)
 	if err != nil {
 		return err
 	}
@@ -99,6 +100,19 @@ func run(ctx context.Context, request string, options llm.Options, instructions 
 	}
 	fmt.Printf("answer\n  %s\n", agent.Answer(result.Answer))
 	return nil
+}
+
+// Both sources describe the same three capabilities and give the same answers.
+func newSource(from string) (codemode.Source, error) {
+	todos := app.New()
+	switch from {
+	case "go":
+		return todos.Source()
+	case "proto":
+		registry, err := coderegistry.FromFiles(todov1.File_todo_proto)
+		return codemode.Source{Registry: registry, Execute: todos.Execute}, err
+	}
+	return codemode.Source{}, fmt.Errorf("-source must be go or proto, not %q", from)
 }
 
 func newSearch(ctx context.Context, registry capability.Registry) (codemode.SearchFunc, func(), error) {
