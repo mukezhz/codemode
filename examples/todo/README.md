@@ -1,7 +1,8 @@
 # todo
 
-The smallest complete code-mode application: three capabilities (`todos.create`,
-`todos.list`, `todos.complete`), an in-memory store, and a model that answers a
+The smallest complete code-mode application: four capabilities (`todos.create`,
+`todos.list`, `todos.complete`, and `todos.delete`, which needs approval), an
+in-memory store, and a model that answers a
 request by writing **one program** that calls them.
 
 The capabilities come from typed Go functions by default (`app.Source`, built
@@ -17,6 +18,8 @@ gen/                  generated Go, committed so `go run` needs no buf
 app/                  the todo list: typed methods, Source() for Go, Execute for proto
 main.go               the command-line demo
 cmd/todo-mcp/         the same app as an MCP server for Claude Code, Cursor, ...
+                      An MCP client cannot approve, so run_program refuses a
+                      program that reaches todos.delete and names what did not run.
 ```
 
 All commands below run from the **repository root**.

@@ -38,6 +38,14 @@ type CompleteRequest struct {
 	ID int64 `json:"id" desc:"the id from todos.list"`
 }
 
+type DeleteRequest struct {
+	ID int64 `json:"id" desc:"the id from todos.list"`
+}
+
+type DeleteResponse struct {
+	Deleted bool `json:"deleted"`
+}
+
 type App struct {
 	mutex  sync.Mutex
 	nextID int64
@@ -54,6 +62,8 @@ func (app *App) Source() (codemode.Source, error) {
 		gosource.Func("todos.create", "Creates a todo item with the given title.", gosource.Public(), app.Create),
 		gosource.Func("todos.list", "Lists all todo items and their completion state.", gosource.Public(), app.List, gosource.ReadOnly()),
 		gosource.Func("todos.complete", "Marks a todo item as completed by ID.", gosource.Public(), app.Complete),
+		gosource.Func("todos.delete", "Deletes a todo item by ID. The user approves each deletion before it happens.",
+			gosource.Public(), app.Delete, gosource.NeedsApproval()),
 	)
 }
 
@@ -88,7 +98,20 @@ func (app *App) Complete(_ context.Context, request CompleteRequest) (TodoRespon
 	return TodoResponse{}, fmt.Errorf("todo %d not found", request.ID)
 }
 
+func (app *App) Delete(_ context.Context, request DeleteRequest) (DeleteResponse, error) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	for index := range app.todos {
+		if app.todos[index].ID == request.ID {
+			app.todos = append(app.todos[:index], app.todos[index+1:]...)
+			return DeleteResponse{Deleted: true}, nil
+		}
+	}
+	return DeleteResponse{}, fmt.Errorf("todo %d not found", request.ID)
+}
+
 const (
+	deleteRPC   = "todo.v1.TodoService/Delete"
 	createRPC   = "todo.v1.TodoService/Create"
 	listRPC     = "todo.v1.TodoService/List"
 	completeRPC = "todo.v1.TodoService/Complete"
@@ -107,6 +130,8 @@ func (app *App) Execute(ctx context.Context, rpc string, input json.RawMessage) 
 		return serve(ctx, input, app.List)
 	case completeRPC:
 		return serve(ctx, input, app.Complete)
+	case deleteRPC:
+		return serve(ctx, input, app.Delete)
 	}
 	return nil, fmt.Errorf("RPC %q is not implemented", rpc)
 }
