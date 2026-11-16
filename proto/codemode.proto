@@ -28,6 +28,10 @@ extend google.protobuf.MethodOptions {
   // Space-separated resource.action grants (read, write, delete, manage), such as "deals.write".
   // write implies read; deals.manage grants everything under deals.
   string permissions = 50002;
+
+  // Holds this write, and every write after it in the same program, until a person
+  // approves the plan. An error on a method with idempotency_level = NO_SIDE_EFFECTS.
+  bool needs_approval = 50003;
 }
 
 extend google.protobuf.FieldOptions {

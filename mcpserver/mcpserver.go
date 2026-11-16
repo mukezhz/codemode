@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -41,6 +42,8 @@ type Call struct {
 	Name       string `json:"name"`
 	Error      string `json:"error,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
+	// Held for approval; it did not run.
+	Held bool `json:"held,omitempty"`
 }
 
 type RunOutput struct {
@@ -122,7 +125,19 @@ func New(modeFor ModeFunc, runner sandbox.Runner, options Options) (*mcp.Server,
 		value, err := runner.Run(codemode.WithRecorder(ctx, recorder), mode, input.Source)
 		output := RunOutput{Value: value, Calls: []Call{}}
 		for _, call := range recorder.Calls() {
-			output.Calls = append(output.Calls, Call{Name: call.Name, Error: call.Error, DurationMS: call.Duration.Milliseconds()})
+			output.Calls = append(output.Calls, Call{Name: call.Name, Error: call.Error, DurationMS: call.Duration.Milliseconds(), Held: call.Planned})
+		}
+		// ponytail: no apply_plan tool yet, so a held write is refused rather than approved here.
+		if err == nil && recorder.Pending() {
+			var held []string
+			for _, call := range recorder.Calls() {
+				if call.Planned {
+					held = append(held, call.Name)
+				}
+			}
+			message := "These writes need a person's approval and did not run: " + strings.Join(held, ", ") +
+				". This server cannot approve writes; ask the user to make this change in the application."
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}, output, nil
 		}
 		if err == nil {
 			return nil, output, nil

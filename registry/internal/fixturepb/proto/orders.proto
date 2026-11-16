@@ -25,6 +25,7 @@ service OrderService {
     option (codemode.description) = "Cancels an order that has not shipped.";
     option (codemode.roles) = "support";
     option (codemode.permissions) = "orders.write";
+    option (codemode.needs_approval) = true;
   }
 }
 

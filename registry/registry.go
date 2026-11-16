@@ -48,6 +48,8 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 	servicePermissionsOption, _ := customOptionNumber(files, ".codemode.default_permissions", ".google.protobuf.ServiceOptions")
 	methodPermissionsOption, _ := customOptionNumber(files, ".codemode.permissions", ".google.protobuf.MethodOptions")
 
+	approvalOption, _ := customBoolOptionNumber(files, ".codemode.needs_approval", ".google.protobuf.MethodOptions")
+
 	fieldDescriptionOption, _ := customOptionNumber(files, ".codemode.field_description", ".google.protobuf.FieldOptions")
 	shapes := newShapeIndex(files, fieldDescriptionOption)
 	registry := Registry{Capabilities: []Capability{}}
@@ -101,6 +103,15 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 					}
 				}
 
+				needsApproval, err := boolOption(method.GetOptions(), approvalOption)
+				if err != nil {
+					return Registry{}, fmt.Errorf("%s.%s: %w", service.GetName(), method.GetName(), err)
+				}
+				readOnly := method.GetOptions().GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS
+				if needsApproval && readOnly {
+					return Registry{}, fmt.Errorf("%s.%s: (codemode.needs_approval) on a NO_SIDE_EFFECTS method; only writes are held", service.GetName(), method.GetName())
+				}
+
 				description = strings.TrimSpace(description)
 				if description == "" {
 					return Registry{}, fmt.Errorf("%s.%s: method option (codemode.description) is required", service.GetName(), method.GetName())
@@ -139,15 +150,16 @@ func generateRegistry(files *descriptorpb.FileDescriptorSet) (Registry, error) {
 				}
 
 				registry.Capabilities = append(registry.Capabilities, Capability{
-					Name:        name,
-					RPC:         serviceName + "/" + method.GetName(),
-					Description: description,
-					Input:       input,
-					Output:      output,
-					Types:       types,
-					Roles:       roles,
-					Permissions: permissions,
-					ReadOnly:    method.GetOptions().GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS,
+					Name:          name,
+					RPC:           serviceName + "/" + method.GetName(),
+					Description:   description,
+					Input:         input,
+					Output:        output,
+					Types:         types,
+					Roles:         roles,
+					Permissions:   permissions,
+					ReadOnly:      readOnly,
+					NeedsApproval: needsApproval,
 				})
 			}
 		}
@@ -177,13 +189,21 @@ func optionalRoles(options proto.Message, number protowire.Number) ([]string, er
 }
 
 func customOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee string) (protowire.Number, error) {
+	return typedOptionNumber(files, name, extendee, descriptorpb.FieldDescriptorProto_TYPE_STRING)
+}
+
+func customBoolOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee string) (protowire.Number, error) {
+	return typedOptionNumber(files, name, extendee, descriptorpb.FieldDescriptorProto_TYPE_BOOL)
+}
+
+func typedOptionNumber(files *descriptorpb.FileDescriptorSet, name, extendee string, kind descriptorpb.FieldDescriptorProto_Type) (protowire.Number, error) {
 	for _, file := range files.File {
 		for _, extension := range file.Extension {
 			fullName := "." + strings.Trim(file.GetPackage()+"."+extension.GetName(), ".")
 			if fullName != name {
 				continue
 			}
-			if extension.GetExtendee() != extendee || extension.GetType() != descriptorpb.FieldDescriptorProto_TYPE_STRING || extension.GetNumber() < 1 {
+			if extension.GetExtendee() != extendee || extension.GetType() != kind || extension.GetNumber() < 1 {
 				return 0, fmt.Errorf("custom option %s has an invalid definition", name)
 			}
 			return protowire.Number(extension.GetNumber()), nil
@@ -223,6 +243,51 @@ func stringOption(options proto.Message, number protowire.Number) (string, error
 		length := protowire.ConsumeFieldValue(fieldNumber, wireType, data)
 		if length < 0 {
 			return "", protowire.ParseError(length)
+		}
+		data = data[length:]
+	}
+	return value, nil
+}
+
+// Like stringOption, for a bool; an option that is not defined reads as false.
+func boolOption(options proto.Message, number protowire.Number) (bool, error) {
+	if options == nil || number == 0 {
+		return false, nil
+	}
+	resolved := false
+	proto.RangeExtensions(options, func(extension protoreflect.ExtensionType, current any) bool {
+		if extension.TypeDescriptor().Number() == protoreflect.FieldNumber(number) {
+			resolved, _ = current.(bool)
+			return false
+		}
+		return true
+	})
+	if resolved {
+		return true, nil
+	}
+	data := options.ProtoReflect().GetUnknown()
+	value := false
+	for len(data) > 0 {
+		fieldNumber, wireType, tagLength := protowire.ConsumeTag(data)
+		if tagLength < 0 {
+			return false, protowire.ParseError(tagLength)
+		}
+		data = data[tagLength:]
+		if fieldNumber == number {
+			if wireType != protowire.VarintType {
+				return false, fmt.Errorf("custom option %d is not a bool", number)
+			}
+			option, length := protowire.ConsumeVarint(data)
+			if length < 0 {
+				return false, protowire.ParseError(length)
+			}
+			value = option != 0
+			data = data[length:]
+			continue
+		}
+		length := protowire.ConsumeFieldValue(fieldNumber, wireType, data)
+		if length < 0 {
+			return false, protowire.ParseError(length)
 		}
 		data = data[length:]
 	}

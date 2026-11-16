@@ -43,8 +43,9 @@ func New(options sandbox.Options) (sandbox.Runner, error) {
 // starlarkTypes renders registry types as Starlark; numbers stay int-or-float because the registry merges numeric scalars.
 var starlarkTypes = prompt.Types{
 	Scalar: map[string]string{
-		"number": "int|float",
-		"bytes":  "string (base64)",
+		"number":  "int|float",
+		"integer": "int",
+		"bytes":   "string (base64)",
 	},
 	List:     func(element string) string { return "[" + element + "]" },
 	Dict:     func(key, value string) string { return "{" + key + ": " + value + "}" },

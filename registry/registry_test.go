@@ -219,3 +219,48 @@ func TestMethodAnnotationsReplaceBothServiceDefaults(t *testing.T) {
 		}
 	}
 }
+
+func approvalFiles(readOnly bool) *descriptorpb.FileDescriptorSet {
+	serviceOptions := &descriptorpb.ServiceOptions{}
+	setStringOption(serviceOptions, 50000, "students")
+	method := &descriptorpb.MethodOptions{}
+	if readOnly {
+		method.IdempotencyLevel = descriptorpb.MethodOptions_NO_SIDE_EFFECTS.Enum()
+	}
+	unknown := protowire.AppendString(protowire.AppendTag(nil, 50000, protowire.BytesType), "Expels a student.")
+	unknown = protowire.AppendVarint(protowire.AppendTag(unknown, 50003, protowire.VarintType), 1)
+	method.ProtoReflect().SetUnknown(unknown)
+
+	return &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{{
+		Name:    proto.String("codemode.proto"),
+		Package: proto.String("codemode"),
+		Extension: []*descriptorpb.FieldDescriptorProto{
+			{Name: proto.String("namespace"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.ServiceOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+			{Name: proto.String("description"), Number: proto.Int32(50000), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()},
+			{Name: proto.String("needs_approval"), Number: proto.Int32(50003), Extendee: proto.String(".google.protobuf.MethodOptions"), Type: descriptorpb.FieldDescriptorProto_TYPE_BOOL.Enum()},
+		},
+	}, {
+		Package:     proto.String("student.v1"),
+		MessageType: []*descriptorpb.DescriptorProto{{Name: proto.String("Empty")}},
+		Service: []*descriptorpb.ServiceDescriptorProto{{
+			Name:    proto.String("StudentService"),
+			Options: serviceOptions,
+			Method: []*descriptorpb.MethodDescriptorProto{
+				{Name: proto.String("Expel"), InputType: proto.String(".student.v1.Empty"), OutputType: proto.String(".student.v1.Empty"), Options: method},
+			},
+		}},
+	}}}
+}
+
+func TestNeedsApprovalIsReadFromADescriptorSet(t *testing.T) {
+	registry, err := generateRegistry(approvalFiles(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !registry.Capabilities[0].NeedsApproval {
+		t.Fatal("needs_approval was not read from unknown fields")
+	}
+	if _, err := generateRegistry(approvalFiles(true)); err == nil || !strings.Contains(err.Error(), "NO_SIDE_EFFECTS") {
+		t.Fatalf("a read-only method that needs approval loaded: %v", err)
+	}
+}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/codemode/sourcetest"
 	"github.com/mukezhz/codemode/sandbox"
 	_ "github.com/mukezhz/codemode/sandbox/goja"
 )
@@ -92,7 +93,7 @@ func TestImportConvertsToolsAndRestrictsThem(t *testing.T) {
 	if !ok {
 		t.Fatalf("capabilities = %v", byName)
 	}
-	if list.Input.Fields["state"] != "string" || list.Input.Fields["limit"] != "number" {
+	if list.Input.Fields["state"] != "string" || list.Input.Fields["limit"] != "integer" {
 		t.Errorf("input = %+v", list.Input)
 	}
 	item := list.Output.Fields["issues"]
@@ -209,4 +210,12 @@ func TestOneProgramCallsHostAndImportedCapabilities(t *testing.T) {
 	if value != "3 tasks, 1 issue" {
 		t.Fatalf("value = %v", value)
 	}
+}
+
+func TestSourcePassesTheContract(t *testing.T) {
+	source, err := Import(context.Background(), session(t), "github", "engineer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourcetest.Run(t, source)
 }
