@@ -85,7 +85,7 @@ test-postgres:
 		-e POSTGRES_DB=codemode -p 55432:5432 pgvector/pgvector:pg17
 	sleep 4
 	CAPABILITY_TEST_POSTGRES_DSN=postgres://postgres:test@localhost:55432/codemode?sslmode=disable \
-		go test ./capability/pgstore -run TestPostgresSearch -count=1; \
+		go test ./capability/pgstore ./agent/sqlplans -run 'TestPostgres' -count=1; \
 		status=$$?; docker stop codemode-pg >/dev/null; exit $$status
 
 # Documentation site. Self-contained under docs/: its own package.json and

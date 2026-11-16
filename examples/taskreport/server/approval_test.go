@@ -3,6 +3,7 @@ package server_test
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/mukezhz/codemode/examples/taskreport/app"
@@ -67,8 +68,9 @@ func TestChatHoldsADeleteUntilTheUserApprovesIt(t *testing.T) {
 			if left := len(adasTasks(t, handler)); left != before-2 {
 				t.Fatalf("%d tasks left, want %d", left, before-2)
 			}
-			if response := do(t, handler, "POST", "/api/plans/"+held.ID+"/approve", "", "ada", "member"); response.Code != http.StatusNotFound {
-				t.Fatalf("a plan applied twice: %d", response.Code)
+			if response := do(t, handler, "POST", "/api/plans/"+held.ID+"/approve", "", "ada", "member"); response.Code != http.StatusConflict ||
+				!strings.Contains(response.Body.String(), "is already applied") {
+				t.Fatalf("a plan applied twice: %d %s", response.Code, response.Body)
 			}
 		})
 	}
@@ -86,11 +88,42 @@ func TestARejectedPlanNeverRuns(t *testing.T) {
 	if response := do(t, handler, "POST", "/api/plans/"+held.ID+"/reject", "", "ada", "member"); response.Code != http.StatusOK {
 		t.Fatalf("reject returned %d: %s", response.Code, response.Body)
 	}
-	if response := do(t, handler, "POST", "/api/plans/"+held.ID+"/approve", "", "ada", "member"); response.Code != http.StatusNotFound {
+	if response := do(t, handler, "POST", "/api/plans/"+held.ID+"/approve", "", "ada", "member"); response.Code != http.StatusConflict {
 		t.Fatalf("a rejected plan was approved: %d", response.Code)
 	}
 	if len(adasTasks(t, handler)) != before {
 		t.Fatal("a rejected delete ran")
+	}
+}
+
+func TestTheInboxListsWhatWaitsAndWhatHappened(t *testing.T) {
+	author := &model{program: `codemode.execute("tasks.delete", { id: codemode.execute("tasks.list", {}).tasks[0].id }); return "ok";`}
+	handler := newServer(t, author, fromGo(t))
+	first := decode[chatPending](t, do(t, handler, "POST", "/api/chat", `{"request":"delete one"}`, "ada", "member")).Pending
+	second := decode[chatPending](t, do(t, handler, "POST", "/api/chat", `{"request":"delete another"}`, "ada", "member")).Pending
+	do(t, handler, "POST", "/api/plans/"+first.ID+"/reject", "", "ada", "member")
+
+	type inbox struct {
+		Plans []struct {
+			ID        string `json:"id"`
+			Status    string `json:"status"`
+			Request   string `json:"request"`
+			ExpiresAt string `json:"expires_at"`
+			History   []struct {
+				Status string `json:"status"`
+			} `json:"history"`
+		} `json:"plans"`
+	}
+	waiting := decode[inbox](t, do(t, handler, "GET", "/api/plans?status=pending", "", "ada", "member")).Plans
+	if len(waiting) != 1 || waiting[0].ID != second.ID || waiting[0].Request != "delete another" || waiting[0].ExpiresAt == "" {
+		t.Fatalf("pending = %+v", waiting)
+	}
+	all := decode[inbox](t, do(t, handler, "GET", "/api/plans", "", "ada", "member")).Plans
+	if len(all) != 2 || all[1].Status != "rejected" || len(all[1].History) != 2 {
+		t.Fatalf("all = %+v", all)
+	}
+	if others := decode[inbox](t, do(t, handler, "GET", "/api/plans", "", "linus", "member")).Plans; len(others) != 0 {
+		t.Fatalf("linus sees ada's plans: %+v", others)
 	}
 }
 

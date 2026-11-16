@@ -88,6 +88,9 @@ func Open(path string) (*Store, error) {
 	return store, nil
 }
 
+// DB is the application's database, for tables it shares, such as held plans.
+func (store *Store) DB() *sql.DB { return store.db }
+
 func (store *Store) SetClock(now func() time.Time) { store.now = now }
 
 func (store *Store) Close() error { return store.db.Close() }
