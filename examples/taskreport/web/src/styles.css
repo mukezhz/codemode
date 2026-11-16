@@ -199,8 +199,16 @@ tbody tr:last-child td { border-bottom: none; }
   overflow-y: auto;
 }
 
-.pending { border: 1px solid var(--warn, #c98a00); border-radius: var(--radius); padding: 12px 14px; margin: 12px 0; }
-.pending-title { font-weight: 600; margin: 0 0 8px; }
-.pending ul { margin: 0 0 12px; padding-left: 18px; }
-.pending-actions { display: flex; gap: 8px; }
+.plan { border: 1px solid var(--border, #d0d0d0); border-radius: var(--radius); padding: 12px 14px; margin: 12px 0; }
+.plan-pending { border-color: var(--warn); }
+.plan-title { font-weight: 600; margin: 0 0 8px; }
+.plan ul { margin: 0 0 12px; padding-left: 18px; }
+.plan-actions { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 button.secondary { background: transparent; color: inherit; border-color: currentColor; }
+.timeline { list-style: none; padding: 0; margin: 0 0 6px; font-size: 0.9em; }
+.timeline li { display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted, #888); display: inline-block; }
+.status-pending { background: var(--warn); color: #fff; }
+.status-applied, .dot.status-applying { background: var(--good, #2f8f4e); color: #fff; }
+.status-failed, .status-expired, .status-rejected { background: var(--bad); color: #fff; }
+.small { font-size: 0.8em; }
