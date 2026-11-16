@@ -7,7 +7,8 @@ Codemode checks values at the two places the model's program meets your code.
 | Each `codemode.execute(name, input)` | `input` against the capability's input shape | the call fails before your handler runs; the error names the field, and the model repairs the program |
 | The program's return value, with `agent.RunAs[T]` | the value against `T` | the model is told what was wrong and repairs the program |
 
-A program that already ran a write is never repaired, so a write cannot happen
+Every check that fails is also a `program.failed` event, carrying the run ID; see
+[Observability](/observability). A program that already ran a write is never repaired, so a write cannot happen
 twice. See [Writes and retries](/writes).
 
 ## Input

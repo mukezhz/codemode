@@ -55,6 +55,7 @@ export default withMermaid(
             { text: "Roles and tenants", link: "/tenants" },
             { text: "Types and validation", link: "/types" },
             { text: "Approving writes", link: "/approval" },
+            { text: "Observability", link: "/observability" },
             { text: "Writes and retries", link: "/writes" },
             { text: "Caching programs", link: "/caching" },
           ],
