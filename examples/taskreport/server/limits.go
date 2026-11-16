@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/mukezhz/codemode/codemode"
+	"github.com/mukezhz/codemode/agent"
 	"github.com/mukezhz/codemode/examples/taskreport/auth"
 )
 
@@ -90,24 +90,23 @@ type auditRecord struct {
 	Role       string    `json:"role"`
 	Capability string    `json:"capability"`
 	InputHash  string    `json:"input_sha256"`
-	Planned    bool      `json:"planned,omitempty"`
+	Held       bool      `json:"held,omitempty"`
 	Error      string    `json:"error,omitempty"`
 	DurationMS int64     `json:"duration_ms"`
 }
 
-func (auditor *auditor) hook(identity auth.Identity) func(codemode.Call) {
-	if auditor == nil {
-		return nil
+// record takes the call events of one caller's runs and approved plans.
+func (auditor *auditor) record(identity auth.Identity, event agent.Event) {
+	if auditor == nil || (event.Kind != agent.EventCallDone && event.Kind != agent.EventCallHeld) {
+		return
 	}
-	return func(call codemode.Call) {
-		sum := sha256.Sum256(call.Input)
-		line, _ := json.Marshal(auditRecord{
-			Time: time.Now().UTC(), User: identity.User, Role: string(identity.Role), Capability: call.Name,
-			InputHash: hex.EncodeToString(sum[:]), Planned: call.Planned, Error: call.Error,
-			DurationMS: call.Duration.Milliseconds(),
-		})
-		auditor.mutex.Lock()
-		auditor.writer.Write(append(line, '\n'))
-		auditor.mutex.Unlock()
-	}
+	sum := sha256.Sum256(event.Input)
+	line, _ := json.Marshal(auditRecord{
+		Time: event.Time.UTC(), User: identity.User, Role: string(identity.Role), Capability: event.Name,
+		InputHash: hex.EncodeToString(sum[:]), Held: event.Kind == agent.EventCallHeld, Error: event.Err,
+		DurationMS: event.Duration.Milliseconds(),
+	})
+	auditor.mutex.Lock()
+	auditor.writer.Write(append(line, '\n'))
+	auditor.mutex.Unlock()
 }

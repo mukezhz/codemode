@@ -95,12 +95,12 @@ func TestAWriteThatNeedsApprovalHoldsItAndEveryLaterWrite(t *testing.T) {
 	if strings.Join(*called, ",") != "rename,list" {
 		t.Fatalf("ran %v; want the first rename and the read only", *called)
 	}
-	if !recorder.Pending() {
+	if !recorder.Held() {
 		t.Fatal("recorder does not report a pending write")
 	}
 	var held []string
 	for _, call := range recorder.Calls() {
-		if call.Planned {
+		if call.Held {
 			held = append(held, call.Name)
 		}
 	}
@@ -109,7 +109,7 @@ func TestAWriteThatNeedsApprovalHoldsItAndEveryLaterWrite(t *testing.T) {
 	}
 
 	*called = nil
-	approved := WithRecorder(context.Background(), &Recorder{Approved: true})
+	approved := WithApproval(context.Background())
 	if _, err := mode.Execute(approved, "tasks.delete", nil); err != nil || strings.Join(*called, ",") != "delete" {
 		t.Fatalf("approved delete: err = %v, ran %v", err, *called)
 	}

@@ -24,8 +24,9 @@ type Call struct {
 	Output   json.RawMessage `json:"output,omitempty"`
 	Error    string          `json:"error,omitempty"`
 	ReadOnly bool            `json:"read_only,omitempty"`
-	Planned  bool            `json:"planned,omitempty"`
-	// The capability is held for approval; Planned says whether this call was.
+	// Held is a write recorded instead of run; it waits in a plan.
+	Held bool `json:"held,omitempty"`
+	// The capability needs approval; Held says whether this call was held.
 	NeedsApproval bool          `json:"needs_approval,omitempty"`
 	Duration      time.Duration `json:"duration"`
 
@@ -36,16 +37,22 @@ func (call Call) Err() error { return call.err }
 
 // Safe for concurrent use.
 type Recorder struct {
-	// Each planned write returns {} to the program.
-	Plan bool
-	// Approved runs writes that need approval; set only when applying an approved plan.
-	Approved bool
+	// HoldWrites holds every write, not only those that need approval. A held
+	// write returns {} to the program.
+	HoldWrites bool
 	// It must not block.
 	OnCall func(Call)
 
-	mutex   sync.Mutex
-	calls   []Call
-	holding bool
+	approved bool
+	mutex    sync.Mutex
+	calls    []Call
+	holding  bool
+}
+
+// WithApproval runs every write, including those that need approval. Use it
+// when a person has already said yes, such as a delete button they pressed.
+func WithApproval(ctx context.Context) context.Context {
+	return WithRecorder(ctx, &Recorder{approved: true})
 }
 
 // hold reports whether a write is recorded instead of run. Once one write is held
@@ -56,14 +63,14 @@ func (recorder *Recorder) hold(item capability.Capability) bool {
 	}
 	recorder.mutex.Lock()
 	defer recorder.mutex.Unlock()
-	if item.NeedsApproval && !recorder.Approved {
+	if (item.NeedsApproval && !recorder.approved) || recorder.HoldWrites {
 		recorder.holding = true
 	}
-	return recorder.Plan || recorder.holding
+	return recorder.holding
 }
 
-// Pending reports whether a write is waiting for approval.
-func (recorder *Recorder) Pending() bool {
+// Held reports whether any write was held instead of run.
+func (recorder *Recorder) Held() bool {
 	recorder.mutex.Lock()
 	defer recorder.mutex.Unlock()
 	return recorder.holding
@@ -87,7 +94,7 @@ func (recorder *Recorder) Calls() []Call {
 // A failed write may still have committed.
 func (recorder *Recorder) Wrote() bool {
 	for _, call := range recorder.Calls() {
-		if !call.ReadOnly && !call.Planned {
+		if !call.ReadOnly && !call.Held {
 			return true
 		}
 	}

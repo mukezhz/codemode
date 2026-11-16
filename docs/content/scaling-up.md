@@ -252,16 +252,19 @@ what a tenant is:
 - **Fairness.** Limit each user's request rate and how many programs they run at
   once, before `agent.Run`. One heavy user should cost themselves latency, not
   everyone.
-- **Audit.** `agent.Options.OnCall` sees every capability call. Write one line
+- **Audit.** `agent.Options.OnEvent` sees every capability call. Write one line
   per call with the user, role, capability and a hash of the input: enough to
   answer "who called what", without the log becoming a second copy of the data.
 
 ```go
 agent.Run(ctx, mode, model, request, agent.Options{
     Runner: runner,
-    OnCall: func(call codemode.Call) {
-        sum := sha256.Sum256(call.Input)
-        audit.Log(identity.User, identity.Role, call.Name, hex.EncodeToString(sum[:]), call.Error)
+    OnEvent: func(event agent.Event) {
+        if event.Kind != agent.EventCallDone && event.Kind != agent.EventCallHeld {
+            return
+        }
+        sum := sha256.Sum256(event.Input)
+        audit.Log(event.RunID, identity.User, identity.Role, event.Name, hex.EncodeToString(sum[:]), event.Err)
     },
 })
 ```

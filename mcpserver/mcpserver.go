@@ -125,13 +125,13 @@ func New(modeFor ModeFunc, runner sandbox.Runner, options Options) (*mcp.Server,
 		value, err := runner.Run(codemode.WithRecorder(ctx, recorder), mode, input.Source)
 		output := RunOutput{Value: value, Calls: []Call{}}
 		for _, call := range recorder.Calls() {
-			output.Calls = append(output.Calls, Call{Name: call.Name, Error: call.Error, DurationMS: call.Duration.Milliseconds(), Held: call.Planned})
+			output.Calls = append(output.Calls, Call{Name: call.Name, Error: call.Error, DurationMS: call.Duration.Milliseconds(), Held: call.Held})
 		}
 		// ponytail: no apply_plan tool yet, so a held write is refused rather than approved here.
-		if err == nil && recorder.Pending() {
+		if err == nil && recorder.Held() {
 			var held []string
 			for _, call := range recorder.Calls() {
-				if call.Planned {
+				if call.Held {
 					held = append(held, call.Name)
 				}
 			}

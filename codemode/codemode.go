@@ -113,7 +113,7 @@ func (runtime *runtime) Execute(ctx context.Context, name string, input json.Raw
 	}
 	call := Call{Name: name, Input: input, ReadOnly: item.ReadOnly, NeedsApproval: item.NeedsApproval}
 	if recorder.hold(item) {
-		call.Planned = true
+		call.Held = true
 		call.Output = json.RawMessage("{}")
 		recorder.add(call)
 		return call.Output, nil

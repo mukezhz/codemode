@@ -240,7 +240,7 @@ func (server *Server) execute(writer http.ResponseWriter, request *http.Request,
 		return
 	}
 	// A button the user pressed is their approval, so a delete from the board runs at once.
-	approved := codemode.WithRecorder(request.Context(), &codemode.Recorder{Approved: true})
+	approved := codemode.WithApproval(request.Context())
 	output, err := mode.Execute(approved, name, encoded)
 	if err != nil {
 		fail(writer, http.StatusBadRequest, err)
@@ -372,10 +372,9 @@ func (server *Server) answer(
 		// A program targets one role's capabilities, so cache per role.
 		CacheCaller: string(identity.Role),
 		OnChunk:     onChunk,
-		OnCall:      server.audit.hook(identity),
 		Plans:       server.options.Plans,
-		OnEvent:     agent.LogEvents(log.With("user", identity.User)),
 		PlanOwner:   identity.User,
+		OnEvent:     server.events(identity, log),
 	})
 	var held *agent.Pending
 	if errors.As(err, &held) {
@@ -427,6 +426,15 @@ func (server *Server) answer(
 	}, http.StatusOK, nil
 }
 
+// events logs every step of a run and audits its calls, for one caller.
+func (server *Server) events(identity auth.Identity, log *slog.Logger) func(agent.Event) {
+	logged := agent.LogEvents(log.With("user", identity.User))
+	return func(event agent.Event) {
+		logged(event)
+		server.audit.record(identity, event)
+	}
+}
+
 func (server *Server) listPlans(writer http.ResponseWriter, request *http.Request) {
 	identity, err := auth.From(request.Context())
 	if err != nil {
@@ -455,10 +463,9 @@ func (server *Server) approvePlan(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	plan, err := server.options.Plans.Approve(request.Context(), mode, identity.User, request.PathValue("id"))
-	if hook := server.audit.hook(identity); hook != nil {
-		for _, call := range plan.Applied {
-			hook(call)
-		}
+	for _, call := range plan.Applied {
+		server.audit.record(identity, agent.Event{Kind: agent.EventCallDone, Time: time.Now(), Name: call.Name,
+			Input: call.Input, Duration: call.Duration, Err: call.Error})
 	}
 	server.decided(writer, plan, err)
 }

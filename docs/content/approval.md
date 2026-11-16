@@ -117,8 +117,7 @@ A delete from the task board is a button the user pressed, so the server runs it
 with approval granted:
 
 ```go
-approved := codemode.WithRecorder(ctx, &codemode.Recorder{Approved: true})
-output, err := mode.Execute(approved, "tasks.delete", input)
+output, err := mode.Execute(codemode.WithApproval(ctx), "tasks.delete", input)
 ```
 
 ## Limits
@@ -129,6 +128,8 @@ output, err := mode.Execute(approved, "tasks.delete", input)
 - A plan is decided by its owner. Approval by another role is not built yet.
 - MCP clients cannot approve: `run_program` refuses a program that reaches such
   a write and names what did not run.
-- Without `Options.Plans`, `Pending.ID` is empty; keep `Pending.Calls` yourself
-  and run them with `agent.Apply`.
-- `Options.Plan` still holds *every* write for a dry run, approval or not.
+- Without `Options.Plans`, nothing is stored and `Pending.ID` is empty: the
+  calls can be shown but not approved. `agent.NewMemoryPlanStore()` is enough
+  for a single process.
+- `Options.HoldWrites` holds *every* write for one run, approval or not — a dry
+  run through the same plan.

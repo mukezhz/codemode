@@ -277,7 +277,7 @@ The worker reads one `run` message with the source and limits, applies its own
 limits, then runs the same engine your app would have run in-process. That
 engine is given a `CodeMode` whose `Execute` writes a `call` line and waits for
 the `result` line. Your app answers each `call` with its real `CodeMode`, so the
-registry, roles, `Recorder` and `OnCall` all work unchanged. A `done` or `error`
+registry, roles, `Recorder` and `OnEvent` all work unchanged. A `done` or `error`
 line ends the run, and your app kills the worker's process group either way.
 
 Your app trusts nothing the worker says. It counts calls itself, checks every

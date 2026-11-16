@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -17,8 +18,9 @@ type Event struct {
 	PlanID string
 	// Stage is where a run failed: cache, search, generate, or run.
 	Stage string
-	// Name is the capability, on call events.
+	// Name and Input are the capability and what the program sent, on call events.
 	Name     string
+	Input    json.RawMessage
 	Attempt  int
 	Count    int
 	Duration time.Duration

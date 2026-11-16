@@ -88,9 +88,9 @@ func (plan Plan) decidedError() error {
 	return fmt.Errorf("plan %s is already %s (%s): %w", plan.ID, plan.Status, detail, ErrPlanDecided)
 }
 
-// Pending is the error a run returns when a write is held for approval. It is
-// the stored plan, so ID and ExpiresAt are what the client needs; without
-// Options.Plans, ID is empty and Calls go to Apply.
+// Pending is the error a run returns when a write is held. It is the stored
+// plan, so ID and ExpiresAt are what the client needs. Without Options.Plans
+// the plan is not stored and ID is empty: show Calls, but nothing can apply them.
 type Pending struct {
 	Plan
 }
@@ -283,8 +283,7 @@ func (plans *Plans) save(ctx context.Context, plan *Plan) error {
 
 func (plans *Plans) apply(ctx context.Context, mode codemode.CodeMode, plan Plan) (Plan, error) {
 	plans.emit(Event{Kind: EventPlanApplying, RunID: plan.RunID, PlanID: plan.ID, Count: len(plan.Calls) - len(plan.Applied)})
-	recorder := &codemode.Recorder{Approved: true}
-	approved := codemode.WithRecorder(ctx, recorder)
+	approved := codemode.WithApproval(ctx)
 	for index := len(plan.Applied); index < len(plan.Calls); index++ {
 		call := plan.Calls[index]
 		started := time.Now()
@@ -294,7 +293,7 @@ func (plans *Plans) apply(ctx context.Context, mode codemode.CodeMode, plan Plan
 			result.Error = err.Error()
 		}
 		plan.Applied = append(plan.Applied, result)
-		plans.emit(Event{Kind: EventCallDone, RunID: plan.RunID, PlanID: plan.ID, Name: call.Name, Duration: result.Duration, Err: result.Error})
+		plans.emit(Event{Kind: EventCallDone, RunID: plan.RunID, PlanID: plan.ID, Name: call.Name, Input: call.Input, Duration: result.Duration, Err: result.Error})
 		if err != nil {
 			failure := fmt.Errorf("plan %s: call %d of %d (%s): %w", plan.ID, index+1, len(plan.Calls), call.Name, err)
 			_ = plan.move(PlanFailed, plans.options.Now(), "", failure.Error())
@@ -331,20 +330,6 @@ func planError(id string, err error) error {
 		return fmt.Errorf("plan %s: %w", id, ErrNoPlan)
 	}
 	return fmt.Errorf("plan %s: %w", id, err)
-}
-
-// Apply runs calls with approval granted, for a plan kept by the host itself. It
-// stops at the first failure; each call still passes validation, the registry
-// and the transport.
-func Apply(ctx context.Context, mode codemode.CodeMode, calls []codemode.Call) ([]codemode.Call, error) {
-	recorder := &codemode.Recorder{Approved: true}
-	ctx = codemode.WithRecorder(ctx, recorder)
-	for _, call := range calls {
-		if _, err := mode.Execute(ctx, call.Name, call.Input); err != nil {
-			return recorder.Calls(), err
-		}
-	}
-	return recorder.Calls(), nil
 }
 
 type memoryPlanStore struct {

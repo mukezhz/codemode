@@ -89,22 +89,21 @@ The last check runs one trivial program through the worker inside `New`, so a
 missing binary, a version mismatch, a bad `docker run` or a missing image fails at
 startup, not on the first request.
 
-## Observing calls
+## Observing runs
 
-There is no tracing dependency. `agent.Options.OnCall` sees every capability
-call as it finishes; feed it to whatever the host already runs. It must not block.
+There is no tracing dependency. `agent.Options.OnEvent` sees every step of a run,
+each capability call included, with the run's ID; feed it to whatever the host
+already runs. It must not block.
 
 ```go
 agent.Run(ctx, mode, model, request, agent.Options{
-    Runner: runner,
-    OnCall: func(call codemode.Call) {
-        slog.Info("capability", "user", user, "name", call.Name,
-            "ms", call.Duration.Milliseconds(), "error", call.Error)
-    },
+    Runner:  runner,
+    OnEvent: agent.LogEvents(slog.Default().With("user", user)),
 })
 ```
 
-The same hook is where an audit log or an OpenTelemetry span per call goes.
+The same hook is where an audit log or an OpenTelemetry span goes; see
+[Observability](/observability).
 
 ## Commands
 

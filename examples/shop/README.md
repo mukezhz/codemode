@@ -5,7 +5,7 @@ capabilities from typed Go functions, an answer that comes back as a Go struct,
 and a refund that waits for you to approve it.
 
 ```
-main.go       the shop: structs, two functions, gosource, RunAs, ApplyPlan
+main.go       the shop: structs, two functions, gosource, RunAs, Plans.Approve
 main_test.go  typed answer, approval, access and validation, with no model
 ```
 
