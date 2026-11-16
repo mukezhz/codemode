@@ -1,0 +1,13 @@
+// The docs site as Cloudflare Workers static assets: no Worker script, so every
+// request is served straight from the VitePress build.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "codemode-docs",
+  "compatibility_date": "2026-11-16",
+  "assets": {
+    "directory": "./.vitepress/dist",
+    // VitePress cleanUrls writes quickstart.html and links to /quickstart.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

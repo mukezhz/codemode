@@ -1,5 +1,5 @@
 .PHONY: demo-todo demo-shop demo-combined mcp-todo worker worker-image test-container demo-report demo-web generate generate-go generate-registry test test-vector \
-	test-postgres test-consumer test-env docs docs-build docs-preview
+	test-postgres test-consumer test-env docs docs-build docs-preview docs-deploy
 
 demo-todo: generate
 	go run ./examples/todo
@@ -98,6 +98,10 @@ docs-build: docs/node_modules
 
 docs-preview: docs-build
 	pnpm --dir docs preview
+
+# Cloudflare Workers static assets; run `pnpm --dir docs exec wrangler login` once.
+docs-deploy: docs/node_modules
+	pnpm --dir docs run deploy
 
 docs/node_modules: docs/package.json docs/pnpm-lock.yaml
 	pnpm --dir docs install --frozen-lockfile
