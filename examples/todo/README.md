@@ -1,9 +1,12 @@
 # todo
 
 The smallest complete code-mode application: three capabilities (`todos.create`,
-`todos.list`, `todos.complete`) generated from one proto file, an in-memory
-store, and a model that answers a request by writing **one program** that calls
-them.
+`todos.list`, `todos.complete`), an in-memory store, and a model that answers a
+request by writing **one program** that calls them.
+
+The capabilities come from typed Go functions by default (`app.Source`, built
+with `gosource`). `-source proto` serves the same three from `proto/todo.proto`
+instead; a test asserts both give the same answer.
 
 It runs with no API key, no database and no Docker. Start here; move to
 [`taskreport`](../taskreport) for a web UI, roles and a real database.
@@ -11,7 +14,7 @@ It runs with no API key, no database and no Docker. Start here; move to
 ```
 proto/todo.proto      the contract: three RPCs and their descriptions
 gen/                  generated Go, committed so `go run` needs no buf
-app/                  ExecuteFunc: RPC path → in-memory todo list
+app/                  the todo list: typed methods, Source() for Go, Execute for proto
 main.go               the command-line demo
 cmd/todo-mcp/         the same app as an MCP server for Claude Code, Cursor, ...
 ```
@@ -154,7 +157,10 @@ index is rebuilt on every start because the registry is tiny. See
 
 ## Changing the contract
 
-Edit `proto/todo.proto`, then from the repository root:
+With the default Go source, add a method to `app.App` and a `gosource.Func` line
+to `Source()`; the schema comes from its request and response structs.
+
+For `-source proto`, edit `proto/todo.proto`, then from the repository root:
 
 ```sh
 make generate

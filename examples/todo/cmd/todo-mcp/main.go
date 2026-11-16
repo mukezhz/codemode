@@ -12,9 +12,7 @@ import (
 	"github.com/mukezhz/codemode/capability"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/examples/todo/app"
-	todov1 "github.com/mukezhz/codemode/examples/todo/gen/todo/v1"
 	"github.com/mukezhz/codemode/mcpserver"
-	coderegistry "github.com/mukezhz/codemode/registry"
 	"github.com/mukezhz/codemode/sandbox"
 
 	_ "github.com/mukezhz/codemode/sandbox/goja"
@@ -31,11 +29,11 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	registry, err := coderegistry.FromFiles(todov1.File_todo_proto)
+	source, err := app.New().Source()
 	if err != nil {
 		return err
 	}
-	mode, err := codemode.New(registry, capability.Keyword(registry), app.New().Execute)
+	mode, err := codemode.FromSource(source, capability.Caller{})
 	if err != nil {
 		return err
 	}
