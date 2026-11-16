@@ -1,8 +1,14 @@
-.PHONY: demo-todo mcp-todo worker worker-image test-container demo-report demo-web generate generate-go generate-registry test test-vector \
+.PHONY: demo-todo demo-shop demo-combined mcp-todo worker worker-image test-container demo-report demo-web generate generate-go generate-registry test test-vector \
 	test-postgres test-consumer test-env docs docs-build docs-preview
 
 demo-todo: generate
 	go run ./examples/todo
+
+demo-shop:
+	go run ./examples/shop
+
+demo-combined:
+	go run ./examples/combined
 
 worker:
 	go build -o bin/codemode-worker ./cmd/codemode-worker
