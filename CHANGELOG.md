@@ -32,7 +32,14 @@ version is 0, a minor bump may break the API.
 - `capability/jsonschema`: the JSON Schema converter `mcpsource` used, exported.
 - `codemode/sourcetest.Run`: the contract every capability source passes.
 - `examples/todo` serves its capabilities from Go functions by default;
-  `-source proto` keeps the proto path.
+  `-source proto` keeps the proto path. `todos.delete` needs approval, and
+  `todo-mcp` shows `run_program` refusing it.
+- `examples/taskreport` serves its 23 capabilities from typed Go functions by
+  default (`-source proto` keeps the protos, and a test holds both to the same
+  surface). `tasks.delete` needs approval: the chat shows held writes with
+  Approve and Reject, backed by `POST /api/plans/{id}/approve` and `/reject`.
+- `examples/shop`, the quickstart as a runnable example, and
+  `examples/combined`, one program over Go, protobuf and MCP sources.
 - Docs: a Go-structs quickstart, and pages for capability sources, types and
   validation, and approving writes. The protobuf quickstart moved to
   `docs/content/protobuf.md`.

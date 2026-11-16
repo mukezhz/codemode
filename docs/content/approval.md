@@ -75,6 +75,19 @@ Without a `PlanStore`, `Pending.ID` is empty and you apply `Pending.Calls` with
 implement `agent.PlanStore` (`Save`, `Take`) on your database; `Take` must
 delete the plan it returns.
 
+## In a web app
+
+[`examples/taskreport`](https://github.com/mukezhz/codemode/tree/main/examples/taskreport)
+holds `tasks.delete` for approval. The chat response carries the plan's ID and
+its calls; the page shows them with Approve and Reject, which post to
+`/api/plans/{id}/approve` or `/reject`. A delete from the task board is a
+button the user pressed, so the server runs it with an approved recorder:
+
+```go
+approved := codemode.WithRecorder(ctx, &codemode.Recorder{Approved: true})
+output, err := mode.Execute(approved, "tasks.delete", input)
+```
+
 ## Limits
 
 A held write returns `{}` to the program, so a program that uses a held write's

@@ -8,7 +8,8 @@ below: `Source`, `Combine` and `FromSource` live in `codemode` (an `ExecuteFunc`
 in `capability` would import `codemode`), `sourcetest` is `codemode/sourcetest`,
 the Go schema is `capability.SchemaOf` (stdlib reflection, so Go type names reach
 the prompt, rather than `jsonschema-go`), and descriptions use a `desc` tag.
-Not done: T3.5 (taskreport approval UI) and tagging `v0.1.0`. Open questions
+T3.5 is done: taskreport serves typed Go functions by default and approves
+deletes in the chat. Not done: tagging `v0.1.0`. Open questions
 1–3 resolved as: add `Required`, add `integer`, RPC is the capability name;
 4 kept as written.
 

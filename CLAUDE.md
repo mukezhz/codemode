@@ -32,4 +32,5 @@ Flow: a source (typed Go functions via `capability/gosource`, protos via `buf ge
 - Single test: `go test ./agent -run TestName -count=1`
 - `make test-env` — library packages may read env only in their `env.go`
 - `make demo-todo` — runs without API keys or DB (keyword search fallback, fixed program)
+- `make demo-shop` / `make demo-combined` — the quickstart, and one program over Go, proto and MCP sources; both run without keys
 - `make demo-web BASE_URL=... API_KEY=... MODEL=...` — taskreport web app on :8080

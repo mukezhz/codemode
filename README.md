@@ -96,7 +96,10 @@ Ask it *"what is overdue, and which of it is high priority?"* and one model turn
 produces one program, which returns a document the browser renders as stat
 cards, a chart, and a table. Works against any OpenAI-compatible endpoint.
 
-Each example has a step-by-step README: [`examples/todo`](examples/todo/README.md)
+Two more show the new pieces in isolation: [`examples/shop`](examples/shop/README.md)
+(the quickstart: typed answer, approved refund) and
+[`examples/combined`](examples/combined/README.md) (Go functions, a proto service
+and an MCP server in one program). Each example has a step-by-step README: [`examples/todo`](examples/todo/README.md)
 (no key, no database, also an MCP server for Claude Code) and
 [`examples/taskreport`](examples/taskreport/README.md) (web UI, roles, rate
 limits, audit log). Both run programs in-process by default; add
@@ -149,7 +152,9 @@ make docs-build  # build the static site
 | `sandbox/` | The `Runner` interface; engines in `goja/`, `starlark/`, `lua/` |
 | `agent/` | Search → prompt → model → sandbox, with a repair loop, typed answers and approval plans |
 | `examples/todo/` | The smallest end-to-end example, also served over MCP |
-| `examples/taskreport/` | A complete app: SQLite tasks, 23 capabilities, roles, reporting |
+| `examples/shop/` | The quickstart: Go-struct capabilities, a typed answer, an approved refund |
+| `examples/combined/` | Go functions, a proto service and an MCP server in one program |
+| `examples/taskreport/` | A complete app: SQLite tasks, 23 typed capabilities, roles, reporting, approval in the chat |
 | `docs/` | The published documentation site |
 | `notes/` | Internal writing: PRDs, milestones, decisions. Never published. |
 

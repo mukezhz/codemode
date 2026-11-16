@@ -10,7 +10,10 @@ You will build a tiny shop with two capabilities, `orders.list` and
 biggest customer?"* You will get the answer back as a Go struct, and the refund
 will wait for you to approve it.
 
-You need Go. No database, no Docker, and an API key only for step 4.
+You need Go. No database, no Docker, and an API key only for step 4. The
+finished code is
+[`examples/shop`](https://github.com/mukezhz/codemode/tree/main/examples/shop)
+in the repository, with tests.
 
 ## 1. Create the module
 
