@@ -43,6 +43,10 @@ user what changed.
 
 ## Approving writes first
 
+To hold only the writes that matter, such as a refund, mark them
+`NeedsApproval` and apply the plan by ID: see [Approving writes](/approval).
+To dry-run every write, use `Options.Plan`.
+
 With `Options.Plan`, reads run but writes are recorded instead of executed and
 returned in `Result.Planned`. Show them, then apply exactly those:
 

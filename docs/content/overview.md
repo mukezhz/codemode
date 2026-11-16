@@ -102,7 +102,7 @@ go run ./examples/taskreport -serve :8080
 
 ## Where to go next
 
-- [Quickstart](/quickstart) — an empty directory to a model answering, in eight steps.
+- [Quickstart](/quickstart) — an empty directory to a model answering, in six steps.
 - [Integration guide](/using-it) — every integration choice, explained.
 - [Adding it to an existing app](/existing-app) — a real CRM, start to finish.
 - [Architecture](/architecture) — packages, ports, the request lifecycle, trust boundaries.

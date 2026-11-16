@@ -1,6 +1,7 @@
 # Code Mode
 
-Turn protobuf RPCs into capabilities a model can compose inside a sandbox.
+Turn typed Go functions, protobuf RPCs or MCP tools into capabilities a model
+composes inside a sandbox.
 
 Ordinary tool use makes a model work one call at a time: fifty tasks, fifty round
 trips, every intermediate result back through the model. Code mode has the model
@@ -24,36 +25,47 @@ before anything runs.
 go get github.com/mukezhz/codemode
 ```
 
-Annotate a protobuf service with `(codemode.namespace)` and a
-`(codemode.description)` per method, then:
+The Go functions you already have are the capabilities; their structs are the
+schema:
 
 ```go
-full, err := registry.FromFiles(ordersv1.File_orders_v1_orders_proto) // 1. registry from generated Go
-
-// 2. your code: the only place that touches data
-execute := func(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error) {
-	switch rpc {
-	case "orders.v1.OrderService/List":
-		return listOrders(ctx, input)
-	}
-	return nil, fmt.Errorf("RPC %q is not implemented", rpc)
+type ListOrders struct {
+	Status string `json:"status,omitempty" desc:"only orders in this status"`
 }
 
-// 3. per request: only what this caller may call
-allowed := full.For(capability.Caller{Roles: user.Roles, Permissions: user.Permissions})
-mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+// 1. your code: typed functions, the only place that touches data
+source, err := gosource.New(
+	gosource.Func("orders.list", "Lists orders", gosource.Public(), shop.List, gosource.ReadOnly()),
+	gosource.Func("orders.refund", "Refunds a paid order", gosource.Roles("support"), shop.Refund, gosource.NeedsApproval()),
+)
 
-// 4. model writes a program, sandbox runs it
-model, err := llm.NewFromEnv()                         // ANTHROPIC_API_KEY or OPENAI_API_KEY
-runner, err := sandbox.NewFromEnv(sandbox.Options{})   // in-process JS by default
-result, err := agent.Run(ctx, mode, model, "how much have paid orders brought in?",
-	agent.Options{Runner: runner})
-fmt.Println(agent.Answer(result.Answer))
+// 2. per request: only what this caller may call
+mode, err := codemode.FromSource(source, capability.Caller{Roles: user.Roles})
+
+// 3. model writes a program, sandbox runs it, the answer comes back as your struct
+model, err := llm.NewFromEnv()                       // ANTHROPIC_API_KEY or OPENAI_API_KEY
+runner, err := sandbox.NewFromEnv(sandbox.Options{}) // in-process JS by default
+revenue, result, err := agent.RunAs[Revenue](ctx, mode, model, "how much have paid orders brought in?",
+	agent.Options{Runner: runner, Plans: plans, PlanOwner: user.ID})
+
+// 4. a refund waits for a person
+var pending *agent.Pending
+if errors.As(err, &pending) {
+	// show pending.Calls; on approval:
+	calls, err := agent.ApplyPlan(ctx, mode, plans, user.ID, pending.ID)
+}
 ```
 
-Blank-import the backends you want (`llm/claude`, `sandbox/goja`, …); nothing
-else is linked. [**Quickstart**](docs/content/quickstart.md) builds this as
-complete files in fifteen minutes.
+No codegen and no `switch` over RPC names. Every call the program makes is
+validated against your structs before your function runs; a bad call goes back
+to the model to fix. Access is required on every capability, so nothing is
+exposed by omission.
+
+Already describe your API in protobuf, or have MCP servers? They are
+[sources too](docs/content/sources.md), and `codemode.Combine` serves several at
+once. Blank-import the backends you want (`llm/claude`, `sandbox/goja`, …);
+nothing else is linked. [**Quickstart**](docs/content/quickstart.md) builds this
+as complete files in ten minutes.
 
 ## Quick start
 
@@ -95,7 +107,8 @@ limits, audit log). Both run programs in-process by default; add
 Full docs are a VitePress site under [`docs/`](docs/content).
 
 **Get started**
-- [**Quickstart**](docs/content/quickstart.md) — an empty directory to a model answering, in eight steps
+- [**Quickstart**](docs/content/quickstart.md) — an empty directory to a typed answer and an approved write, in six steps
+- [Capability sources](docs/content/sources.md) — Go structs, protobuf, MCP, or several at once · [Capabilities from protobuf](docs/content/protobuf.md)
 - [**Integration guide**](docs/content/using-it.md) — every integration choice, explained
 - [Adding it to an existing app](docs/content/existing-app.md) — a CRM walked through: contract, adapter, roles, tenants, confirmed writes, and a non-Go CRM via a sidecar
 
@@ -103,6 +116,7 @@ Full docs are a VitePress site under [`docs/`](docs/content).
 - [Development and production](docs/content/environments.md) · [Running the worker](docs/content/worker.md) — same binary, different isolation
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
 - [Permissions](docs/content/permissions.md) · [Roles and tenants](docs/content/tenants.md) — roles in the contract, rows in your code
+- [Types and validation](docs/content/types.md) · [Approving writes](docs/content/approval.md)
 - [Writes and retries](docs/content/writes.md) · [Caching programs](docs/content/caching.md)
 
 **Grow it**
@@ -127,11 +141,13 @@ make docs-build  # build the static site
 | `proto/` | `codemode.proto`: the service and method annotations (namespace, description, roles, permissions), embedded for consumers |
 | `registry/` | Builds a registry from linked descriptors or a Buf descriptor set; CLI in `cmd/codemode-registry/` |
 | `gen/` | Generated Go for `codemode.proto`. Each example generates into its own tree |
-| `capability/` | Registry types and the vector index; backends in `sqlitestore/` and `pgstore/` |
-| `codemode/` | The two-method public interface: `Search` and `Execute` |
+| `capability/` | Registry types, validation and the vector index; backends in `sqlitestore/` and `pgstore/` |
+| `capability/gosource/` | Capabilities from typed Go functions |
+| `capability/mcpsource/` | Capabilities from an MCP server's tools |
+| `codemode/` | The two-method public interface, `Search` and `Execute`, and `Source` / `Combine` |
 | `llm/` | The `Client` interface; providers in `claude/` and `openai/` |
 | `sandbox/` | The `Runner` interface; engines in `goja/`, `starlark/`, `lua/` |
-| `agent/` | Search → prompt → model → sandbox, with a repair loop |
+| `agent/` | Search → prompt → model → sandbox, with a repair loop, typed answers and approval plans |
 | `examples/todo/` | The smallest end-to-end example, also served over MCP |
 | `examples/taskreport/` | A complete app: SQLite tasks, 23 capabilities, roles, reporting |
 | `docs/` | The published documentation site |

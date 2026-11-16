@@ -1,26 +1,16 @@
 # Quickstart
 
-Fifteen minutes from an empty directory to a model answering a question by
-writing a program against your own API. Every file below is complete; copy them
-as they are.
+Ten minutes from an empty directory to a model answering a question by writing a
+program against your own Go functions. No protobuf, no code generation, no
+`switch` over RPC names: the functions you already have, typed, are the
+capabilities.
 
 You will build a tiny shop with two capabilities, `orders.list` and
 `orders.refund`, and ask: *"how much have paid orders brought in, and who is the
-biggest customer?"*
+biggest customer?"* You will get the answer back as a Go struct, and the refund
+will wait for you to approve it.
 
-```
-shop/
-├── buf.yaml
-├── buf.gen.yaml
-├── proto/
-│   ├── codemode.proto          ← copied from the library, step 2
-│   └── orders/v1/orders.proto  ← your contract, step 3
-├── gen/                        ← generated, step 4
-└── main.go                     ← your application, step 5
-```
-
-You need Go and [buf](https://buf.build/docs/installation). No database, no
-Docker, and an API key only for the last step.
+You need Go. No database, no Docker, and an API key only for step 4.
 
 ## 1. Create the module
 
@@ -30,124 +20,7 @@ go mod init example.com/shop
 go get github.com/mukezhz/codemode@latest
 ```
 
-## 2. Copy the annotations
-
-Two protobuf options mark a service as something a model may call. The library
-prints the file that matches its version:
-
-```sh
-mkdir -p proto/orders/v1
-go run github.com/mukezhz/codemode/cmd/codemode-registry -print-proto > proto/codemode.proto
-```
-
-## 3. Write the contract
-
-`proto/orders/v1/orders.proto`:
-
-```protobuf
-syntax = "proto3";
-
-package orders.v1;
-
-import "codemode.proto";
-
-option go_package = "example.com/shop/gen/orders/v1;ordersv1";
-
-service OrderService {
-  option (codemode.namespace) = "orders";
-
-  rpc List(ListOrdersRequest) returns (ListOrdersResponse) {
-    option idempotency_level = NO_SIDE_EFFECTS;
-    option (codemode.description) = "Lists orders, optionally only those with the given status: pending, paid or refunded.";
-  }
-
-  rpc Refund(RefundOrderRequest) returns (RefundOrderResponse) {
-    option (codemode.description) = "Refunds a paid order by ID.";
-    option (codemode.roles) = "support admin";
-  }
-}
-
-message Order {
-  int64 id = 1;
-  string customer = 2;
-  string status = 3;
-  double total = 4;
-}
-
-message ListOrdersRequest {
-  string status = 1;
-}
-
-message ListOrdersResponse {
-  repeated Order orders = 1;
-}
-
-message RefundOrderRequest {
-  int64 id = 1;
-}
-
-message RefundOrderResponse {
-  Order order = 1;
-}
-```
-
-What each line is for:
-
-- `(codemode.namespace) = "orders"` + the method name gives the capability name
-  the model calls: `orders.list`, `orders.refund`.
-- `(codemode.description)` is the **only** prose the model reads about the call,
-  and what search matches on. Write it for someone who has never seen your code.
-- `(codemode.roles) = "support admin"`: only callers with one of those roles get
-  `orders.refund` at all. See [Permissions](/permissions#several-roles-on-one-rpc-or-service).
-- `idempotency_level = NO_SIDE_EFFECTS` marks a read. Everything else is treated
-  as a write, which matters for [retries and plans](/writes).
-
-## 4. Generate Go
-
-`buf.yaml`:
-
-```yaml
-version: v2
-modules:
-  - path: proto
-lint:
-  use:
-    - STANDARD
-  except:
-    - RPC_REQUEST_STANDARD_NAME
-    - RPC_RESPONSE_STANDARD_NAME
-    - RPC_REQUEST_RESPONSE_UNIQUE
-  ignore:
-    - proto/codemode.proto
-```
-
-`ignore` keeps `buf lint` off the library's file. The three exceptions are
-optional: they let request and response types be named for what they hold
-(`ListOrdersRequest`, a shared `Order`), which reads better in the prompt.
-
-`buf.gen.yaml`:
-
-```yaml
-version: v2
-inputs:
-  - directory: proto
-    exclude_paths:
-      - proto/codemode.proto
-plugins:
-  - remote: buf.build/protocolbuffers/go:v1.36.11
-    out: gen
-    opt: paths=source_relative
-```
-
-```sh
-buf generate
-```
-
-This writes `gen/orders/v1/orders.pb.go`. `codemode.proto` is excluded on
-purpose: its Go code already ships inside the library, and your generated file
-imports it from there.
-
-## 5. Write the application
+## 2. Write the application
 
 `main.go`:
 
@@ -156,7 +29,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -164,53 +36,93 @@ import (
 
 	"github.com/mukezhz/codemode/agent"
 	"github.com/mukezhz/codemode/capability"
+	"github.com/mukezhz/codemode/capability/gosource"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
-	"github.com/mukezhz/codemode/registry"
 	"github.com/mukezhz/codemode/sandbox"
 
 	_ "github.com/mukezhz/codemode/llm/claude"
 	_ "github.com/mukezhz/codemode/llm/openai"
 	_ "github.com/mukezhz/codemode/sandbox/goja"
 	_ "github.com/mukezhz/codemode/sandbox/subprocess"
-
-	ordersv1 "example.com/shop/gen/orders/v1"
 )
 
-// execute is your application: the only code that touches real data.
-func execute(ctx context.Context, rpc string, input json.RawMessage) (json.RawMessage, error) {
-	switch rpc {
-	case "orders.v1.OrderService/List":
-		var request struct {
-			Status string `json:"status"`
+type Status string
+
+func (Status) Enum() []string { return []string{"pending", "paid", "refunded"} }
+
+type Order struct {
+	ID       int64   `json:"id"`
+	Customer string  `json:"customer"`
+	Status   Status  `json:"status"`
+	Total    float64 `json:"total"`
+}
+
+type ListOrders struct {
+	Status Status `json:"status,omitempty" desc:"only orders in this status; leave out for all"`
+}
+
+type Orders struct {
+	Orders []Order `json:"orders"`
+}
+
+type RefundOrder struct {
+	ID int64 `json:"id" desc:"the id from orders.list"`
+}
+
+type OrderResult struct {
+	Order Order `json:"order"`
+}
+
+// Shop is your application: the only code that touches real data.
+type Shop struct {
+	orders []Order
+}
+
+func (shop *Shop) List(_ context.Context, request ListOrders) (Orders, error) {
+	var found []Order
+	for _, order := range shop.orders {
+		if request.Status == "" || order.Status == request.Status {
+			found = append(found, order)
 		}
-		if err := json.Unmarshal(input, &request); err != nil {
-			return nil, err
-		}
-		orders := []map[string]any{}
-		for _, order := range []map[string]any{
-			{"id": 1, "customer": "ada", "status": "paid", "total": 42.5},
-			{"id": 2, "customer": "linus", "status": "pending", "total": 10},
-			{"id": 3, "customer": "grace", "status": "paid", "total": 99},
-		} {
-			if request.Status == "" || order["status"] == request.Status {
-				orders = append(orders, order)
-			}
-		}
-		return json.Marshal(map[string]any{"orders": orders})
 	}
-	return nil, fmt.Errorf("RPC %q is not implemented", rpc)
+	return Orders{Orders: found}, nil
+}
+
+func (shop *Shop) Refund(_ context.Context, request RefundOrder) (OrderResult, error) {
+	for index := range shop.orders {
+		if shop.orders[index].ID == request.ID && shop.orders[index].Status == "paid" {
+			shop.orders[index].Status = "refunded"
+			return OrderResult{Order: shop.orders[index]}, nil
+		}
+	}
+	return OrderResult{}, fmt.Errorf("no paid order %d", request.ID)
+}
+
+type Revenue struct {
+	Total       float64 `json:"total"`
+	TopCustomer string  `json:"top_customer"`
 }
 
 func main() {
 	ctx := context.Background()
+	shop := &Shop{orders: []Order{
+		{ID: 1, Customer: "ada", Status: "paid", Total: 42.5},
+		{ID: 2, Customer: "linus", Status: "pending", Total: 10},
+		{ID: 3, Customer: "grace", Status: "paid", Total: 99},
+	}}
 
-	full, err := registry.FromFiles(ordersv1.File_orders_v1_orders_proto)
+	source, err := gosource.New(
+		gosource.Func("orders.list", "Lists orders, optionally only those in one status.",
+			gosource.Public(), shop.List, gosource.ReadOnly()),
+		gosource.Func("orders.refund", "Refunds a paid order by ID.",
+			gosource.Roles("support"), shop.Refund, gosource.NeedsApproval()),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	allowed := full.ForRole("customer") // in your app: full.For(capability.Caller{...}) per request
-	mode, err := codemode.New(allowed, capability.Keyword(allowed), execute)
+	caller := capability.Caller{Roles: []string{"support"}} // in your app: the signed-in user's roles
+	mode, err := codemode.FromSource(source, caller)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -221,10 +133,7 @@ func main() {
 	defer runner.Close()
 
 	model, err := llm.NewFromEnv()
-	if err != nil && !errors.Is(err, llm.ErrNoProvider) {
-		log.Fatal(err)
-	}
-	if model == nil {
+	if errors.Is(err, llm.ErrNoProvider) {
 		// No API key: run a hand-written program so you can see the sandbox work.
 		value, err := runner.Run(ctx, mode, `
 			const { orders } = codemode.execute("orders.list", { status: "paid" });
@@ -236,30 +145,67 @@ func main() {
 		fmt.Println(value)
 		return
 	}
-
-	request := "how much have paid orders brought in, and who is the biggest customer?"
-	if len(os.Args) > 1 {
-		request = os.Args[1]
-	}
-	result, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("program:\n%s\n\nanswer: %s\n", result.Source, agent.Answer(result.Answer))
+
+	if len(os.Args) > 1 {
+		refund(ctx, mode, model, runner, os.Args[1])
+		return
+	}
+	revenue, result, err := agent.RunAs[Revenue](ctx, mode, model,
+		"how much have paid orders brought in, and who is the biggest customer?", agent.Options{Runner: runner})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("program:\n%s\n\n%.2f in total, biggest customer %s\n", result.Source, revenue.Total, revenue.TopCustomer)
+}
+
+func refund(ctx context.Context, mode codemode.CodeMode, model llm.Client, runner sandbox.Runner, request string) {
+	plans := agent.NewMemoryPlans(0)
+	_, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner, Plans: plans, PlanOwner: "you"})
+	var pending *agent.Pending
+	if !errors.As(err, &pending) {
+		fmt.Println("nothing needed approval:", err)
+		return
+	}
+	for _, call := range pending.Calls {
+		fmt.Printf("wants to run %s %s\n", call.Name, call.Input)
+	}
+	fmt.Print("approve? [y/N] ")
+	var answer string
+	fmt.Scanln(&answer)
+	if answer != "y" {
+		fmt.Println("nothing changed")
+		return
+	}
+	calls, err := agent.ApplyPlan(ctx, mode, plans, "you", pending.ID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("ran %d call(s)\n", len(calls))
 }
 ```
 
-The five things it does, in order:
+What it does, in order:
 
-| Line | What it is |
+| Code | What it is |
 | --- | --- |
-| `registry.FromFiles(...)` | reads the capabilities out of the generated code. Nothing to keep in sync. |
-| `full.ForRole("customer")` | this caller's allowlist. `orders.refund` needs `support` or `admin`, so it is not in it. In a real app, pass what you fetch for the signed-in user: `full.For(capability.Caller{Roles: ..., Permissions: ...})`. See [Roles and permissions](/permissions#roles-and-permissions). |
-| `capability.Keyword(allowed)` | search with no database. Switch to a [vector index](/search) later. |
-| `execute` | **your code**: the only place that touches data. The program never sees it. |
-| `agent.Run` | search → prompt → model writes a program → sandbox runs it → answer. |
+| `type ListOrders struct`, `type Orders struct` | the contract. The model sees these shapes; `desc` tags are the prose it reads about a field. Fields follow `encoding/json`: `omitempty` or a pointer makes one optional, every other field is required. |
+| `func (Status) Enum()` | a string type that accepts only these values, in the prompt and at the boundary. |
+| `gosource.Func(name, description, access, handler)` | one capability. The description is what search matches and the model reads. |
+| `gosource.Public()`, `gosource.Roles("support")` | who may call it. There is no default: a capability with no access does not compile into a source. |
+| `gosource.ReadOnly()` | a read. Everything else is a write: never cached, never retried after it ran. |
+| `gosource.NeedsApproval()` | the write waits for a person. See [Approving writes](/approval). |
+| `codemode.FromSource(source, caller)` | this caller's runtime: only what they may call, searched by keyword. |
+| `agent.RunAs[Revenue]` | search → prompt → model writes a program → sandbox runs it → the value is checked against `Revenue` and decoded. |
 
-## 6. Run it without a key
+Before your function runs, every call the program makes is checked against the
+shape: a wrong type, an unknown field or a missing required field goes back to
+the model as an error naming the field, and the model fixes the program. Your
+handler only ever sees a valid `ListOrders`. See [Types and validation](/types).
+
+## 3. Run it without a key
 
 ```sh
 go mod tidy
@@ -271,9 +217,9 @@ go run .
 ```
 
 No model was involved: `main.go` ran a hand-written program so you can see the
-sandbox, the registry and `execute` work before spending a token.
+sandbox, the capabilities and your functions work before spending a token.
 
-## 7. Let a model write the program
+## 4. Let a model write the program
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -292,49 +238,45 @@ go run .
 ```
 program:
 const { orders } = codemode.execute("orders.list", { status: "paid" });
-if (orders.length === 0) {
-	return "no paid orders yet";
-}
-const revenue = orders.reduce((sum, order) => sum + order.total, 0);
 const byCustomer = {};
+let total = 0;
 for (const order of orders) {
+	total += order.total;
 	byCustomer[order.customer] = (byCustomer[order.customer] || 0) + order.total;
 }
-let topCustomer = null;
-let topTotal = -Infinity;
-for (const name of Object.keys(byCustomer)) {
-	if (byCustomer[name] > topTotal) {
-		topTotal = byCustomer[name];
-		topCustomer = name;
-	}
-}
-return "Paid orders brought in " + revenue + "; biggest customer is " + topCustomer + " (" + topTotal + ")";
+const top = Object.keys(byCustomer).sort((a, b) => byCustomer[b] - byCustomer[a])[0];
+return { total: total, top_customer: top };
 
-answer: Paid orders brought in 141.5; biggest customer is grace (99)
+141.50 in total, biggest customer grace
 ```
 
 The program differs a little from run to run; the answer should not.
 
-One model call. The model wrote a program that fetched, filtered, summed and
-ranked; only the final sentence came back. Ask something else:
+One model call. The model was told the shape of `Revenue`, so it returned an
+object instead of a sentence; had it returned the wrong shape, it would have
+been asked to fix it.
+
+## 5. Approve a write
 
 ```sh
-go run . "list pending orders and their customers"
 go run . "refund order 1"
 ```
 
-The second one is worth running. The caller is a `customer`, so `orders.refund`
-is not in their registry: not in the prompt, and not callable. The model works
-with what it has:
-
 ```
-answer: order 1: ada, 42.5, status paid (no refund capability is available, so nothing was changed)
+wants to run orders.refund {"id":1}
+approve? [y/N] y
+ran 1 call(s)
 ```
 
-Change `ForRole("customer")` to `ForRole("support")` and the same request
-refunds, once you add a `Refund` case to `execute`.
+`orders.refund` needs approval, so the program ran its reads and *recorded* the
+refund instead of making it. `agent.Run` returned `*agent.Pending`; the plan was
+kept on the server under an ID, and `agent.ApplyPlan` ran it once you said yes.
+Answer anything but `y` and nothing changes.
 
-## 8. Run programs out of process
+Change the caller to `capability.Caller{Roles: []string{"customer"}}` and
+`orders.refund` disappears: not in the prompt, and not callable.
+
+## 6. Run programs out of process
 
 So far every program ran inside your process, which is what you want while
 developing. For production, run them in `codemode-worker`:
@@ -354,9 +296,9 @@ with a memory cap and no access to your environment. See
 
 | You want to | Read |
 | --- | --- |
+| use protos, MCP servers or several sources at once | [Capability sources](/sources) |
+| hold writes for a person | [Approving writes](/approval) |
+| know exactly what is checked | [Types and validation](/types) |
 | add it to an app you already have (a CRM, say) | [Adding it to an existing app](/existing-app) |
-| understand how the pieces fit | [Architecture](/architecture) |
-| connect a real backend, gRPC or your services | [Add it to your application](/using-it#_3-write-executefunc) |
 | scope data per user, roles, tenants | [Roles and tenants](/tenants) |
-| configure the same binary for dev and prod | [Development and production](/environments) |
 | expose it to Claude Code or Cursor | [Serving MCP clients](/mcp) |
