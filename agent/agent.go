@@ -35,13 +35,24 @@ type Options struct {
 	OnCall func(codemode.Call)
 	// Stops repair attempts once spent; zero disables. Only providers that report usage count.
 	MaxTokens int64
-	// Plans keeps writes held for approval so they can be applied by ID; nil returns them in Pending only.
-	Plans PlanStore
-	// PlanOwner scopes a saved plan to one caller, such as a user ID; ApplyPlan must pass the same.
+	// Plans keeps writes held for approval until someone decides; nil returns them in Pending only.
+	Plans *Plans
+	// PlanOwner is who may decide a held plan, such as a user ID.
 	PlanOwner string
+	// OnEvent receives every step of the run, each carrying Result.RunID. It must not block.
+	OnEvent func(Event)
 
 	// Set by RunAs: checks the returned value, so a mismatch is repaired like a failure.
 	check func(any) error
+	runID string
+}
+
+func (options Options) emit(event Event) {
+	if options.OnEvent != nil {
+		event.Time = time.Now()
+		event.RunID = options.runID
+		options.OnEvent(event)
+	}
 }
 
 const (
@@ -66,6 +77,8 @@ func (options Options) checked() (Options, error) {
 }
 
 type Result struct {
+	// RunID is on every event and error of this run, and on the plan it held.
+	RunID  string
 	Answer any
 	Source string
 	// Empty on a cache hit.
@@ -112,36 +125,53 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 	if err != nil {
 		return Result{}, err
 	}
+	options.runID = newID(8)
+	options.emit(Event{Kind: EventRunStarted})
 
 	runner := options.Runner
 	var timing Timing
 	meter := &llm.Meter{}
 	ctx = llm.WithMeter(ctx, meter)
+	stage := StageCache
 	finish := func(result Result, err error) (Result, error) {
 		timing.Total = time.Since(started)
+		result.RunID = options.runID
 		result.Timing = timing
 		result.Usage = meter.Usage()
-		return result, err
+		var pending *Pending
+		switch {
+		case errors.As(err, &pending):
+			options.emit(Event{Kind: EventRunFinished, PlanID: pending.ID, Count: len(pending.Calls), Duration: timing.Total})
+			return result, err
+		case err != nil:
+			options.emit(Event{Kind: EventRunFailed, Stage: stage, Duration: timing.Total, Err: err.Error()})
+			return result, &Error{RunID: options.runID, Stage: stage, Err: err}
+		}
+		options.emit(Event{Kind: EventRunFinished, Duration: timing.Total})
+		return result, nil
 	}
 
 	key, caching := cacheKey(mode, runner, request, options)
 	if caching {
 		if result, hit, err := fromCache(ctx, mode, key, options, &timing); hit || err != nil {
+			stage = StageRun
 			return finish(result, err)
 		}
 	}
 
+	stage = StageSearch
 	search := time.Now()
 	matches, err := mode.Search(ctx, request, options.Limit)
 	timing.Search = time.Since(search)
 	if err != nil {
-		return finish(Result{}, fmt.Errorf("search: %w", err))
+		return finish(Result{}, err)
 	}
+	options.emit(Event{Kind: EventSearchDone, Count: len(matches), Duration: timing.Search})
 	if len(matches) == 0 {
-		return finish(Result{}, errors.New("search matched no capabilities"))
+		return finish(Result{}, errors.New("search matched no capabilities; check the capability descriptions, or the caller's roles"))
 	}
 
-	result, err := generate(ctx, mode, model, request, matches, options, &timing)
+	result, err := generate(ctx, mode, model, request, matches, options, &timing, &stage)
 	if err != nil {
 		return finish(result, err)
 	}
@@ -153,7 +183,7 @@ func Run(ctx context.Context, mode codemode.CodeMode, model llm.Client, request 
 }
 
 // Sandbox errors are the model's to fix; transport errors are not.
-func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, matches []capability.Match, options Options, timing *Timing) (Result, error) {
+func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, request string, matches []capability.Match, options Options, timing *Timing, stage *string) (Result, error) {
 	system := options.Runner.Prompt(matches)
 	if instructions := strings.TrimSpace(options.Instructions); instructions != "" {
 		system += "\nAdditional instructions:\n" + instructions + "\n"
@@ -165,24 +195,29 @@ func generate(ctx context.Context, mode codemode.CodeMode, model llm.Client, req
 	for attempt := 1; attempt <= options.Attempts; attempt++ {
 		result.Attempts = attempt
 
+		*stage = StageGenerate
 		generating := time.Now()
 		response, err := complete(ctx, model, system, prompt, options.OnChunk)
-		timing.Generate += time.Since(generating)
+		took := time.Since(generating)
+		timing.Generate += took
 		if err != nil {
 			return result, err
 		}
 		result.Source = Program(response)
+		options.emit(Event{Kind: EventProgramWritten, Attempt: attempt, Duration: took})
 
+		*stage = StageRun
 		answer, recorder, err := run(ctx, mode, result.Source, options, timing)
 		result.Calls = append(result.Calls, recorder.Calls()...)
 		if err == nil {
 			result.Answer = answer
 			result.Planned = planned(recorder)
-			return result, pending(ctx, recorder, result.Planned, options)
+			return result, pending(ctx, recorder, result.Planned, request, options)
 		}
 		if stop := unretryable(recorder, err); stop != nil {
 			return result, stop
 		}
+		options.emit(Event{Kind: EventProgramFailed, Attempt: attempt, Err: err.Error()})
 		if used := llm.UsageFrom(ctx).Total(); options.MaxTokens > 0 && used >= options.MaxTokens {
 			return result, fmt.Errorf("%w: %d of %d tokens used: %w", ErrTokenBudget, used, options.MaxTokens, err)
 		}
@@ -249,7 +284,16 @@ func fromCache(ctx context.Context, mode codemode.CodeMode, key program.Key, opt
 }
 
 func run(ctx context.Context, mode codemode.CodeMode, source string, options Options, timing *Timing) (any, *codemode.Recorder, error) {
-	recorder := &codemode.Recorder{Plan: options.Plan, OnCall: options.OnCall}
+	recorder := &codemode.Recorder{Plan: options.Plan, OnCall: func(call codemode.Call) {
+		kind := EventCallDone
+		if call.Planned {
+			kind = EventCallHeld
+		}
+		options.emit(Event{Kind: kind, Name: call.Name, Duration: call.Duration, Err: call.Error})
+		if options.OnCall != nil {
+			options.OnCall(call)
+		}
+	}}
 	running := time.Now()
 	answer, err := options.Runner.Run(codemode.WithRecorder(ctx, recorder), mode, source)
 	timing.Run += time.Since(running)
@@ -259,19 +303,18 @@ func run(ctx context.Context, mode codemode.CodeMode, source string, options Opt
 	return answer, recorder, err
 }
 
-func pending(ctx context.Context, recorder *codemode.Recorder, held []codemode.Call, options Options) error {
+func pending(ctx context.Context, recorder *codemode.Recorder, held []codemode.Call, request string, options Options) error {
 	if !recorder.Pending() {
 		return nil
 	}
-	plan := &Pending{Calls: held}
-	if options.Plans != nil {
-		id, err := options.Plans.Save(ctx, options.PlanOwner, held)
-		if err != nil {
-			return fmt.Errorf("save plan: %w", err)
-		}
-		plan.ID = id
+	if options.Plans == nil {
+		return &Pending{Plan: Plan{RunID: options.runID, Request: request, Calls: held, Status: PlanPending}}
 	}
-	return plan
+	plan, err := options.Plans.hold(ctx, options.PlanOwner, options.runID, request, held)
+	if err != nil {
+		return err
+	}
+	return &Pending{Plan: plan}
 }
 
 func unretryable(recorder *codemode.Recorder, err error) error {
@@ -292,19 +335,6 @@ func planned(recorder *codemode.Recorder) []codemode.Call {
 		}
 	}
 	return writes
-}
-
-// Apply runs approved calls, including writes that need approval. It stops at the
-// first failure; each call still passes validation, the registry and the transport.
-func Apply(ctx context.Context, mode codemode.CodeMode, planned []codemode.Call) ([]codemode.Call, error) {
-	recorder := &codemode.Recorder{Approved: true}
-	ctx = codemode.WithRecorder(ctx, recorder)
-	for _, call := range planned {
-		if _, err := mode.Execute(ctx, call.Name, call.Input); err != nil {
-			return recorder.Calls(), err
-		}
-	}
-	return recorder.Calls(), nil
 }
 
 func complete(ctx context.Context, model llm.Client, system, prompt string, chunk func(string)) (string, error) {

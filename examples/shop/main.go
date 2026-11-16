@@ -143,7 +143,7 @@ func main() {
 }
 
 func refund(ctx context.Context, mode codemode.CodeMode, model llm.Client, runner sandbox.Runner, request string) {
-	plans := agent.NewMemoryPlans(0)
+	plans := agent.NewPlans(agent.NewMemoryPlanStore(), agent.PlanOptions{})
 	_, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner, Plans: plans, PlanOwner: "you"})
 	var pending *agent.Pending
 	if !errors.As(err, &pending) {
@@ -157,12 +157,13 @@ func refund(ctx context.Context, mode codemode.CodeMode, model llm.Client, runne
 	var answer string
 	fmt.Scanln(&answer)
 	if answer != "y" {
+		plans.Reject(ctx, "you", pending.ID, "declined at the prompt")
 		fmt.Println("nothing changed")
 		return
 	}
-	calls, err := agent.ApplyPlan(ctx, mode, plans, "you", pending.ID)
+	plan, err := plans.Approve(ctx, mode, "you", pending.ID)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) // names the plan and the call that failed
 	}
-	fmt.Printf("ran %d call(s)\n", len(calls))
+	fmt.Printf("ran %d call(s)\n", len(plan.Applied))
 }

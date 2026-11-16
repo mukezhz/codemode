@@ -34,7 +34,7 @@ type Options struct {
 	// Serves Full's RPCs; nil uses the app's proto routes, so Full must be the proto registry.
 	Execute codemode.ExecuteFunc
 	// Keeps chat writes that need approval; nil keeps them in memory.
-	Plans    agent.PlanStore
+	Plans    *agent.Plans
 	Admins   []string
 	Model    llm.Client
 	Runner   sandbox.Runner
@@ -93,7 +93,7 @@ func New(options Options) (*Server, error) {
 		options.Execute = application.Execute
 	}
 	if options.Plans == nil {
-		options.Plans = agent.NewMemoryPlans(0)
+		options.Plans = agent.NewPlans(agent.NewMemoryPlanStore(), agent.PlanOptions{OnEvent: agent.LogEvents(logger)})
 	}
 
 	return &Server{
@@ -116,6 +116,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/summary", server.summary)
 	mux.HandleFunc("POST /api/chat", server.fairness.guard(server.chat))
 	mux.HandleFunc("POST /api/chat/stream", server.fairness.guard(server.chatStream))
+	mux.HandleFunc("GET /api/plans", server.listPlans)
 	mux.HandleFunc("POST /api/plans/{id}/approve", server.approvePlan)
 	mux.HandleFunc("POST /api/plans/{id}/reject", server.rejectPlan)
 
@@ -256,7 +257,8 @@ type chatRequest struct {
 type chatResponse struct {
 	Document view.Document `json:"document"`
 	// Set when the program reached a write that needs approval; nothing it holds has run.
-	Pending  *pendingPlan       `json:"pending,omitempty"`
+	Pending  *agent.Plan        `json:"pending,omitempty"`
+	RunID    string             `json:"run_id"`
 	Program  string             `json:"program"`
 	Attempts int                `json:"attempts"`
 	Used     []capability.Match `json:"used"`
@@ -372,6 +374,7 @@ func (server *Server) answer(
 		OnChunk:     onChunk,
 		OnCall:      server.audit.hook(identity),
 		Plans:       server.options.Plans,
+		OnEvent:     agent.LogEvents(log.With("user", identity.User)),
 		PlanOwner:   identity.User,
 	})
 	var held *agent.Pending
@@ -380,7 +383,8 @@ func (server *Server) answer(
 		return chatResponse{
 			Document: view.Document{Blocks: []view.Block{{Type: view.KindText,
 				Text: "This needs your approval before it changes anything."}}},
-			Pending:  newPendingPlan(held),
+			Pending:  &held.Plan,
+			RunID:    result.RunID,
 			Program:  result.Source,
 			Attempts: result.Attempts,
 			Used:     result.Matches,
@@ -389,7 +393,7 @@ func (server *Server) answer(
 		}, http.StatusOK, nil
 	}
 	if err != nil {
-		server.log.Error("chat failed", "request", body.Request, "error", err, "program", result.Source)
+		server.log.Error("chat failed", "run", result.RunID, "request", body.Request, "error", err, "program", result.Source)
 		return chatResponse{}, http.StatusBadGateway, err
 	}
 
@@ -423,22 +427,18 @@ func (server *Server) answer(
 	}, http.StatusOK, nil
 }
 
-type pendingPlan struct {
-	ID    string        `json:"id"`
-	Calls []plannedCall `json:"calls"`
-}
-
-type plannedCall struct {
-	Name  string          `json:"name"`
-	Input json.RawMessage `json:"input"`
-}
-
-func newPendingPlan(held *agent.Pending) *pendingPlan {
-	plan := &pendingPlan{ID: held.ID, Calls: []plannedCall{}}
-	for _, call := range held.Calls {
-		plan.Calls = append(plan.Calls, plannedCall{Name: call.Name, Input: call.Input})
+func (server *Server) listPlans(writer http.ResponseWriter, request *http.Request) {
+	identity, err := auth.From(request.Context())
+	if err != nil {
+		fail(writer, http.StatusUnauthorized, err)
+		return
 	}
-	return plan
+	listed, err := server.options.Plans.List(request.Context(), identity.User, agent.PlanStatus(request.URL.Query().Get("status")))
+	if err != nil {
+		fail(writer, http.StatusInternalServerError, err)
+		return
+	}
+	send(writer, map[string]any{"plans": listed})
 }
 
 // approvePlan runs a held plan once, for the user who was shown it, against
@@ -454,27 +454,13 @@ func (server *Server) approvePlan(writer http.ResponseWriter, request *http.Requ
 		fail(writer, http.StatusUnauthorized, err)
 		return
 	}
-	calls, err := agent.ApplyPlan(request.Context(), mode, server.options.Plans, identity.User, request.PathValue("id"))
+	plan, err := server.options.Plans.Approve(request.Context(), mode, identity.User, request.PathValue("id"))
 	if hook := server.audit.hook(identity); hook != nil {
-		for _, call := range calls {
+		for _, call := range plan.Applied {
 			hook(call)
 		}
 	}
-	if errors.Is(err, agent.ErrNoPlan) {
-		fail(writer, http.StatusNotFound, err)
-		return
-	}
-	ran := make([]map[string]string, 0, len(calls))
-	for _, call := range calls {
-		ran = append(ran, map[string]string{"name": call.Name, "error": call.Error})
-	}
-	if err != nil {
-		writer.Header().Set("Content-Type", "application/json")
-		writer.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(writer).Encode(map[string]any{"error": err.Error(), "calls": ran})
-		return
-	}
-	send(writer, map[string]any{"calls": ran})
+	server.decided(writer, plan, err)
 }
 
 func (server *Server) rejectPlan(writer http.ResponseWriter, request *http.Request) {
@@ -483,11 +469,33 @@ func (server *Server) rejectPlan(writer http.ResponseWriter, request *http.Reque
 		fail(writer, http.StatusUnauthorized, err)
 		return
 	}
-	if _, err := server.options.Plans.Take(request.Context(), identity.User, request.PathValue("id")); err != nil {
+	plan, err := server.options.Plans.Reject(request.Context(), identity.User, request.PathValue("id"), "rejected in the chat")
+	server.decided(writer, plan, err)
+}
+
+// decided answers with the plan as it now stands, and a status that says why it did not move.
+func (server *Server) decided(writer http.ResponseWriter, plan agent.Plan, err error) {
+	status := http.StatusOK
+	switch {
+	case err == nil:
+	case errors.Is(err, agent.ErrNoPlan):
 		fail(writer, http.StatusNotFound, err)
 		return
+	case errors.Is(err, agent.ErrPlanExpired):
+		status = http.StatusGone
+	case errors.Is(err, agent.ErrPlanDecided):
+		status = http.StatusConflict
+	default:
+		status = http.StatusBadRequest
 	}
-	send(writer, map[string]bool{"rejected": true})
+	body := map[string]any{"plan": plan}
+	if err != nil {
+		server.log.Warn("plan not applied", "plan", plan.ID, "run", plan.RunID, "error", err)
+		body["error"] = err.Error()
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(status)
+	json.NewEncoder(writer).Encode(body)
 }
 
 func (server *Server) assets() http.Handler {

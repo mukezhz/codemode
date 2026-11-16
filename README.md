@@ -46,14 +46,15 @@ mode, err := codemode.FromSource(source, capability.Caller{Roles: user.Roles})
 model, err := llm.NewFromEnv()                       // ANTHROPIC_API_KEY or OPENAI_API_KEY
 runner, err := sandbox.NewFromEnv(sandbox.Options{}) // in-process JS by default
 revenue, result, err := agent.RunAs[Revenue](ctx, mode, model, "how much have paid orders brought in?",
-	agent.Options{Runner: runner, Plans: plans, PlanOwner: user.ID})
+	agent.Options{Runner: runner, Plans: plans, PlanOwner: user.ID, OnEvent: agent.LogEvents(logger)})
 
-// 4. a refund waits for a person
+// 4. a refund waits for a person, in your database, until they decide
 var pending *agent.Pending
 if errors.As(err, &pending) {
-	// show pending.Calls; on approval:
-	calls, err := agent.ApplyPlan(ctx, mode, plans, user.ID, pending.ID)
+	// send pending.ID and pending.ExpiresAt to the client; later, on approval:
+	plan, err := plans.Approve(ctx, mode, user.ID, pending.ID)
 }
+// every other error is an *agent.Error carrying result.RunID and the stage that failed
 ```
 
 No codegen and no `switch` over RPC names. Every call the program makes is
@@ -119,7 +120,7 @@ Full docs are a VitePress site under [`docs/`](docs/content).
 - [Development and production](docs/content/environments.md) · [Running the worker](docs/content/worker.md) — same binary, different isolation
 - [What your binary links](docs/content/dependencies.md) — the blank imports, and why
 - [Permissions](docs/content/permissions.md) · [Roles and tenants](docs/content/tenants.md) — roles in the contract, rows in your code
-- [Types and validation](docs/content/types.md) · [Approving writes](docs/content/approval.md)
+- [Types and validation](docs/content/types.md) · [Approving writes](docs/content/approval.md) · [Observability](docs/content/observability.md)
 - [Writes and retries](docs/content/writes.md) · [Caching programs](docs/content/caching.md)
 
 **Grow it**

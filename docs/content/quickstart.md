@@ -165,7 +165,7 @@ func main() {
 }
 
 func refund(ctx context.Context, mode codemode.CodeMode, model llm.Client, runner sandbox.Runner, request string) {
-	plans := agent.NewMemoryPlans(0)
+	plans := agent.NewPlans(agent.NewMemoryPlanStore(), agent.PlanOptions{})
 	_, err := agent.Run(ctx, mode, model, request, agent.Options{Runner: runner, Plans: plans, PlanOwner: "you"})
 	var pending *agent.Pending
 	if !errors.As(err, &pending) {
@@ -179,14 +179,15 @@ func refund(ctx context.Context, mode codemode.CodeMode, model llm.Client, runne
 	var answer string
 	fmt.Scanln(&answer)
 	if answer != "y" {
+		plans.Reject(ctx, "you", pending.ID, "declined at the prompt")
 		fmt.Println("nothing changed")
 		return
 	}
-	calls, err := agent.ApplyPlan(ctx, mode, plans, "you", pending.ID)
+	plan, err := plans.Approve(ctx, mode, "you", pending.ID)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) // names the plan and the call that failed
 	}
-	fmt.Printf("ran %d call(s)\n", len(calls))
+	fmt.Printf("ran %d call(s)\n", len(plan.Applied))
 }
 ```
 
@@ -273,8 +274,10 @@ ran 1 call(s)
 
 `orders.refund` needs approval, so the program ran its reads and *recorded* the
 refund instead of making it. `agent.Run` returned `*agent.Pending`; the plan was
-kept on the server under an ID, and `agent.ApplyPlan` ran it once you said yes.
-Answer anything but `y` and nothing changes.
+kept under an ID with an expiry, and `plans.Approve` ran it once you said yes.
+Answer anything but `y` and `plans.Reject` discards it. Plans here live in
+memory; [Approving writes](/approval) keeps them in your database so the answer
+can come tomorrow.
 
 Change the caller to `capability.Caller{Roles: []string{"customer"}}` and
 `orders.refund` disappears: not in the prompt, and not callable.

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mukezhz/codemode/agent"
+	"github.com/mukezhz/codemode/agent/sqlplans"
 	"github.com/mukezhz/codemode/codemode"
 	"github.com/mukezhz/codemode/llm"
 	"github.com/mukezhz/codemode/sandbox"
@@ -67,7 +69,15 @@ func serve(
 		audit = file
 	}
 
+	// Held plans live beside the tasks, so a decision can come after a restart.
+	planStore, err := sqlplans.Open(ctx, tasks.DB(), sqlplans.SQLite)
+	if err != nil {
+		return err
+	}
+	plans := agent.NewPlans(planStore, agent.PlanOptions{OnEvent: agent.LogEvents(logger(config))})
+
 	handler, err := server.New(server.Options{
+		Plans:    plans,
 		Store:    tasks,
 		Full:     source.Registry,
 		Execute:  source.Execute,

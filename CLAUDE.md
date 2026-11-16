@@ -17,7 +17,7 @@ Flow: a source (typed Go functions via `capability/gosource`, protos via `buf ge
 | `capability.Store` | `capability/sqlitestore`, `capability/pgstore` |
 | `program.Cache` | `program.New` (semantic), `program.NewExactCache` |
 | `program.Store` | `program.NewMemoryStore`, `capability/sqlitestore`, `capability/pgstore` |
-| `agent.PlanStore` | `agent.NewMemoryPlans` |
+| `agent.PlanStore` | `agent.NewMemoryPlanStore`, `agent/sqlplans` (SQLite and Postgres on `database/sql`) |
 | `llm.Client`, `llm.Streamer` | `llm/claude`, `llm/openai` |
 | `sandbox.Runner` | `sandbox/goja`, `sandbox/starlark`, `sandbox/lua`, `sandbox/subprocess` |
 | `sandbox.Isolation` (registered) | `sandbox/subprocess` (`process`); in-process is built in |

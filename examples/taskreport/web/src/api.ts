@@ -51,16 +51,29 @@ export type StatusCounts = {
   due_today: number;
 };
 
-// Writes the program reached that need the user's approval. None of them has
-// run; the server keeps the plan and applies exactly these on approve.
-export type PendingPlan = {
+// A plan is writes the program reached that need the user's approval. It is
+// kept on the server until someone decides or it expires; only its ID comes
+// back on approve or reject, so the client cannot change what was approved.
+export type PlanStatus = "pending" | "applying" | "applied" | "failed" | "rejected" | "expired";
+
+export type PlannedCall = { name: string; input: Record<string, unknown>; error?: string };
+
+export type Plan = {
   id: string;
-  calls: { name: string; input: Record<string, unknown> }[];
+  run_id: string;
+  request: string;
+  status: PlanStatus;
+  calls: PlannedCall[];
+  applied?: PlannedCall[];
+  created_at: string;
+  expires_at: string;
+  history: { status: PlanStatus; at: string; by?: string; note?: string }[];
 };
 
 export type ChatResult = {
   document: ViewDocument;
-  pending?: PendingPlan;
+  pending?: Plan;
+  run_id: string;
   program: string;
   attempts: number;
   used: { capability: { name: string; description: string }; distance: number }[];
@@ -125,15 +138,28 @@ export const api = {
   reopen: (id: number) => call<{ task: Task }>(`/tasks/${id}/reopen`, { method: "POST" }),
   remove: (id: number) => call<{ deleted: boolean }>(`/tasks/${id}`, { method: "DELETE" }),
 
-  approve: (id: string) =>
-    call<{ calls: { name: string; error?: string }[] }>(`/plans/${id}/approve`, { method: "POST" }),
-  reject: (id: string) => call<{ rejected: boolean }>(`/plans/${id}/reject`, { method: "POST" }),
+  plans: (status = "") => call<{ plans: Plan[] }>(`/plans${status ? `?status=${status}` : ""}`),
+  approve: (id: string) => decide(id, "approve"),
+  reject: (id: string) => decide(id, "reject"),
 
   chat: (request: string) =>
     call<ChatResult>("/chat", { method: "POST", body: JSON.stringify({ request }) }),
 
   chatStream: streamChat,
 };
+
+// decide resolves with the plan as it now stands, even when it did not move:
+// an expired or already-decided plan is an answer to show, not a crash.
+async function decide(id: string, verb: "approve" | "reject"): Promise<{ plan: Plan; error?: string }> {
+  const { user, role } = identity();
+  const response = await fetch(`/api/plans/${id}/${verb}`, {
+    method: "POST",
+    headers: { "X-Demo-User": user, "X-Demo-Role": role },
+  });
+  const body = await response.json();
+  if (!body.plan) throw new Error(body.error ?? `${response.status} ${response.statusText}`);
+  return body;
+}
 
 // streamChat asks over server-sent events, calling onChunk with the program as
 // the model writes it and resolving with the finished answer.

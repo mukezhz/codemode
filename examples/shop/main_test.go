@@ -65,7 +65,7 @@ func TestRevenueComesBackTyped(t *testing.T) {
 
 func TestARefundWaitsForApproval(t *testing.T) {
 	shop, mode, runner := setup(t, "support")
-	plans := agent.NewMemoryPlans(0)
+	plans := agent.NewPlans(agent.NewMemoryPlanStore(), agent.PlanOptions{})
 	model := &script{programs: []string{`codemode.execute("orders.refund", { id: 1 }); return "refunded";`}}
 
 	_, err := agent.Run(context.Background(), mode, model, "refund order 1", agent.Options{Runner: runner, Plans: plans, PlanOwner: "you"})
@@ -73,7 +73,7 @@ func TestARefundWaitsForApproval(t *testing.T) {
 	if !errors.As(err, &pending) || shop.orders[0].Status != "paid" {
 		t.Fatalf("err = %v, status = %s; the refund must wait", err, shop.orders[0].Status)
 	}
-	if _, err := agent.ApplyPlan(context.Background(), mode, plans, "you", pending.ID); err != nil {
+	if _, err := plans.Approve(context.Background(), mode, "you", pending.ID); err != nil {
 		t.Fatal(err)
 	}
 	if shop.orders[0].Status != "refunded" {

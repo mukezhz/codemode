@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { api, type ChatResult, type PendingPlan } from "../api";
+import { api, type ChatResult } from "../api";
 import { DocumentView } from "../components/Blocks";
+import { PlanView } from "../components/PlanView";
 
 export const Route = createFileRoute("/chat")({ component: Ask });
 
@@ -122,7 +123,7 @@ function TurnView({ turn, pending }: { turn: Turn; pending: boolean }) {
       {turn.result && (
         <>
           <DocumentView document={turn.result.document} />
-          {turn.result.pending && <PendingView plan={turn.result.pending} />}
+          {turn.result.pending && <PlanView plan={turn.result.pending} />}
 
           {/* The program is the evidence. When an answer looks wrong, this is
               what tells you whether the model or the data was at fault. */}
@@ -162,57 +163,6 @@ function TurnView({ turn, pending }: { turn: Turn; pending: boolean }) {
         </>
       )}
     </section>
-  );
-}
-
-// PendingView asks before anything the program wanted to change actually
-// changes. Approve sends only the plan's ID: the server applies exactly what is
-// listed here, once, and checks the caller's access again as it does.
-function PendingView({ plan }: { plan: PendingPlan }) {
-  const [state, setState] = useState<"waiting" | "working" | "approved" | "rejected">("waiting");
-  const [outcome, setOutcome] = useState("");
-
-  async function decide(approve: boolean) {
-    setState("working");
-    try {
-      if (approve) {
-        const { calls } = await api.approve(plan.id);
-        setOutcome(`${calls.length} change${calls.length === 1 ? "" : "s"} made`);
-        setState("approved");
-      } else {
-        await api.reject(plan.id);
-        setOutcome("nothing was changed");
-        setState("rejected");
-      }
-    } catch (err) {
-      setOutcome((err as Error).message);
-      setState("rejected");
-    }
-  }
-
-  return (
-    <div className="pending">
-      <p className="pending-title">Waiting for your approval</p>
-      <ul>
-        {plan.calls.map((call, index) => (
-          <li key={index}>
-            <code>{call.name}</code> <span className="muted">{JSON.stringify(call.input)}</span>
-          </li>
-        ))}
-      </ul>
-      {state === "waiting" || state === "working" ? (
-        <div className="pending-actions">
-          <button onClick={() => decide(true)} disabled={state === "working"}>
-            Approve
-          </button>
-          <button className="secondary" onClick={() => decide(false)} disabled={state === "working"}>
-            Reject
-          </button>
-        </div>
-      ) : (
-        <p className={state === "approved" ? "muted" : "error"}>{outcome}</p>
-      )}
-    </div>
   );
 }
 

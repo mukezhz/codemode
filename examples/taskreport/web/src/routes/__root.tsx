@@ -45,6 +45,7 @@ function Shell() {
             Board
           </Link>
           <Link to="/chat">Ask</Link>
+          <Link to="/plans">Approvals</Link>
         </nav>
 
         <div className="who">

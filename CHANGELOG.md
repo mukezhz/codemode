@@ -26,9 +26,23 @@ version is 0, a minor bump may break the API.
   is checked and decoded into `T`, and a mismatch is repaired like a failure.
 - Approval: `Capability.NeedsApproval`, the `(codemode.needs_approval)` method
   option and `gosource.NeedsApproval()`. A run holds that write and every later
-  one and returns `*agent.Pending`; `agent.PlanStore`, `agent.NewMemoryPlans` and
-  `agent.ApplyPlan(ctx, mode, store, owner, id)` apply a plan once, by ID, for its
-  owner. A write needing approval fails rather than runs outside `agent.Run`.
+  one and returns `*agent.Pending`, applied through `agent.Plans` below. A write
+  needing approval fails rather than runs outside `agent.Run`.
+- Durable plans: `agent.NewPlans(store, PlanOptions{TTL, OnEvent})` is the
+  approval API — `List` (the inbox), `Get`, `Approve`, `Reject` and `Resume`. A
+  plan has a status (`pending`, `applying`, `applied`, `failed`, `rejected`,
+  `expired`), an expiry, the request and run that made it, each applied call's
+  result, and a history of every change. Decisions are a compare-and-set, so a
+  plan applies once across replicas; expiry is checked on read; a crash while
+  applying resumes from the first call without a result. Errors name the plan
+  and its state, wrapping `ErrNoPlan`, `ErrPlanExpired` or `ErrPlanDecided`.
+- `agent.PlanStore` (`Create`, `Get`, `List`, `Update`), `agent.NewMemoryPlanStore`,
+  `agent/sqlplans` for SQLite and Postgres on `database/sql`, and
+  `agent/plantest.Run`, the contract every plan store passes.
+- `Options.OnEvent` and `agent.Event`: one event per step of a run or plan, each
+  with the run ID. `agent.LogEvents(logger)` sends them to `log/slog`.
+- `Result.RunID`, and `*agent.Error{RunID, Stage}` wrapping every error
+  `agent.Run` returns except `*Pending`.
 - `capability/jsonschema`: the JSON Schema converter `mcpsource` used, exported.
 - `codemode/sourcetest.Run`: the contract every capability source passes.
 - `examples/todo` serves its capabilities from Go functions by default;
