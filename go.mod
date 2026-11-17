@@ -6,10 +6,10 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/dop251/goja v0.0.0-20260806115107-493f22071ef6
 	github.com/elastic/go-seccomp-bpf v1.6.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/openai/openai-go/v3 v3.96.0
+	github.com/openai/openai-go/v3 v3.99.0
 	github.com/yuin/gopher-lua v1.1.2
 	go.starlark.net v0.0.0-20260708150628-5395d018f003
 	golang.org/x/time v0.16.0
